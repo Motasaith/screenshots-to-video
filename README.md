@@ -1,73 +1,94 @@
-# React + TypeScript + Vite
+# AI Video Generator Platform
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern, full-stack web application that allows users to create professional tutorial videos from simple screenshots. By leveraging AI-generated scripts, automated Text-to-Speech (TTS), and programmatic video rendering (FFmpeg), users can turn static images into dynamic, engaging video content.
 
-Currently, two official plugins are available:
+## 🚀 Key Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+*   **Step-by-Step Creation Wizard:** Intuitive UI to guide users through uploading screenshots, writing/generating scripts, annotating zoom targets, and rendering.
+*   **AI-Powered Scripting:** Automatically generates tutorial narration and guidance based on the context of the screenshots and project description using LLMs.
+*   **Proactive AI Assistant:** A built-in chat guide to provide contextual help and suggestions throughout the video creation process.
+*   **Automated Voiceovers (TTS):** Integrated with `node-edge-tts` to generate high-quality, natural-sounding voiceovers without external dependencies.
+*   **Cinematic Video Rendering:** Uses FFmpeg to automatically apply "zoom-and-pan" effects to static screenshots, creating a dynamic viewing experience.
+*   **Cloud Storage Integration:** Fully integrated with [UploadThing](https://uploadthing.com/) for fast, secure, and reliable media storage.
+*   **Background Worker:** Robust, asynchronous job polling system to handle heavy audio generation and video rendering without blocking the UI.
 
-## React Compiler
+## 🛠️ Tech Stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+**Frontend:**
+*   React 19 & Vite 7
+*   Tailwind CSS & Framer Motion (Modern, dynamic animations and styling)
+*   Radix UI (Accessible, unstyled components via shadcn/ui)
+*   tRPC React (End-to-end typesafe APIs)
 
-## Expanding the ESLint configuration
+**Backend:**
+*   Hono (Ultra-fast web framework for Node.js)
+*   tRPC Server
+*   Drizzle ORM (Typesafe database interactions)
+*   MySQL (via `mysql2`)
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+**Media Processing & Infrastructure:**
+*   `ffmpeg-static` & `ffprobe-static` (Self-contained video rendering)
+*   `node-edge-tts` (Native Node.js TTS generation)
+*   UploadThing (Cloud storage)
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## ⚙️ Prerequisites
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+*   **Node.js** (v18 or higher recommended)
+*   **MySQL Database** (Local or hosted)
+*   **UploadThing Account** (For cloud storage)
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 📦 Installation & Setup
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+1.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/Motasaith/How.git
+    cd ai_video_02
+    ```
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+2.  **Install dependencies:**
+    ```bash
+    npm install
+    ```
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+3.  **Environment Variables:**
+    Create a `.env` file in the root directory and add the following keys:
+    ```env
+    # Database
+    DATABASE_URL="mysql://user:password@localhost:3306/your_database"
+
+    # UploadThing Storage
+    UPLOADTHING_SECRET="sk_live_..."
+    UPLOADTHING_APP_ID="your_app_id"
+    
+    # LLM Provider (e.g., Kimi / OpenRouter)
+    KIMI_API_URL="https://your-llm-provider.com/v1"
+    KIMI_API_KEY="your_api_key"
+    ```
+
+4.  **Database Migration:**
+    Generate and push the schema to your MySQL database.
+    ```bash
+    npm run db:generate
+    npm run db:push
+    ```
+
+5.  **Run the Development Server:**
+    ```bash
+    npm run dev
+    ```
+    The application will be available at `http://localhost:3000`. The background render worker will automatically start alongside the development server.
+
+## 🏗️ Architecture Overview
+
+The platform uses a monolithic full-stack approach with **Vite** serving the React frontend and **Hono** managing the backend API routes. 
+
+*   **`/api/renderRouter.ts`**: Manages the video generation requests.
+*   **`/api/lib/worker.ts`**: A dedicated polling background worker that processes jobs from the `render_jobs` database table. It handles the heavy lifting of audio synthesis (`tts.ts`) and video segment compilation (`ffmpeg.ts`).
+*   **`/src/components/wizard/`**: Contains the complex, multi-step frontend React components that guide the user through the process.
+
+## 📝 Recent Updates
+*   **Storage Migration**: Transitioned from Cloudflare R2 to UploadThing, drastically improving upload speeds and simplifying infrastructure.
+*   **Dependency Freedom**: Swapped external OS-level dependencies (like Python for edge-tts and system-wide FFmpeg) for self-contained NPM packages (`node-edge-tts`, `ffmpeg-static`), making local development incredibly simple and robust.
+
+---
+*Built with modern web technologies for a seamless video creation experience.*
