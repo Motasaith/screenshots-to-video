@@ -17,7 +17,7 @@ export default function Navbar() {
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, resolvedTheme } = useTheme();
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -110,11 +110,11 @@ export default function Navbar() {
             )}
             
             <button
-              onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
               className="p-2 ml-2 border-2 border-border bg-card hover:border-primary transition-colors focus:outline-none"
               aria-label="Toggle dark mode"
             >
-              {theme === "dark" ? (
+              {resolvedTheme === "dark" ? (
                 <Sun className="w-4 h-4 text-primary" />
               ) : (
                 <Moon className="w-4 h-4 text-primary" />
