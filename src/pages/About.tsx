@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import Navbar from "@/components/Navbar";
+import FooterSection from "@/sections/FooterSection";
 import { Github, ExternalLink } from "lucide-react";
 
 export default function About() {
@@ -71,6 +72,7 @@ export default function About() {
           </div>
         </motion.div>
       </main>
+      <FooterSection />
     </div>
   );
 }

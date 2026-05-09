@@ -16,6 +16,8 @@ import HelpCenter from "./pages/HelpCenter";
 import Community from "./pages/Community";
 import Status from "./pages/Status";
 import Feedback from "./pages/Feedback";
+import Privacy from "./pages/Privacy";
+import Terms from "./pages/Terms";
 
 export default function App() {
   return (
@@ -32,6 +34,8 @@ export default function App() {
       <Route path="/tutorials" element={<GenericContent title="Tutorials" description="Advanced guides on mastering cinematic zoom." />} />
       <Route path="/careers" element={<GenericContent title="Careers" description="Join us in building the future of video documentation." />} />
       <Route path="/legal" element={<GenericContent title="Legal & Privacy" description="Terms of service, privacy policy, and compliance." />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/terms" element={<Terms />} />
       <Route path="/help" element={<HelpCenter />} />
       <Route path="/community" element={<Community />} />
       <Route path="/status" element={<Status />} />
