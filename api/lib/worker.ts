@@ -226,6 +226,10 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
         audioDuration: audioDuration,
         zoomTargetX: zoomX,
         zoomTargetY: zoomY,
+        zoomRectX: step.zoomRectX ?? undefined,
+        zoomRectY: step.zoomRectY ?? undefined,
+        zoomRectW: step.zoomRectWidth ?? undefined,
+        zoomRectH: step.zoomRectHeight ?? undefined,
         outputRes: outputRes,
       });
 

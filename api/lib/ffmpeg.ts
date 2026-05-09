@@ -107,6 +107,10 @@ export async function renderStepVideo(opts: {
   audioDuration: number;
   zoomTargetX: number; // percentage 0-100
   zoomTargetY: number; // percentage 0-100
+  zoomRectX?: number; // percentage 0-100
+  zoomRectY?: number; // percentage 0-100
+  zoomRectW?: number; // percentage 0-100
+  zoomRectH?: number; // percentage 0-100
   outputRes?: string;
 }): Promise<string> {
   await ensureWorkDir();
@@ -128,11 +132,27 @@ export async function renderStepVideo(opts: {
     imgHeight = 1080;
   }
 
+  // Draw highlight box if dimensions are provided
+  let drawboxFilter = "";
+  if (
+    opts.zoomRectX !== undefined &&
+    opts.zoomRectY !== undefined &&
+    opts.zoomRectW !== undefined &&
+    opts.zoomRectH !== undefined
+  ) {
+    const rx = Math.round((opts.zoomRectX / 100) * imgWidth);
+    const ry = Math.round((opts.zoomRectY / 100) * imgHeight);
+    const rw = Math.round((opts.zoomRectW / 100) * imgWidth);
+    const rh = Math.round((opts.zoomRectH / 100) * imgHeight);
+    // Draw a prominent orange box around the target region (color #f97316 in Tailwind)
+    drawboxFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=#f97316@1.0:thickness=6,`;
+  }
+
   // Build the zoom filter
   const zoomFilter = buildZoomFilter(
     opts.zoomTargetX,
     opts.zoomTargetY,
-    imgWidth,
+    imgWidth, // Note: This isn't technically perfect since we scale+pad later, but the center target is roughly preserved.
     imgHeight,
     opts.audioDuration,
     outputRes
@@ -140,7 +160,7 @@ export async function renderStepVideo(opts: {
 
   // Construct the FFmpeg command
   // 1. Loop the image for the duration of audio
-  // 2. Apply scale → zoompan filter
+  // 2. Apply drawbox (optional) → scale → pad → zoompan filter
   // 3. Map audio
   const args = [
     "-y",
@@ -148,7 +168,7 @@ export async function renderStepVideo(opts: {
     "-i", opts.screenshotPath,
     "-i", opts.audioPath,
     "-filter_complex",
-    `[0:v]scale=${outW}:${outH}:force_original_aspect_ratio=decrease,pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2,${zoomFilter}[v]`,
+    `[0:v]${drawboxFilter}scale=${outW}:${outH}:force_original_aspect_ratio=decrease,pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2,${zoomFilter}[v]`,
     "-map", "[v]",
     "-map", "1:a",
     "-c:v", "libx264",

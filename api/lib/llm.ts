@@ -104,21 +104,44 @@ Return ONLY a JSON object with this exact format:
     { temperature: 0.6, jsonMode: true }
   );
 
+  // Strip markdown code fences if present (common with smaller models like gemma3)
+  const cleanResponse = response
+    .replace(/^```(?:json)?\s*\n?/i, "")
+    .replace(/\n?```\s*$/i, "")
+    .trim();
+
   try {
-    const parsed = JSON.parse(response);
+    const parsed = JSON.parse(cleanResponse);
     if (Array.isArray(parsed.scripts)) {
       return parsed.scripts;
     }
+    // Some models may return an array directly
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
   } catch {
-    // If JSON parsing fails, try to extract scripts from the text
-    console.warn("LLM returned non-JSON response, attempting to parse:", response);
+    console.warn("LLM returned non-JSON response, attempting to parse:", cleanResponse);
+  }
+
+  // Second attempt: try to find JSON within the response
+  const jsonMatch = cleanResponse.match(/\{[\s\S]*"scripts"\s*:\s*\[[\s\S]*\]\s*\}/);
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (Array.isArray(parsed.scripts)) {
+        return parsed.scripts;
+      }
+    } catch {
+      // Continue to fallback
+    }
   }
 
   // Fallback: split response by numbered lines
-  const lines = response
+  const lines = cleanResponse
     .split("\n")
-    .filter((l) => l.trim().length > 0)
-    .map((l) => l.replace(/^\d+[\.\)]\s*/, "").trim());
+    .filter((l) => l.trim().length > 0 && !l.trim().startsWith("{") && !l.trim().startsWith("}") && !l.trim().startsWith('"scripts"'))
+    .map((l) => l.replace(/^[\d]+[\.)\-]\s*/, "").replace(/^"/, "").replace(/"[,]?\s*$/, "").trim())
+    .filter((l) => l.length > 10); // Filter out fragments
 
   return lines.length >= steps.length
     ? lines.slice(0, steps.length)

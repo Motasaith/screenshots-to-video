@@ -225,22 +225,55 @@ export default function StepUpload() {
   const projectIdNum = Number(projectId) || 0;
   const { stepData, setStepData } = useWizardStore();
   
-  const [steps, setSteps] = useState<WizardStep[]>(() => {
-    const initialSteps = stepData.upload.steps.length > 0
-      ? stepData.upload.steps
-      : [{ order: 1, description: "", screenshotPath: "" }];
-      
-    // Ensure all steps have a localId
-    return initialSteps.map(s => ({
-      ...s,
-      localId: (s as any).localId || nanoid(8)
-    }));
-  });
+  // Fetch existing steps from the database
+  const { data: project, isLoading: isLoadingProject } = trpc.project.getById.useQuery(
+    { id: projectIdNum },
+    { enabled: projectIdNum > 0 }
+  );
 
+  const [steps, setSteps] = useState<WizardStep[]>([]);
+  const [initialized, setInitialized] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
 
+  // Track which DB step IDs we started with, so we can detect removals
+  const [originalDbIds, setOriginalDbIds] = useState<number[]>([]);
+
   const createStep = trpc.step.create.useMutation();
+  const updateStep = trpc.step.update.useMutation();
+  const deleteStep = trpc.step.delete.useMutation();
+
+  // Initialize steps from DB data or wizard store
+  useState(() => {});
+  if (!initialized && !isLoadingProject) {
+    if (project?.steps && project.steps.length > 0) {
+      // Load from database (existing project with saved steps)
+      const dbSteps: WizardStep[] = project.steps.map((s) => ({
+        id: s.id,
+        localId: nanoid(8),
+        order: s.order,
+        description: s.description || "",
+        screenshotPath: s.screenshotPath || undefined,
+        screenshotKey: s.screenshotPath || undefined,
+        previewUrl: s.screenshotPath || undefined,
+      }));
+      setSteps(dbSteps);
+      setOriginalDbIds(project.steps.map((s) => s.id));
+      setInitialized(true);
+    } else if (stepData.upload.steps.length > 0) {
+      // Load from wizard store (in-progress local state)
+      const storeSteps = stepData.upload.steps.map((s) => ({
+        ...s,
+        localId: (s as any).localId || nanoid(8),
+      }));
+      setSteps(storeSteps);
+      setInitialized(true);
+    } else if (!isLoadingProject) {
+      // Fresh start — one empty step
+      setSteps([{ localId: nanoid(8), order: 1, description: "" }]);
+      setInitialized(true);
+    }
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -367,16 +400,36 @@ export default function StepUpload() {
     setStepData("upload", { steps });
 
     try {
-      for (const step of steps) {
-        await createStep.mutateAsync({
-          projectId: projectIdNum,
-          order: step.order,
-          description: step.description,
-          screenshotPath: step.screenshotKey || step.screenshotPath || step.previewUrl || undefined,
-        });
+      // 1. Delete steps that were removed by the user
+      const currentDbIds = steps.filter((s) => s.id).map((s) => s.id!);
+      const removedIds = originalDbIds.filter((id) => !currentDbIds.includes(id));
+      for (const id of removedIds) {
+        await deleteStep.mutateAsync({ id });
       }
+
+      // 2. Update existing steps or create new ones
+      for (const step of steps) {
+        if (step.id) {
+          // Update existing step in DB
+          await updateStep.mutateAsync({
+            id: step.id,
+            description: step.description,
+            screenshotPath: step.screenshotKey || step.screenshotPath || step.previewUrl || undefined,
+          });
+        } else {
+          // Create a new step
+          await createStep.mutateAsync({
+            projectId: projectIdNum,
+            order: step.order,
+            description: step.description,
+            screenshotPath: step.screenshotKey || step.screenshotPath || step.previewUrl || undefined,
+          });
+        }
+      }
+
       navigate(`/create/${projectIdNum}/script`);
     } catch (err) {
+      console.error("Failed to save steps:", err);
       setErrors({ submit: "Failed to save steps" });
     } finally {
       setIsSaving(false);
@@ -384,6 +437,14 @@ export default function StepUpload() {
   };
 
   const anyUploading = steps.some((s) => s.isUploading);
+
+  if (isLoadingProject || !initialized) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl">
