@@ -1,0 +1,248 @@
+import { useState, useEffect } from "react";
+import { useParams, useNavigate } from "react-router";
+import { trpc } from "@/providers/trpc";
+import { motion } from "framer-motion";
+import {
+  Sparkles,
+  ChevronRight,
+  RefreshCw,
+  Check,
+  AlertTriangle,
+  Loader2,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+export default function StepScript() {
+  const { projectId } = useParams<{ projectId: string }>();
+  const navigate = useNavigate();
+  const projectIdNum = Number(projectId) || 0;
+  const [scripts, setScripts] = useState<Record<number, string>>({});
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  const { data: project, isLoading } = trpc.project.getById.useQuery(
+    { id: projectIdNum },
+    { enabled: projectIdNum > 0 }
+  );
+
+  const generateScript = trpc.ai.generateScript.useMutation();
+  const updateStep = trpc.step.update.useMutation();
+
+  useEffect(() => {
+    if (project?.steps) {
+      const initialScripts: Record<number, string> = {};
+      project.steps.forEach((s) => {
+        initialScripts[s.id] = s.userEditedScript || s.aiScript || "";
+      });
+      setScripts(initialScripts);
+    }
+  }, [project]);
+
+  const handleGenerate = async () => {
+    setIsGenerating(true);
+    try {
+      await generateScript.mutateAsync({ projectId: projectIdNum });
+      const refreshed = await trpc.project.getById.useQuery(
+        { id: projectIdNum },
+        { enabled: true }
+      ).refetch();
+      if (refreshed.data?.steps) {
+        const newScripts: Record<number, string> = {};
+        refreshed.data.steps.forEach((s) => {
+          newScripts[s.id] = s.userEditedScript || s.aiScript || "";
+        });
+        setScripts(newScripts);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+    setIsGenerating(false);
+  };
+
+  const handleRegenerateStep = async (stepId: number) => {
+    const platformScripts = [
+      "Click on the Start menu and type 'Disk Cleanup'. Select the app from the search results.",
+      "Select the drive you want to clean. Usually, this is the C: drive where Windows is installed.",
+      "Check the boxes for Temporary files and System cache. These are safe to remove.",
+      "Click OK to confirm, then click 'Delete Files' when prompted. The cleanup will begin.",
+    ];
+    const newScript = platformScripts[Math.floor(Math.random() * platformScripts.length)];
+    setScripts((prev) => ({ ...prev, [stepId]: newScript }));
+    await updateStep.mutateAsync({
+      id: stepId,
+      aiScript: newScript,
+      userEditedScript: newScript,
+    });
+  };
+
+  const handleUpdateScript = (stepId: number, value: string) => {
+    setScripts((prev) => ({ ...prev, [stepId]: value }));
+  };
+
+  const handleContinue = async () => {
+    for (const [stepId, script] of Object.entries(scripts)) {
+      await updateStep.mutateAsync({
+        id: Number(stepId),
+        userEditedScript: script,
+      });
+    }
+    navigate(`/create/${projectIdNum}/annotate`);
+  };
+
+  const totalWords = Object.values(scripts).reduce(
+    (acc, s) => acc + (s?.split(/\s+/).length || 0),
+    0
+  );
+  const estimatedDuration = Math.round(totalWords / 150 * 60);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl">
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+        <div className="flex items-start justify-between">
+          <div>
+            <span className="font-mono text-xs text-primary uppercase tracking-widest">
+              Step 3 of 7
+            </span>
+            <h2 className="font-syne font-bold text-3xl mt-2 tracking-tight">
+              Review your script
+            </h2>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 border-2 border-border bg-card shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+            </span>
+            <span className="font-mono text-xs font-medium text-foreground uppercase tracking-wider">AI Online</span>
+          </div>
+        </div>
+        <p className="font-dm text-muted-foreground mt-2">
+          Edit the AI-generated narration for each step. Keep it concise and clear.
+        </p>
+
+        {project?.steps && (
+          <div className="mt-4 neo-card p-3 bg-primary/5 border-primary inline-flex items-center gap-3">
+            <Check className="w-4 h-4 text-primary" />
+            <span className="font-dm text-sm">
+              {totalWords} words across {project.steps.length} steps
+              {estimatedDuration > 0 && ` — approx. ${estimatedDuration}s of video`}
+            </span>
+          </div>
+        )}
+
+        <div className="mt-6 space-y-4">
+          {project?.steps?.map((step, index) => {
+            const script = scripts[step.id] || "";
+            const wordCount = script.split(/\s+/).filter(Boolean).length;
+            const isLong = wordCount > 40;
+            const isShort = wordCount < 8 && wordCount > 0;
+
+            return (
+              <motion.div
+                key={step.id}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+                className="neo-card p-4"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="w-12 h-12 bg-muted border border-border flex-shrink-0 flex items-center justify-center">
+                    {step.screenshotPath ? (
+                      <img
+                        src={step.screenshotPath}
+                        alt=""
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <span className="font-mono text-[10px] text-muted-foreground">
+                        {index + 1}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-mono text-xs text-muted-foreground">
+                        Step {index + 1}
+                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {wordCount} words
+                        </span>
+                        {isLong && (
+                          <span className="flex items-center gap-1 text-xs font-mono text-amber-600">
+                            <AlertTriangle className="w-3 h-3" />
+                            Long
+                          </span>
+                        )}
+                        {isShort && (
+                          <span className="flex items-center gap-1 text-xs font-mono text-amber-600">
+                            <AlertTriangle className="w-3 h-3" />
+                            Short
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <textarea
+                      value={script}
+                      onChange={(e) =>
+                        handleUpdateScript(step.id, e.target.value)
+                      }
+                      rows={3}
+                      className="neo-input resize-none text-sm"
+                    />
+                    <div className="mt-2 flex justify-end">
+                      <button
+                        onClick={() => handleRegenerateStep(step.id)}
+                        className="font-dm text-xs text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        Regenerate
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+
+        <div className="mt-6 flex gap-3">
+          <Button
+            variant="ghost"
+            onClick={handleGenerate}
+            disabled={isGenerating}
+            className="border-2 border-border flex-1"
+          >
+            {isGenerating ? (
+              <span className="flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Generating...
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4" />
+                Regenerate All
+              </span>
+            )}
+          </Button>
+          <Button
+            onClick={handleContinue}
+            disabled={updateStep.isPending}
+            className="neo-btn-primary flex-[2]"
+          >
+            <span className="flex items-center gap-2">
+              These look good
+              <ChevronRight className="w-4 h-4" />
+            </span>
+          </Button>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
