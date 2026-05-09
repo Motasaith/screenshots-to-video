@@ -19,6 +19,8 @@ import Feedback from "./pages/Feedback";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
 import Videos from "./pages/Videos";
+import Careers from "./pages/Careers";
+import Legal from "./pages/Legal";
 
 export default function App() {
   return (
@@ -33,8 +35,8 @@ export default function App() {
       {/* Footer Pages */}
       <Route path="/api" element={<GenericContent title="API Reference" description="Integrate AIVideo rendering directly into your CI/CD pipeline." />} />
       <Route path="/tutorials" element={<GenericContent title="Tutorials" description="Advanced guides on mastering cinematic zoom." />} />
-      <Route path="/careers" element={<GenericContent title="Careers" description="Join us in building the future of video documentation." />} />
-      <Route path="/legal" element={<GenericContent title="Legal & Privacy" description="Terms of service, privacy policy, and compliance." />} />
+      <Route path="/careers" element={<Careers />} />
+      <Route path="/legal" element={<Legal />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/terms" element={<Terms />} />
       <Route path="/help" element={<HelpCenter />} />

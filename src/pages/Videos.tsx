@@ -1,14 +1,16 @@
-import { useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
 import { motion, AnimatePresence } from "framer-motion";
-import { Play, Film, Clock, Download, Share2, LogOut, Settings, LayoutDashboard } from "lucide-react";
+import { Play, Film, Clock, Download, Share2, LogOut, Settings, LayoutDashboard, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
 export default function Videos() {
   const { user, logout, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const [selectedVideo, setSelectedVideo] = useState<{title: string, url: string} | null>(null);
 
   // Fetch only completed projects
   const { data: projects, isLoading } = trpc.project.list.useQuery(undefined, {
@@ -101,12 +103,27 @@ export default function Videos() {
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
-                  className="neo-card p-0 overflow-hidden flex flex-col group"
+                  className="neo-card p-0 overflow-hidden flex flex-col group cursor-pointer"
+                  onClick={() => {
+                    if (project.finalVideoPath) {
+                      setSelectedVideo({ title: project.title, url: project.finalVideoPath });
+                    }
+                  }}
                 >
                   <div className="aspect-video bg-muted/50 border-b-2 border-border relative flex items-center justify-center">
-                    <Play className="w-12 h-12 text-primary opacity-50 group-hover:opacity-100 group-hover:scale-110 transition-all duration-300" />
+                    {project.finalVideoPath ? (
+                       <video 
+                         src={project.finalVideoPath} 
+                         className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+                       />
+                    ) : (
+                       <Play className="w-12 h-12 text-primary opacity-50 group-hover:opacity-100 group-hover:scale-110 transition-all duration-300" />
+                    )}
+                    <div className="absolute inset-0 flex items-center justify-center bg-background/20 opacity-0 group-hover:opacity-100 transition-all">
+                       <Play className="w-16 h-16 text-primary fill-primary" />
+                    </div>
                   </div>
-                  <div className="p-5 flex flex-col flex-1">
+                  <div className="p-5 flex flex-col flex-1 bg-card relative z-10" onClick={(e) => e.stopPropagation()}>
                     <h3 className="font-syne font-bold text-xl leading-tight line-clamp-2 mb-2">
                       {project.title}
                     </h3>
@@ -117,7 +134,10 @@ export default function Videos() {
                       <Button 
                         size="sm" 
                         className="flex-1 font-syne font-bold shadow-offset focus:shadow-offset focus:translate-y-0"
-                        onClick={() => navigate(`/create/${project.id}/export`)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/create/${project.id}/export`);
+                        }}
                       >
                         <Download className="w-4 h-4 mr-2" />
                         Download
@@ -126,6 +146,8 @@ export default function Videos() {
                         size="sm" 
                         variant="outline"
                         className="border-2 font-syne font-bold hover:border-primary px-3"
+                        disabled
+                        title="Public sharing requires additional setup"
                       >
                         <Share2 className="w-4 h-4" />
                       </Button>
@@ -153,6 +175,31 @@ export default function Videos() {
           </div>
         )}
       </main>
+
+      {/* Video Player Modal */}
+      <Dialog open={!!selectedVideo} onOpenChange={(open) => !open && setSelectedVideo(null)}>
+        <DialogContent className="max-w-5xl w-[90vw] p-0 border-4 border-border overflow-hidden bg-black gap-0">
+          <DialogTitle className="sr-only">{selectedVideo?.title}</DialogTitle>
+          <DialogDescription className="sr-only">Video playback modal</DialogDescription>
+          
+          <div className="relative w-full aspect-video flex bg-black">
+            {selectedVideo?.url && (
+              <video 
+                src={selectedVideo.url} 
+                controls 
+                autoPlay 
+                className="w-full h-full object-contain"
+              />
+            )}
+            <button 
+              onClick={() => setSelectedVideo(null)}
+              className="absolute top-4 right-4 p-2 bg-black/50 hover:bg-black text-white rounded-full transition-colors z-50"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
