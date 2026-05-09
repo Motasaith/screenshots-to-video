@@ -92,6 +92,15 @@ export default function Dashboard() {
               <Button
                 variant="ghost"
                 size="sm"
+                onClick={() => navigate("/videos")}
+                className="border-2 border-border gap-2"
+              >
+                <Film className="w-4 h-4" />
+                <span className="hidden sm:inline">My Videos</span>
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => navigate("/settings")}
                 className="border-2 border-border"
               >

@@ -18,6 +18,7 @@ import Status from "./pages/Status";
 import Feedback from "./pages/Feedback";
 import Privacy from "./pages/Privacy";
 import Terms from "./pages/Terms";
+import Videos from "./pages/Videos";
 
 export default function App() {
   return (
@@ -43,6 +44,7 @@ export default function App() {
 
       <Route path="/login" element={<Login />} />
       <Route path="/dashboard" element={<Dashboard />} />
+      <Route path="/videos" element={<Videos />} />
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/create/:projectId/:step" element={<Wizard />} />
