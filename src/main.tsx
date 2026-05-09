@@ -6,10 +6,12 @@ import { TRPCProvider } from "@/providers/trpc"
 import App from './App.tsx'
 
 import { ThemeProvider } from "@/components/ThemeProvider"
+import { ScrollToTop } from "@/components/ScrollToTop"
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
+      <ScrollToTop />
       <TRPCProvider>
         <ThemeProvider>
           <App />
