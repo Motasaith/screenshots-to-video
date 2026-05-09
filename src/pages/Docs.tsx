@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { Book, Terminal, Settings2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import FooterSection from "@/sections/FooterSection";
 
 export default function Docs() {
   return (
@@ -80,6 +81,7 @@ export default function Docs() {
           </section>
         </div>
       </main>
+      <FooterSection />
     </div>
   );
 }
