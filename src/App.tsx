@@ -8,6 +8,9 @@ import Pricing from "./pages/Pricing";
 import Settings from "./pages/Settings";
 import Docs from "./pages/Docs";
 import About from "./pages/About";
+import Blog from "./pages/Blog";
+import Contact from "./pages/Contact";
+import Changelog from "./pages/Changelog";
 import GenericContent from "./pages/GenericContent";
 
 export default function App() {
@@ -16,12 +19,13 @@ export default function App() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/docs" element={<Docs />} />
       <Route path="/about" element={<About />} />
+      <Route path="/blog" element={<Blog />} />
+      <Route path="/contact" element={<Contact />} />
+      <Route path="/changelog" element={<Changelog />} />
       
       {/* Footer Pages via GenericContent */}
       <Route path="/api" element={<GenericContent title="API Reference" description="Integrate AIVideo rendering directly into your CI/CD pipeline." />} />
       <Route path="/tutorials" element={<GenericContent title="Tutorials" description="Advanced guides on mastering cinematic zoom." />} />
-      <Route path="/blog" element={<GenericContent title="Blog" description="Latest updates, feature releases, and engineering deep dives." />} />
-      <Route path="/contact" element={<GenericContent title="Contact Us" description="Get in touch with our enterprise sales and support teams." />} />
       <Route path="/careers" element={<GenericContent title="Careers" description="Join us in building the future of video documentation." />} />
       <Route path="/legal" element={<GenericContent title="Legal & Privacy" description="Terms of service, privacy policy, and compliance." />} />
       <Route path="/help" element={<GenericContent title="Help Center" description="Find answers to common questions and troubleshooting guides." />} />
