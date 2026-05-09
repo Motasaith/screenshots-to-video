@@ -89,7 +89,7 @@ export default function FooterSection() {
 
         <div className="border-t border-border mt-12 pt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
           <p className="font-dm text-xs text-muted-foreground">
-            2024 AIVideo. All rights reserved.
+            © 2026 Abdul Rauf Azhar. All rights reserved.
           </p>
           <div className="flex gap-6">
             <a

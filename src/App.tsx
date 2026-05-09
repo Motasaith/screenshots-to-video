@@ -12,6 +12,10 @@ import Blog from "./pages/Blog";
 import Contact from "./pages/Contact";
 import Changelog from "./pages/Changelog";
 import GenericContent from "./pages/GenericContent";
+import HelpCenter from "./pages/HelpCenter";
+import Community from "./pages/Community";
+import Status from "./pages/Status";
+import Feedback from "./pages/Feedback";
 
 export default function App() {
   return (
@@ -23,15 +27,15 @@ export default function App() {
       <Route path="/contact" element={<Contact />} />
       <Route path="/changelog" element={<Changelog />} />
       
-      {/* Footer Pages via GenericContent */}
+      {/* Footer Pages */}
       <Route path="/api" element={<GenericContent title="API Reference" description="Integrate AIVideo rendering directly into your CI/CD pipeline." />} />
       <Route path="/tutorials" element={<GenericContent title="Tutorials" description="Advanced guides on mastering cinematic zoom." />} />
       <Route path="/careers" element={<GenericContent title="Careers" description="Join us in building the future of video documentation." />} />
       <Route path="/legal" element={<GenericContent title="Legal & Privacy" description="Terms of service, privacy policy, and compliance." />} />
-      <Route path="/help" element={<GenericContent title="Help Center" description="Find answers to common questions and troubleshooting guides." />} />
-      <Route path="/community" element={<GenericContent title="Community" description="Join our Discord and engage with other creators." />} />
-      <Route path="/status" element={<GenericContent title="System Status" description="Real-time uptime monitoring for our rendering workers." />} />
-      <Route path="/feedback" element={<GenericContent title="Feedback" description="Suggest features and report bugs." />} />
+      <Route path="/help" element={<HelpCenter />} />
+      <Route path="/community" element={<Community />} />
+      <Route path="/status" element={<Status />} />
+      <Route path="/feedback" element={<Feedback />} />
 
       <Route path="/login" element={<Login />} />
       <Route path="/dashboard" element={<Dashboard />} />
