@@ -12,7 +12,19 @@ function getUtapi() {
         "UploadThing is not configured. Set UPLOADTHING_SECRET in .env"
       );
     }
-    utapi = new UTApi({ token: env.uploadthingSecret });
+    
+    let token = env.uploadthingSecret;
+    if (token.startsWith("sk_")) {
+      token = Buffer.from(
+        JSON.stringify({
+          apiKey: env.uploadthingSecret,
+          appId: env.uploadthingAppId || "",
+          regions: ["sea1"],
+        })
+      ).toString("base64");
+    }
+
+    utapi = new UTApi({ token });
   }
   return utapi;
 }

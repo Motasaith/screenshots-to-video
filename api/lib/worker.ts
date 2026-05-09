@@ -196,9 +196,9 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
         message: `Rendering video segment ${i + 1} of ${totalSteps}...`,
       });
 
-      // Download screenshot from R2 if it's a storage key
+      // Download screenshot from R2 if it's a storage key or URL
       let screenshotLocalPath: string;
-      if (step.screenshotPath && !step.screenshotPath.startsWith("blob:") && !step.screenshotPath.startsWith("http")) {
+      if (step.screenshotPath && !step.screenshotPath.startsWith("blob:")) {
         const screenshotBuffer = await downloadFromR2(step.screenshotPath);
         screenshotLocalPath = path.join(
           os.tmpdir(),

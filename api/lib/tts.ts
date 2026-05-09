@@ -7,9 +7,10 @@ import { nanoid } from "nanoid";
 
 const execFileAsync = promisify(execFile);
 
+import { EdgeTTS } from "node-edge-tts";
+
 /**
- * Generate TTS audio using edge-tts (Python) subprocess.
- * Requires: pip install edge-tts
+ * Generate TTS audio using node-edge-tts.
  *
  * Returns the path to the generated .mp3 file in a temp directory.
  */
@@ -31,35 +32,14 @@ export async function generateTTSAudio(
   const outputPath = path.join(outDir, filename);
 
   try {
-    // Use edge-tts Python command
-    await execFileAsync("edge-tts", [
-      "--voice", voice,
-      "--rate", rate,
-      "--text", text,
-      "--write-media", outputPath,
-    ], {
-      timeout: 30000,
-      shell: true,
+    const tts = new EdgeTTS({
+      voice: voice,
+      rate: rate,
     });
+    
+    await tts.ttsPromise(text, outputPath);
   } catch (err: any) {
-    // If edge-tts isn't available, try python -m edge_tts
-    try {
-      await execFileAsync("python", [
-        "-m", "edge_tts",
-        "--voice", voice,
-        "--rate", rate,
-        "--text", text,
-        "--write-media", outputPath,
-      ], {
-        timeout: 30000,
-        shell: true,
-      });
-    } catch (innerErr: any) {
-      throw new Error(
-        `edge-tts is not available. Install it with: pip install edge-tts\n` +
-        `Original error: ${innerErr.message}`
-      );
-    }
+    throw new Error(`TTS generation failed: ${err.message || err}`);
   }
 
   // Verify the file was created
@@ -74,12 +54,15 @@ export async function generateTTSAudio(
   return { filePath: outputPath, duration };
 }
 
+import ffprobeStatic from "ffprobe-static";
+
 /**
  * Get the duration of an audio file in seconds using ffprobe.
  */
 export async function probeAudioDuration(filePath: string): Promise<number> {
   try {
-    const { stdout } = await execFileAsync("ffprobe", [
+    if (!ffprobeStatic.path) throw new Error("ffprobe-static path is undefined");
+    const { stdout } = await execFileAsync(ffprobeStatic.path, [
       "-v", "error",
       "-show_entries", "format=duration",
       "-of", "csv=p=0",
@@ -120,23 +103,13 @@ export function speedToRate(speed: number): string {
  * List available edge-tts voices.
  */
 export async function listVoices(): Promise<string[]> {
-  try {
-    const { stdout } = await execFileAsync("edge-tts", ["--list-voices"], {
-      timeout: 10000,
-      shell: true,
-    });
-    return stdout.split("\n").filter((line) => line.includes("Name:")).map((line) =>
-      line.replace("Name: ", "").trim()
-    );
-  } catch {
-    // Return default voices if edge-tts isn't available
-    return [
-      "en-US-AriaNeural",
-      "en-GB-SoniaNeural",
-      "en-US-GuyNeural",
-      "en-GB-RyanNeural",
-      "en-US-JennyNeural",
-      "en-AU-NatashaNeural",
-    ];
-  }
+  // Return default voices since node-edge-tts doesn't have a listVoices method
+  return [
+    "en-US-AriaNeural",
+    "en-GB-SoniaNeural",
+    "en-US-GuyNeural",
+    "en-GB-RyanNeural",
+    "en-US-JennyNeural",
+    "en-AU-NatashaNeural",
+  ];
 }

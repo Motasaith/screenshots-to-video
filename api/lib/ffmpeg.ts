@@ -5,6 +5,10 @@ import path from "path";
 import os from "os";
 import { nanoid } from "nanoid";
 
+// Use static binaries so the user doesn't need to install ffmpeg globally
+import ffmpegPath from "ffmpeg-static";
+import ffprobeStatic from "ffprobe-static";
+
 const execFileAsync = promisify(execFile);
 
 const WORK_DIR = path.join(os.tmpdir(), "aivideo-render");
@@ -23,7 +27,8 @@ async function ensureWorkDir(): Promise<string> {
 export async function probeImageDimensions(
   imagePath: string
 ): Promise<{ width: number; height: number }> {
-  const { stdout } = await execFileAsync("ffprobe", [
+  if (!ffprobeStatic.path) throw new Error("ffprobe-static path is undefined");
+  const { stdout } = await execFileAsync(ffprobeStatic.path, [
     "-v", "error",
     "-select_streams", "v:0",
     "-show_entries", "stream=width,height",
@@ -158,7 +163,8 @@ export async function renderStepVideo(opts: {
   ];
 
   try {
-    await execFileAsync("ffmpeg", args, {
+    if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
+    await execFileAsync(ffmpegPath, args, {
       timeout: 120000, // 2 min per step
       shell: true,
     });
@@ -196,7 +202,8 @@ export async function concatenateSegments(
   await fs.writeFile(concatFile, concatContent, "utf-8");
 
   try {
-    await execFileAsync("ffmpeg", [
+    if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
+    await execFileAsync(ffmpegPath, [
       "-y",
       "-f", "concat",
       "-safe", "0",
