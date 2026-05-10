@@ -10,8 +10,20 @@ const t = initTRPC.context<TrpcContext>().create({
 export const createRouter = t.router;
 export const publicQuery = t.procedure;
 
+export let isMaintenanceMode = false;
+export function setMaintenanceMode(enabled: boolean) {
+  isMaintenanceMode = enabled;
+}
+
 const requireAuth = t.middleware(async (opts) => {
   const { ctx, next } = opts;
+
+  if (isMaintenanceMode && ctx.user?.role !== "admin") {
+    throw new TRPCError({
+      code: "SERVICE_UNAVAILABLE",
+      message: "MAINTENANCE_MODE",
+    });
+  }
 
   if (!ctx.user) {
     throw new TRPCError({

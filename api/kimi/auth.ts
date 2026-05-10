@@ -109,6 +109,7 @@ export function createOAuthCallbackHandler() {
       // Create or update user
       await upsertUser({
         unionId: profile.userId,
+        email: profile.email,
         name: profile.name,
         avatar: profile.picture,
         lastSignInAt: new Date(),

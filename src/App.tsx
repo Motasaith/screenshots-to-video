@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router";
+import { Routes, Route, useLocation } from "react-router";
 import LandingPage from "./pages/LandingPage";
 import Dashboard from "./pages/Dashboard";
 import Wizard from "./pages/Wizard";
@@ -21,8 +21,41 @@ import Terms from "./pages/Terms";
 import Videos from "./pages/Videos";
 import Careers from "./pages/Careers";
 import Legal from "./pages/Legal";
+import Admin from "./pages/Admin";
+import { trpc } from "./providers/trpc";
+import { useAuth } from "./hooks/useAuth";
+import { Wrench } from "lucide-react";
 
 export default function App() {
+  const { data: config } = trpc.config.useQuery(undefined, {
+    refetchInterval: 1000 * 60, // check back every 1 min
+  });
+  const { user } = useAuth();
+  
+  const location = useLocation();
+  const isMaintenanceMode = config?.maintenanceMode ?? false;
+  const isAdmin = user?.role === "admin";
+  const showMaintenance = isMaintenanceMode && !isAdmin && location.pathname !== "/login";
+
+  if (showMaintenance) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center font-syne">
+        <Wrench className="w-16 h-16 text-primary mb-6 animate-pulse" />
+        <h1 className="text-4xl font-bold mb-4 tracking-tight">We'll be back shortly</h1>
+        <p className="text-xl text-muted-foreground font-dm max-w-lg mb-8">
+          AIVideo is currently undergoing scheduled maintenance to bring you an even highly optimized rendering experience.
+        </p>
+        <p className="text-sm text-muted-foreground/60 font-dm">
+          Check back in a few minutes. Thanks for your patience!
+        </p>
+        {/* Secret way for admins to still get through to login */}
+        <a href="/login" className="absolute bottom-4 right-4 opacity-5 hover:opacity-100 transition-opacity p-2 text-xs">
+          Admin Bypass
+        </a>
+      </div>
+    );
+  }
+
   return (
     <Routes>
       <Route path="/" element={<LandingPage />} />
@@ -50,6 +83,7 @@ export default function App() {
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/create/:projectId/:step" element={<Wizard />} />
+      <Route path="/admin" element={<Admin />} />
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
