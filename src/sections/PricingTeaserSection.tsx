@@ -113,14 +113,14 @@ export default function PricingTeaserSection() {
                   ))}
                 </ul>
 
-                <Link
-                  to="/login"
-                  className={`mt-8 w-full neo-btn text-center ${
+                <button
+                  disabled
+                  className={`mt-8 w-full neo-btn text-center opacity-70 cursor-not-allowed ${
                     plan.popular ? "neo-btn-primary" : "neo-btn-ghost"
                   }`}
                 >
-                  {plan.cta}
-                </Link>
+                  Coming Soon
+                </button>
               </div>
             </motion.div>
           ))}
