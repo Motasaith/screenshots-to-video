@@ -14,6 +14,42 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+/**
+ * Compute the visible bounds of an image rendered with object-contain
+ * inside its container. Returns the offset and scale so we can map
+ * mouse coordinates to image-relative percentages (0-100).
+ */
+function getImageBounds(container: HTMLDivElement, img: HTMLImageElement) {
+  const containerRect = container.getBoundingClientRect();
+  const cw = containerRect.width;
+  const ch = containerRect.height;
+  const nw = img.naturalWidth;
+  const nh = img.naturalHeight;
+
+  if (!nw || !nh) return null;
+
+  const containerAspect = cw / ch;
+  const imageAspect = nw / nh;
+
+  let visibleW: number, visibleH: number, offsetX: number, offsetY: number;
+
+  if (imageAspect > containerAspect) {
+    // Image is wider than container → letterbox top/bottom
+    visibleW = cw;
+    visibleH = cw / imageAspect;
+    offsetX = 0;
+    offsetY = (ch - visibleH) / 2;
+  } else {
+    // Image is taller than container → letterbox left/right
+    visibleH = ch;
+    visibleW = ch * imageAspect;
+    offsetX = (cw - visibleW) / 2;
+    offsetY = 0;
+  }
+
+  return { visibleW, visibleH, offsetX, offsetY, cw, ch };
+}
+
 export default function StepAnnotate() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
@@ -37,6 +73,7 @@ export default function StepAnnotate() {
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragCurrent, setDragCurrent] = useState<{ x: number; y: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
 
   const { data: project, isLoading } = trpc.project.getById.useQuery(
     { id: projectIdNum },
@@ -69,13 +106,41 @@ export default function StepAnnotate() {
     }
   }, [project]);
 
+  /**
+   * Convert a mouse event to image-relative percentage coordinates (0-100).
+   * Accounts for object-contain letterboxing so coordinates are always
+   * relative to the actual image, not the container.
+   */
   const getCanvasCoords = useCallback(
     (e: React.MouseEvent) => {
       if (!canvasRef.current) return null;
-      const rect = canvasRef.current.getBoundingClientRect();
+      const container = canvasRef.current;
+      const img = imageRef.current;
+      const containerRect = container.getBoundingClientRect();
+
+      // If we have a loaded image, account for object-contain offset
+      if (img && img.naturalWidth && img.naturalHeight) {
+        const bounds = getImageBounds(container, img);
+        if (bounds) {
+          const mouseX = e.clientX - containerRect.left;
+          const mouseY = e.clientY - containerRect.top;
+
+          // Map mouse position to image-relative percentage
+          const imgRelX = ((mouseX - bounds.offsetX) / bounds.visibleW) * 100;
+          const imgRelY = ((mouseY - bounds.offsetY) / bounds.visibleH) * 100;
+
+          // Clamp to 0-100 so we don't go outside the image
+          return {
+            x: Math.max(0, Math.min(100, imgRelX)),
+            y: Math.max(0, Math.min(100, imgRelY)),
+          };
+        }
+      }
+
+      // Fallback: use full container (works when image fills container)
       return {
-        x: ((e.clientX - rect.left) / rect.width) * 100,
-        y: ((e.clientY - rect.top) / rect.height) * 100,
+        x: ((e.clientX - containerRect.left) / containerRect.width) * 100,
+        y: ((e.clientY - containerRect.top) / containerRect.height) * 100,
       };
     },
     []
@@ -271,6 +336,7 @@ export default function StepAnnotate() {
                 >
                   {currentStep.screenshotPath ? (
                     <img
+                      ref={imageRef}
                       src={currentStep.screenshotPath}
                       alt={`Step ${currentStepIndex + 1}`}
                       className="w-full h-full object-contain"
@@ -287,41 +353,69 @@ export default function StepAnnotate() {
                     </div>
                   )}
 
-                  {rect && rect.x != null && (
-                    <div
-                      className="absolute border-2 border-[#FBBF24] bg-[#FBBF24]/10 pointer-events-none"
-                      style={{
-                        left: `${rect.x}%`,
-                        top: `${rect.y}%`,
-                        width: `${rect.w}%`,
-                        height: `${rect.h}%`,
-                      }}
-                    />
-                  )}
+                  {/* Annotation overlays — positioned relative to image bounds, not container */}
+                  {(() => {
+                    const container = canvasRef.current;
+                    const img = imageRef.current;
+                    const bounds = container && img ? getImageBounds(container, img) : null;
 
-                  {currentAnn?.zoomTargetX != null && (
-                    <div
-                      className="absolute w-4 h-4 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-                      style={{
-                        left: `${currentAnn.zoomTargetX}%`,
-                        top: `${currentAnn.zoomTargetY}%`,
-                      }}
-                    >
-                      <div className="w-full h-full bg-[#FBBF24] rounded-full border-2 border-[var(--sketch-border-color)] shadow-lg" />
-                    </div>
-                  )}
+                    // Convert image-relative percentages to container pixel positions
+                    const toContainerPx = (imgPct: number, axis: "x" | "y") => {
+                      if (!bounds) return `${imgPct}%`; // Fallback
+                      if (axis === "x") {
+                        return `${bounds.offsetX + (imgPct / 100) * bounds.visibleW}px`;
+                      }
+                      return `${bounds.offsetY + (imgPct / 100) * bounds.visibleH}px`;
+                    };
 
-                  {tempRect && (
-                    <div
-                      className="absolute border-2 border-dashed border-[#FBBF24]/50 bg-[#FBBF24]/5 pointer-events-none"
-                      style={{
-                        left: `${tempRect.x}%`,
-                        top: `${tempRect.y}%`,
-                        width: `${tempRect.w}%`,
-                        height: `${tempRect.h}%`,
-                      }}
-                    />
-                  )}
+                    const toContainerSize = (imgPct: number, axis: "x" | "y") => {
+                      if (!bounds) return `${imgPct}%`; // Fallback
+                      if (axis === "x") {
+                        return `${(imgPct / 100) * bounds.visibleW}px`;
+                      }
+                      return `${(imgPct / 100) * bounds.visibleH}px`;
+                    };
+
+                    return (
+                      <>
+                        {rect && rect.x != null && (
+                          <div
+                            className="absolute border-2 border-[#FBBF24] bg-[#FBBF24]/10 pointer-events-none"
+                            style={{
+                              left: toContainerPx(rect.x!, "x"),
+                              top: toContainerPx(rect.y!, "y"),
+                              width: toContainerSize(rect.w!, "x"),
+                              height: toContainerSize(rect.h!, "y"),
+                            }}
+                          />
+                        )}
+
+                        {currentAnn?.zoomTargetX != null && (
+                          <div
+                            className="absolute w-4 h-4 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                            style={{
+                              left: toContainerPx(currentAnn.zoomTargetX, "x"),
+                              top: toContainerPx(currentAnn.zoomTargetY!, "y"),
+                            }}
+                          >
+                            <div className="w-full h-full bg-[#FBBF24] rounded-full border-2 border-[var(--sketch-border-color)] shadow-lg" />
+                          </div>
+                        )}
+
+                        {tempRect && (
+                          <div
+                            className="absolute border-2 border-dashed border-[#FBBF24]/50 bg-[#FBBF24]/5 pointer-events-none"
+                            style={{
+                              left: toContainerPx(tempRect.x, "x"),
+                              top: toContainerPx(tempRect.y, "y"),
+                              width: toContainerSize(tempRect.w, "x"),
+                              height: toContainerSize(tempRect.h, "y"),
+                            }}
+                          />
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
 
                 <div className="flex items-center justify-between mt-4">

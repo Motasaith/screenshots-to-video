@@ -149,11 +149,39 @@ export async function renderStepVideo(opts: {
     drawboxFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=#f97316@1.0:thickness=6,`;
   }
 
-  // The zoompan filter operates AFTER scale+pad, so it sees output dimensions (outW x outH)
-  // We must use output dimensions for correct zoom math, not original image dimensions
+  // The zoompan filter operates AFTER scale+pad, so it sees output dimensions (outW x outH).
+  // But the zoom coordinates are image-relative percentages (0-100).
+  // After scale+pad, the image may be padded with black bars, so we need to compute
+  // where the image content actually sits within the padded frame.
+  const imgAspect = imgWidth / imgHeight;
+  const outAspect = outW / outH;
+
+  let scaledImgW: number, scaledImgH: number, padOffsetX: number, padOffsetY: number;
+  if (imgAspect > outAspect) {
+    // Image is wider → scaled to fill width, padded top/bottom
+    scaledImgW = outW;
+    scaledImgH = Math.round(outW / imgAspect);
+    padOffsetX = 0;
+    padOffsetY = Math.round((outH - scaledImgH) / 2);
+  } else {
+    // Image is taller → scaled to fill height, padded left/right
+    scaledImgH = outH;
+    scaledImgW = Math.round(outH * imgAspect);
+    padOffsetX = Math.round((outW - scaledImgW) / 2);
+    padOffsetY = 0;
+  }
+
+  // Convert image-relative percentage to padded-frame pixel coordinate
+  const zoomTargetPxX = padOffsetX + (opts.zoomTargetX / 100) * scaledImgW;
+  const zoomTargetPxY = padOffsetY + (opts.zoomTargetY / 100) * scaledImgH;
+
+  // Convert back to percentage of the full padded frame for buildZoomFilter
+  const adjustedZoomXPct = (zoomTargetPxX / outW) * 100;
+  const adjustedZoomYPct = (zoomTargetPxY / outH) * 100;
+
   const zoomFilter = buildZoomFilter(
-    opts.zoomTargetX,
-    opts.zoomTargetY,
+    adjustedZoomXPct,
+    adjustedZoomYPct,
     outW,
     outH,
     opts.audioDuration,
