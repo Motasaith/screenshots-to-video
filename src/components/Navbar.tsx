@@ -55,15 +55,15 @@ export default function Navbar() {
     <nav
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
         scrolled
-          ? "bg-background/95 backdrop-blur-sm border-b-2 border-border"
-          : "bg-transparent"
+          ? "bg-[var(--sketch-navbar-bg)] backdrop-blur-sm border-b-2 border-[var(--sketch-border-color)] shadow-[0px_4px_0px_0px_var(--sketch-accent)]"
+          : "bg-[var(--sketch-navbar-bg)] backdrop-blur-sm border-b-2 border-[var(--sketch-navbar-border)]"
       }`}
     >
       <div className="w-full px-6 lg:px-12">
         <div className="flex items-center justify-between h-16">
           <Link to="/" className="flex items-center gap-2 group">
-            <Film className="w-6 h-6 text-primary" />
-            <span className="font-syne font-bold text-xl tracking-tight">
+            <Film className="w-6 h-6 text-[var(--sketch-fg)]" />
+            <span className="font-body font-bold text-xl tracking-tight text-[var(--sketch-fg)]">
               AIVideo
             </span>
           </Link>
@@ -71,25 +71,25 @@ export default function Navbar() {
           <div className="hidden md:flex items-center gap-8">
             <button
               onClick={() => scrollToSection("features")}
-              className="font-dm text-sm font-medium hover:text-primary transition-colors"
+              className="font-body text-sm font-medium text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] transition-colors"
             >
               Features
             </button>
             <button
               onClick={() => scrollToSection("how-it-works")}
-              className="font-dm text-sm font-medium hover:text-primary transition-colors"
+              className="font-body text-sm font-medium text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] transition-colors"
             >
               How It Works
             </button>
             <button
               onClick={() => scrollToSection("pricing")}
-              className="font-dm text-sm font-medium hover:text-primary transition-colors"
+              className="font-body text-sm font-medium text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] transition-colors"
             >
               Pricing
             </button>
             <Link
               to="/docs"
-              className="font-dm text-sm font-medium hover:text-primary transition-colors"
+              className="font-body text-sm font-medium text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] transition-colors"
             >
               Docs
             </Link>
@@ -100,14 +100,14 @@ export default function Navbar() {
               <>
                 <Link
                   to="/dashboard"
-                  className="neo-btn-ghost text-sm py-2 px-4"
+                  className="sketch-btn-ghost text-sm py-2 px-4"
                 >
                   <LayoutDashboard className="w-4 h-4" />
                   Dashboard
                 </Link>
                 <button
                   onClick={logout}
-                  className="neo-btn-primary text-sm py-2 px-4"
+                  className="sketch-btn-primary text-sm py-2 px-4"
                 >
                   <LogOut className="w-4 h-4" />
                   Sign Out
@@ -117,11 +117,11 @@ export default function Navbar() {
               <>
                 <Link
                   to="/login"
-                  className="neo-btn-ghost text-sm py-2 px-4"
+                  className="sketch-btn-ghost text-sm py-2 px-4"
                 >
                   Sign In
                 </Link>
-                <Link to="/login" className="neo-btn-primary text-sm py-2 px-4">
+                <Link to="/login" className="sketch-btn-primary text-sm py-2 px-4">
                   Start Free
                 </Link>
               </>
@@ -129,19 +129,19 @@ export default function Navbar() {
             
             <button
               onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-              className="p-2 ml-2 border-2 border-border bg-card hover:border-primary transition-colors focus:outline-none"
+              className="p-2 ml-2 border-2 border-[var(--sketch-border-color)] bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-accent)] transition-colors focus:outline-none sketch-border-sm"
               aria-label="Toggle dark mode"
             >
               {resolvedTheme === "dark" ? (
-                <Sun className="w-4 h-4 text-primary" />
+                <Sun className="w-4 h-4 text-[var(--sketch-accent)]" />
               ) : (
-                <Moon className="w-4 h-4 text-primary" />
+                <Moon className="w-4 h-4 text-[var(--sketch-fg)]" />
               )}
             </button>
           </div>
 
           <button
-            className="md:hidden p-2"
+            className="md:hidden p-2 text-[var(--sketch-fg)]"
             onClick={() => setMobileOpen(!mobileOpen)}
           >
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -155,33 +155,33 @@ export default function Navbar() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className="md:hidden bg-background border-b-2 border-border"
+            className="md:hidden bg-[var(--sketch-bg)] border-b-2 border-[var(--sketch-border-color)] shadow-[0px_4px_0px_0px_var(--sketch-accent)]"
           >
             <div className="px-6 py-4 space-y-3">
               <button
                 onClick={() => scrollToSection("features")}
-                className="block w-full text-left font-dm text-sm font-medium py-2"
+                className="block w-full text-left font-body text-sm font-medium py-2 text-[var(--sketch-fg)]"
               >
                 Features
               </button>
               <button
                 onClick={() => scrollToSection("how-it-works")}
-                className="block w-full text-left font-dm text-sm font-medium py-2"
+                className="block w-full text-left font-body text-sm font-medium py-2 text-[var(--sketch-fg)]"
               >
                 How It Works
               </button>
               <button
                 onClick={() => scrollToSection("pricing")}
-                className="block w-full text-left font-dm text-sm font-medium py-2"
+                className="block w-full text-left font-body text-sm font-medium py-2 text-[var(--sketch-fg)]"
               >
                 Pricing
               </button>
-              <hr className="border-border" />
+              <hr className="border-[var(--sketch-fg-subtle)]" />
               {user ? (
                 <>
                   <Link
                     to="/dashboard"
-                    className="block font-dm text-sm font-medium py-2"
+                    className="block font-body text-sm font-medium py-2 text-[#1E1B4B]"
                     onClick={() => setMobileOpen(false)}
                   >
                     Dashboard
@@ -191,7 +191,7 @@ export default function Navbar() {
                       logout();
                       setMobileOpen(false);
                     }}
-                    className="block w-full text-left font-dm text-sm font-medium text-primary py-2"
+                    className="block w-full text-left font-body text-sm font-medium text-[#1E1B4B] py-2"
                   >
                     Sign Out
                   </button>
@@ -200,14 +200,14 @@ export default function Navbar() {
                 <>
                   <Link
                     to="/login"
-                    className="block font-dm text-sm font-medium py-2"
+                    className="block font-body text-sm font-medium py-2 text-[#1E1B4B]"
                     onClick={() => setMobileOpen(false)}
                   >
                     Sign In
                   </Link>
                   <Link
                     to="/login"
-                    className="block font-dm text-sm font-medium text-primary py-2"
+                    className="block font-body text-sm font-medium text-[#1E1B4B] py-2"
                     onClick={() => setMobileOpen(false)}
                   >
                     Start Free

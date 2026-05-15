@@ -91,7 +91,7 @@ export default function StepExport() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="text-muted-foreground">Loading...</div>
+        <div className="text-[var(--sketch-fg-muted)] font-body">Loading...</div>
       </div>
     );
   }
@@ -99,31 +99,36 @@ export default function StepExport() {
   return (
     <div className="max-w-3xl">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <span className="font-mono text-xs text-primary uppercase tracking-widest">
-          Step 7 of 7
-        </span>
-        <h2 className="font-syne font-bold text-3xl mt-2 tracking-tight">
-          Your video is ready 🎬
+        <div className="relative">
+          <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
+            Step 7 of 7
+          </span>
+          <span className="font-hand text-xl text-[var(--sketch-fg-muted)] absolute -top-7 left-32 rotate-[-4deg] animate-float hidden sm:block">
+            Ta-da! 🎬
+          </span>
+        </div>
+        <h2 className="font-body font-bold text-3xl mt-3 tracking-tight text-[var(--sketch-fg)]">
+          Your video is ready
         </h2>
 
-        {/* Video player */}
-        <div className="mt-6 neo-card p-6 bg-accent/5 border-accent">
+        {/* Video player - sketched frame */}
+        <div className="mt-6 sketch-card p-6 bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-12 h-12 bg-accent/10 border-2 border-accent flex items-center justify-center">
-              <Film className="w-6 h-6 text-accent" />
+            <div className="w-12 h-12 bg-[#FBBF24]/10 border-2 border-[#FBBF24] flex items-center justify-center sketch-border-sm">
+              <Film className="w-6 h-6 text-[var(--sketch-fg)]" />
             </div>
             <div>
-              <h3 className="font-syne font-bold text-lg">{project?.title}</h3>
+              <h3 className="font-body font-bold text-lg text-[var(--sketch-fg)]">{project?.title}</h3>
               <div className="flex items-center gap-3 mt-1">
-                <span className="font-mono text-xs text-muted-foreground flex items-center gap-1">
+                <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] flex items-center gap-1">
                   <Clock className="w-3 h-3" />
                   {Math.round(totalDuration)}s
                 </span>
-                <span className="font-mono text-xs text-muted-foreground flex items-center gap-1">
+                <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] flex items-center gap-1">
                   <Monitor className="w-3 h-3" />
                   {project?.resolution}
                 </span>
-                <span className="font-mono text-xs text-muted-foreground flex items-center gap-1">
+                <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] flex items-center gap-1">
                   <HardDrive className="w-3 h-3" />
                   {project?.platform}
                 </span>
@@ -131,8 +136,8 @@ export default function StepExport() {
             </div>
           </div>
 
-          {/* Video element or placeholder */}
-          <div className="relative aspect-video bg-black border-2 border-border overflow-hidden mb-4">
+          {/* Video element or placeholder - sketched monitor frame */}
+          <div className="relative aspect-video bg-[var(--sketch-fg)] border-2 border-[var(--sketch-border-color)] overflow-hidden mb-4 sketch-border-lg">
             {hasVideo ? (
               <>
                 <video
@@ -149,15 +154,15 @@ export default function StepExport() {
                 <div className="text-center">
                   {project?.status === "processing" ? (
                     <>
-                      <Loader2 className="w-12 h-12 text-primary animate-spin mx-auto mb-3" />
-                      <p className="font-dm text-sm text-muted-foreground">
+                      <Loader2 className="w-12 h-12 text-[#FBBF24] animate-spin mx-auto mb-3" />
+                      <p className="font-body text-sm text-[var(--sketch-bg)]/70">
                         Video is still rendering...
                       </p>
                     </>
                   ) : (
                     <>
-                      <Film className="w-12 h-12 text-muted-foreground mx-auto mb-3" />
-                      <p className="font-dm text-sm text-muted-foreground">
+                      <Film className="w-12 h-12 text-[var(--sketch-bg)]/40 mx-auto mb-3" />
+                      <p className="font-body text-sm text-[var(--sketch-bg)]/50">
                         Video preview not available
                       </p>
                     </>
@@ -170,7 +175,7 @@ export default function StepExport() {
           {/* Action buttons */}
           <div className="flex flex-wrap gap-3">
             <Button
-              className="neo-btn-primary flex-1"
+              className="sketch-btn-primary flex-1"
               onClick={handleDownload}
               disabled={!hasVideo}
             >
@@ -179,7 +184,7 @@ export default function StepExport() {
             </Button>
             <Button
               variant="ghost"
-              className="border-2 border-border flex-1"
+              className="sketch-btn-ghost flex-1"
               onClick={handleCopyLink}
               disabled={!hasVideo}
             >
@@ -200,7 +205,7 @@ export default function StepExport() {
 
         {/* Step breakdown */}
         <div className="mt-8">
-          <h3 className="font-syne font-semibold text-lg mb-4">
+          <h3 className="font-body font-semibold text-lg mb-4 text-[var(--sketch-fg)]">
             Step Breakdown
           </h3>
           <div className="space-y-3">
@@ -210,10 +215,10 @@ export default function StepExport() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
-                className="neo-card p-4"
+                className="sketch-card p-4 bg-[var(--sketch-card-bg)]"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 bg-muted border border-border flex-shrink-0 flex items-center justify-center overflow-hidden">
+                  <div className="w-10 h-10 bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-border-color)] flex-shrink-0 flex items-center justify-center overflow-hidden sketch-border-sm">
                     {step.screenshotPath ? (
                       <img
                         src={step.screenshotPath}
@@ -224,26 +229,26 @@ export default function StepExport() {
                         }}
                       />
                     ) : (
-                      <span className="font-mono text-[10px] text-muted-foreground">
+                      <span className="font-hand text-lg text-[var(--sketch-fg-subtle)]">
                         {index + 1}
                       </span>
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <p className="font-dm text-sm truncate">
+                      <p className="font-body text-sm truncate text-[var(--sketch-fg)]">
                         {step.description.length > 50
                           ? step.description.slice(0, 50) + "..."
                           : step.description}
                       </p>
                       <div className="flex items-center gap-2 flex-shrink-0 ml-3">
-                        <span className="font-mono text-xs text-muted-foreground">
+                        <span className="font-mono text-xs text-[var(--sketch-fg-subtle)]">
                           {Math.round(step.audioDuration || 0)}s
                         </span>
                         <button
                           onClick={() => handleRegenerate(step.id)}
                           disabled={regeneratingStep === step.id}
-                          className="text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
+                          className="text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg)] transition-colors disabled:opacity-50"
                           title="Re-render this step"
                         >
                           <RefreshCw
@@ -255,21 +260,21 @@ export default function StepExport() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 mt-2">
-                      <span className="font-mono text-[10px] text-muted-foreground flex items-center gap-1">
-                        <Check className="w-3 h-3 text-accent" />
+                      <span className="font-mono text-[10px] text-[var(--sketch-fg-subtle)] flex items-center gap-1">
+                        <Check className="w-3 h-3 text-emerald-600" />
                         Script
                       </span>
-                      <span className="font-mono text-[10px] text-muted-foreground flex items-center gap-1">
+                      <span className="font-mono text-[10px] text-[var(--sketch-fg-subtle)] flex items-center gap-1">
                         {step.audioPath ? (
-                          <Check className="w-3 h-3 text-accent" />
+                          <Check className="w-3 h-3 text-emerald-600" />
                         ) : (
                           <Clock className="w-3 h-3" />
                         )}
                         Audio
                       </span>
-                      <span className="font-mono text-[10px] text-muted-foreground flex items-center gap-1">
+                      <span className="font-mono text-[10px] text-[var(--sketch-fg-subtle)] flex items-center gap-1">
                         {step.videoSegmentPath ? (
-                          <Check className="w-3 h-3 text-accent" />
+                          <Check className="w-3 h-3 text-emerald-600" />
                         ) : (
                           <Clock className="w-3 h-3" />
                         )}
@@ -284,26 +289,26 @@ export default function StepExport() {
         </div>
 
         {/* AI Quality Review */}
-        <div className="mt-8 neo-card p-5 bg-primary/5 border-primary">
-          <h3 className="font-syne font-semibold text-lg mb-3 flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-primary" />
+        <div className="mt-8 sketch-card p-5 bg-[#FBBF24]/5 border-[#FBBF24]">
+          <h3 className="font-body font-semibold text-lg mb-3 flex items-center gap-2 text-[var(--sketch-fg)]">
+            <Sparkles className="w-5 h-5 text-[#FBBF24]" />
             AI Quality Review
           </h3>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <span className="font-dm text-sm">Script Clarity</span>
-              <span className="font-mono text-sm text-accent">Excellent</span>
+              <span className="font-body text-sm text-[var(--sketch-fg)]">Script Clarity</span>
+              <span className="font-mono text-sm text-emerald-600">Excellent</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="font-dm text-sm">Zoom Accuracy</span>
-              <span className="font-mono text-sm text-accent">
+              <span className="font-body text-sm text-[var(--sketch-fg)]">Zoom Accuracy</span>
+              <span className="font-mono text-sm text-emerald-600">
                 {project?.steps?.filter((s) => s.zoomTargetX != null).length || 0}/
                 {project?.steps?.length || 0} steps
               </span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="font-dm text-sm">Audio Coverage</span>
-              <span className="font-mono text-sm text-accent">
+              <span className="font-body text-sm text-[var(--sketch-fg)]">Audio Coverage</span>
+              <span className="font-mono text-sm text-emerald-600">
                 {project?.steps?.filter((s) => s.audioPath).length || 0}/
                 {project?.steps?.length || 0} steps
               </span>
@@ -314,14 +319,14 @@ export default function StepExport() {
         <div className="mt-8 flex gap-3">
           <Button
             variant="ghost"
-            className="border-2 border-border flex-1"
+            className="sketch-btn-ghost flex-1"
             onClick={() => navigate("/dashboard")}
           >
             <LayoutDashboard className="w-4 h-4" />
             Dashboard
           </Button>
           <Button
-            className="neo-btn-primary flex-1"
+            className="sketch-btn-primary flex-1"
             onClick={() => navigate("/create/0/setup")}
           >
             <Plus className="w-4 h-4" />

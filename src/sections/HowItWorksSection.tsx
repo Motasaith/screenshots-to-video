@@ -40,7 +40,7 @@ export default function HowItWorksSection() {
   return (
     <section
       id="how-it-works"
-      className="py-24 lg:py-32 border-y-2 border-border bg-muted/20"
+      className="py-24 lg:py-32 border-y-2 border-[var(--sketch-fg-subtle)] bg-[var(--sketch-bg)]"
       ref={ref}
     >
       <div className="w-full px-6 lg:px-12">
@@ -50,10 +50,10 @@ export default function HowItWorksSection() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <span className="font-mono text-xs text-primary uppercase tracking-widest">
+          <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
             How It Works
           </span>
-          <h2 className="font-syne font-bold text-3xl lg:text-5xl mt-3 tracking-tight">
+          <h2 className="font-body font-bold text-3xl lg:text-5xl mt-3 tracking-tight text-[var(--sketch-fg)]">
             From screenshots to video
             <br />
             in four steps
@@ -61,7 +61,7 @@ export default function HowItWorksSection() {
         </motion.div>
 
         <div className="relative">
-          <div className="absolute left-8 lg:left-1/2 top-0 bottom-0 w-0.5 bg-border lg:-translate-x-px" />
+          <div className="absolute left-8 lg:left-1/2 top-0 bottom-0 w-0.5 bg-[var(--sketch-fg-subtle)] lg:-translate-x-px" />
 
           <div className="space-y-12 lg:space-y-16">
             {steps.map((step, index) => (
@@ -80,33 +80,33 @@ export default function HowItWorksSection() {
                   }`}
                 >
                   <div
-                    className={`neo-card p-6 inline-block ${
+                    className={`sketch-card p-6 inline-block bg-[var(--sketch-card-bg)] ${
                       index % 2 === 0 ? "text-right" : "text-left"
                     }`}
                   >
-                    <span className="font-mono text-3xl font-bold text-primary/30">
+                    <span className="font-hand text-3xl font-bold text-[#FBBF24]/60">
                       {step.number}
                     </span>
-                    <h3 className="font-syne font-bold text-xl mt-2">
+                    <h3 className="font-body font-bold text-xl mt-2 text-[var(--sketch-fg)]">
                       {step.title}
                     </h3>
-                    <p className="font-dm text-sm text-muted-foreground mt-2 leading-relaxed">
+                    <p className="font-body text-sm text-[var(--sketch-fg-muted)] mt-2 leading-relaxed">
                       {step.description}
                     </p>
                   </div>
                 </div>
 
-                <div className="absolute left-8 lg:left-1/2 w-4 h-4 bg-primary border-2 border-border -translate-x-1.5 mt-6 lg:mt-8" />
+                <div className="absolute left-8 lg:left-1/2 w-4 h-4 bg-[#FBBF24] border-2 border-[var(--sketch-border-color)] -translate-x-1.5 mt-6 lg:mt-8" style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }} />
 
                 <div className="lg:hidden ml-16">
-                  <div className="neo-card p-6">
-                    <span className="font-mono text-3xl font-bold text-primary/30">
+                  <div className="sketch-card p-6 bg-[var(--sketch-card-bg)]">
+                    <span className="font-hand text-3xl font-bold text-[#FBBF24]/60">
                       {step.number}
                     </span>
-                    <h3 className="font-syne font-bold text-xl mt-2">
+                    <h3 className="font-body font-bold text-xl mt-2 text-[var(--sketch-fg)]">
                       {step.title}
                     </h3>
-                    <p className="font-dm text-sm text-muted-foreground mt-2 leading-relaxed">
+                    <p className="font-body text-sm text-[var(--sketch-fg-muted)] mt-2 leading-relaxed">
                       {step.description}
                     </p>
                   </div>
@@ -117,8 +117,8 @@ export default function HowItWorksSection() {
                     index % 2 === 0 ? "pl-16" : "pr-16 justify-end"
                   }`}
                 >
-                  <div className="w-16 h-16 bg-primary/10 border-2 border-primary flex items-center justify-center">
-                    <step.icon className="w-8 h-8 text-primary" />
+                  <div className="w-16 h-16 bg-[#FBBF24]/10 border-2 border-[#FBBF24] flex items-center justify-center sketch-border-sm">
+                    <step.icon className="w-8 h-8 text-[var(--sketch-fg)]" />
                   </div>
                 </div>
               </motion.div>

@@ -79,17 +79,24 @@ export default function StepRender() {
   return (
     <div className="max-w-2xl mx-auto text-center">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <span className="font-mono text-xs text-primary uppercase tracking-widest">
-          Step 6 of 7
-        </span>
-        <h2 className="font-syne font-bold text-3xl mt-2 tracking-tight">
+        <div className="relative inline-block">
+          <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
+            Step 6 of 7
+          </span>
+          {!isComplete && !isError && (
+            <span className="font-hand text-xl text-[var(--sketch-fg-muted)] absolute -top-7 left-36 rotate-[3deg] animate-float hidden sm:block">
+              Generating magic... ✨
+            </span>
+          )}
+        </div>
+        <h2 className="font-body font-bold text-3xl mt-3 tracking-tight text-[var(--sketch-fg)]">
           {isComplete
             ? "Video complete!"
             : isError
               ? "Something went wrong"
               : "Generating your video…"}
         </h2>
-        <p className="font-dm text-muted-foreground mt-2">
+        <p className="font-body text-[var(--sketch-fg-muted)] mt-2">
           {isComplete
             ? "Redirecting to preview..."
             : isError
@@ -98,16 +105,16 @@ export default function StepRender() {
         </p>
 
         {startError && (
-          <div className="mt-6 neo-card p-4 border-destructive bg-destructive/5">
+          <div className="mt-6 sketch-card p-4 border-red-500 bg-red-500/5">
             <div className="flex items-center gap-2 justify-center">
-              <AlertTriangle className="w-5 h-5 text-destructive" />
-              <span className="font-dm text-sm text-destructive">
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+              <span className="font-body text-sm text-red-600">
                 {startError}
               </span>
             </div>
             <Button
               variant="ghost"
-              className="border-2 border-border mt-3"
+              className="sketch-btn-ghost mt-3"
               onClick={() => navigate(`/create/${projectIdNum}/voice`)}
             >
               Go Back
@@ -118,16 +125,16 @@ export default function StepRender() {
         {!startError && (
           <div className="mt-8">
             {/* Progress bar */}
-            <div className="neo-card p-1 mb-8">
+            <div className="sketch-card p-1 mb-8 bg-[var(--sketch-card-bg)]">
               <div
-                className={`h-2 transition-all duration-500 ${
+                className={`h-3 transition-all duration-500 ${
                   isComplete
-                    ? "bg-accent"
+                    ? "bg-emerald-500"
                     : isError
-                      ? "bg-destructive"
-                      : "bg-primary"
+                      ? "bg-red-500"
+                      : "bg-[#FBBF24]"
                 }`}
-                style={{ width: `${isComplete ? 100 : Math.min(progress + 5, 95)}%` }}
+                style={{ width: `${isComplete ? 100 : Math.min(progress + 5, 95)}%`, borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
               />
             </div>
 
@@ -135,16 +142,16 @@ export default function StepRender() {
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="neo-card p-8 bg-accent/10 border-accent"
+                className="sketch-card p-8 bg-emerald-500/5 border-emerald-500"
               >
-                <CheckCircle className="w-12 h-12 text-accent mx-auto mb-4" />
-                <h3 className="font-syne font-bold text-xl">Complete!</h3>
-                <p className="font-dm text-sm text-muted-foreground mt-2">
+                <CheckCircle className="w-12 h-12 text-emerald-600 mx-auto mb-4" />
+                <h3 className="font-body font-bold text-xl text-[var(--sketch-fg)]">Complete!</h3>
+                <p className="font-body text-sm text-[var(--sketch-fg-muted)] mt-2">
                   Your video is ready for preview.
                 </p>
                 <Button
                   onClick={() => navigate(`/create/${projectIdNum}/export`)}
-                  className="neo-btn-primary mt-4"
+                  className="sketch-btn-primary mt-4"
                 >
                   View Your Video
                 </Button>
@@ -153,23 +160,23 @@ export default function StepRender() {
               <motion.div
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="neo-card p-8 bg-destructive/5 border-destructive"
+                className="sketch-card p-8 bg-red-500/5 border-red-500"
               >
-                <AlertTriangle className="w-12 h-12 text-destructive mx-auto mb-4" />
-                <h3 className="font-syne font-bold text-xl">Render Failed</h3>
-                <p className="font-dm text-sm text-muted-foreground mt-2 max-w-md mx-auto">
+                <AlertTriangle className="w-12 h-12 text-red-600 mx-auto mb-4" />
+                <h3 className="font-body font-bold text-xl text-[var(--sketch-fg)]">Render Failed</h3>
+                <p className="font-body text-sm text-[var(--sketch-fg-muted)] mt-2 max-w-md mx-auto">
                   {status?.job?.message || "An unexpected error occurred."}
                 </p>
                 <div className="flex gap-3 justify-center mt-4">
                   <Button
                     variant="ghost"
-                    className="border-2 border-border"
+                    className="sketch-btn-ghost"
                     onClick={() => navigate(`/create/${projectIdNum}/voice`)}
                   >
                     Go Back
                   </Button>
                   <Button
-                    className="neo-btn-primary"
+                    className="sketch-btn-primary"
                     onClick={() => {
                       setHasStarted(false);
                       setStartError(null);
@@ -192,39 +199,40 @@ export default function StepRender() {
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: i * 0.1 }}
-                      className={`neo-card p-4 flex items-center gap-4 ${
+                      className={`sketch-card p-4 flex items-center gap-4 ${
                         isActive
-                          ? "border-primary bg-primary/5"
+                          ? "border-[#FBBF24] bg-[#FBBF24]/5"
                           : isDone
-                            ? "border-accent/50 bg-accent/5"
-                            : "border-border bg-muted/30 opacity-50"
+                            ? "border-emerald-500/50 bg-emerald-500/5"
+                            : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)]/50 opacity-50"
                       }`}
                     >
                       <div
                         className={`w-10 h-10 flex items-center justify-center border-2 flex-shrink-0 ${
                           isActive
-                            ? "border-primary bg-primary/10"
+                            ? "border-[#FBBF24] bg-[#FBBF24]/10"
                             : isDone
-                              ? "border-accent bg-accent/10"
-                              : "border-border bg-muted"
+                              ? "border-emerald-500 bg-emerald-500/10"
+                              : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)]"
                         }`}
+                        style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
                       >
                         {isDone ? (
-                          <CheckCircle className="w-5 h-5 text-accent" />
+                          <CheckCircle className="w-5 h-5 text-emerald-600" />
                         ) : isActive ? (
-                          <Loader2 className="w-5 h-5 text-primary animate-spin" />
+                          <Loader2 className="w-5 h-5 text-[var(--sketch-fg)] animate-spin" />
                         ) : (
-                          <Icon className="w-5 h-5 text-muted-foreground" />
+                          <Icon className="w-5 h-5 text-[var(--sketch-fg-subtle)]" />
                         )}
                       </div>
                       <div className="flex-1 text-left">
                         <span
-                          className={`font-dm text-sm font-medium ${
+                          className={`font-body text-sm font-medium ${
                             isActive
-                              ? "text-primary"
+                              ? "text-[var(--sketch-fg)]"
                               : isDone
-                                ? "text-accent"
-                                : "text-muted-foreground"
+                                ? "text-emerald-600"
+                                : "text-[var(--sketch-fg-subtle)]"
                           }`}
                         >
                           {stage.label}
@@ -233,14 +241,14 @@ export default function StepRender() {
                           <motion.p
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
-                            className="font-mono text-xs text-muted-foreground mt-0.5"
+                            className="font-mono text-xs text-[var(--sketch-fg-subtle)] mt-0.5"
                           >
                             {status?.job?.message || "Processing..."}
                           </motion.p>
                         )}
                       </div>
                       {isActive && (
-                        <span className="font-mono text-xs text-primary">
+                        <span className="font-mono text-xs text-[#FBBF24]">
                           {status?.job?.currentStep || 0}/{status?.job?.totalSteps || "?"}
                         </span>
                       )}
@@ -254,7 +262,7 @@ export default function StepRender() {
               <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
                 <Button
                   variant="ghost"
-                  className="border-2 border-border"
+                  className="sketch-btn-ghost"
                   onClick={() => navigate("/dashboard")}
                 >
                   <LayoutDashboard className="w-4 h-4" />

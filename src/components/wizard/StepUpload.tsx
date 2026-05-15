@@ -103,16 +103,16 @@ function SortableStep({
   };
 
   return (
-    <div ref={setNodeRef} style={style} className={`neo-card p-4 bg-card ${isDragging ? 'shadow-xl scale-[1.02]' : ''}`}>
+    <div ref={setNodeRef} style={style} className={`sketch-card p-4 bg-[var(--sketch-card-bg)] ${isDragging ? 'shadow-xl scale-[1.02]' : ''}`}>
       <div className="flex items-start gap-4">
         <div className="flex flex-col items-center gap-1 pt-1">
-          <span className="font-mono text-xs font-bold text-muted-foreground">
+          <span className="font-hand text-lg font-bold text-[var(--sketch-fg-muted)]">
             {index + 1}
           </span>
           <button
             {...attributes}
             {...listeners}
-            className="text-muted-foreground hover:text-foreground cursor-grab active:cursor-grabbing touch-none"
+            className="text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg)] cursor-grab active:cursor-grabbing touch-none transition-colors"
           >
             <GripVertical className="w-4 h-4" />
           </button>
@@ -121,30 +121,30 @@ function SortableStep({
         <div className="flex-1 flex gap-4">
           <div className="w-24 h-24 flex-shrink-0">
             {step.previewUrl || step.screenshotPath ? (
-              <div className="relative w-full h-full border-2 border-border group">
+              <div className="relative w-full h-full border-2 border-[var(--sketch-border-color)] group sketch-border-sm overflow-hidden">
                 <img
                   src={step.previewUrl || step.screenshotPath}
                   alt={`Step ${index + 1}`}
                   className="w-full h-full object-cover"
                 />
                 {step.isUploading && (
-                  <div className="absolute inset-0 bg-background/70 flex items-center justify-center">
-                    <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                  <div className="absolute inset-0 bg-[var(--sketch-bg)]/70 flex items-center justify-center">
+                    <Loader2 className="w-5 h-5 animate-spin text-[var(--sketch-fg)]" />
                   </div>
                 )}
                 {step.screenshotKey && !step.isUploading && (
                   <div className="absolute top-0.5 right-0.5">
-                    <CheckCircle className="w-4 h-4 text-accent" />
+                    <CheckCircle className="w-4 h-4 text-emerald-600" />
                   </div>
                 )}
                 {step.uploadError && (
-                  <div className="absolute inset-0 bg-destructive/10 flex items-center justify-center">
-                    <AlertTriangle className="w-5 h-5 text-destructive" />
+                  <div className="absolute inset-0 bg-red-500/10 flex items-center justify-center">
+                    <AlertTriangle className="w-5 h-5 text-red-600" />
                   </div>
                 )}
                 <button
                   onClick={onRemoveScreenshot}
-                  className="absolute -top-2 -right-2 w-5 h-5 bg-destructive text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white sketch-border-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-[2px_2px_0px_var(--sketch-fg)]"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -154,13 +154,14 @@ function SortableStep({
                 onClick={() => fileInputRef.current?.click()}
                 className={`w-full h-full border-2 border-dashed flex flex-col items-center justify-center gap-1 transition-colors ${
                   error?.includes("Screenshot")
-                    ? "border-destructive bg-destructive/5"
-                    : "border-border hover:border-primary hover:bg-primary/5"
+                    ? "border-red-500 bg-red-500/5"
+                    : "border-[var(--sketch-fg-subtle)] hover:border-[var(--sketch-border-color)] hover:bg-[#FBBF24]/5"
                 }`}
+                style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
               >
-                <Upload className="w-5 h-5 text-muted-foreground" />
-                <span className="font-mono text-[10px] text-muted-foreground">
-                  Upload
+                <Upload className="w-5 h-5 text-[var(--sketch-fg-subtle)]" />
+                <span className="font-hand text-sm text-[var(--sketch-fg-subtle)]">
+                  Drop here!
                 </span>
               </button>
             )}
@@ -182,32 +183,32 @@ function SortableStep({
               onChange={(e) => onUpdateDescription(e.target.value)}
               placeholder="e.g. Open Task Manager and click the Startup tab"
               rows={3}
-              className={`neo-input resize-none text-sm ${
-                error?.includes("Description") ? "border-destructive" : ""
+              className={`sketch-input resize-none text-sm ${
+                error?.includes("Description") ? "border-red-500" : ""
               }`}
             />
             {error?.includes("Description") && (
-              <p className="font-dm text-xs text-destructive mt-1 flex items-center gap-1">
+              <p className="font-body text-xs text-red-600 mt-1 flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" />
                 {error}
               </p>
             )}
             {step.uploadError && (
-              <p className="font-dm text-xs text-amber-600 mt-1 flex items-center gap-1">
+              <p className="font-body text-xs text-amber-600 mt-1 flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" />
                 Upload failed: {step.uploadError}. Will retry on save.
               </p>
             )}
             <div className="flex items-center justify-between mt-2">
-              <span className="font-mono text-[10px] text-muted-foreground">
+              <span className="font-mono text-[10px] text-[var(--sketch-fg-subtle)]">
                 {step.description.length} chars
                 {step.screenshotKey && (
-                  <span className="text-accent ml-2">✓ uploaded</span>
+                  <span className="text-emerald-600 ml-2">✓ uploaded</span>
                 )}
               </span>
               <button
                 onClick={onRemove}
-                className="font-dm text-xs text-muted-foreground hover:text-destructive transition-colors"
+                className="font-hand text-sm text-[var(--sketch-fg-subtle)] hover:text-red-500 transition-colors"
               >
                 Remove
               </button>
@@ -441,7 +442,7 @@ export default function StepUpload() {
   if (isLoadingProject || !initialized) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <Loader2 className="w-8 h-8 animate-spin text-[var(--sketch-fg)]" />
       </div>
     );
   }
@@ -449,13 +450,18 @@ export default function StepUpload() {
   return (
     <div className="max-w-3xl">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <span className="font-mono text-xs text-primary uppercase tracking-widest">
-          Step 2 of 7
-        </span>
-        <h2 className="font-syne font-bold text-3xl mt-2 tracking-tight">
+        <div className="relative">
+          <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
+            Step 2 of 7
+          </span>
+          <span className="font-hand text-lg text-[var(--sketch-fg-muted)] absolute -top-6 left-32 rotate-[-3deg] animate-float hidden sm:block">
+            Drop screenshots here! 📸
+          </span>
+        </div>
+        <h2 className="font-body font-bold text-3xl mt-3 tracking-tight text-[var(--sketch-fg)]">
           Add your steps
         </h2>
-        <p className="font-dm text-muted-foreground mt-2">
+        <p className="font-body text-[var(--sketch-fg-muted)] mt-2">
           Each step needs a screenshot and description. Drag the handle to reorder them.
         </p>
 
@@ -502,23 +508,24 @@ export default function StepUpload() {
           {steps.length < 20 && (
             <button
               onClick={addStep}
-              className="w-full py-4 border-2 border-dashed border-border hover:border-primary hover:bg-primary/5 transition-all flex items-center justify-center gap-2"
+              className="w-full py-4 border-2 border-dashed border-[var(--sketch-fg-subtle)] hover:border-[var(--sketch-border-color)] hover:bg-[#FBBF24]/5 transition-all flex items-center justify-center gap-2"
+              style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
             >
-              <Plus className="w-4 h-4 text-muted-foreground" />
-              <span className="font-dm text-sm text-muted-foreground">
+              <Plus className="w-4 h-4 text-[var(--sketch-fg-subtle)]" />
+              <span className="font-hand text-lg text-[var(--sketch-fg-muted)]">
                 Add Another Step
               </span>
             </button>
           )}
 
           {errors.submit && (
-            <p className="font-dm text-sm text-destructive">{errors.submit}</p>
+            <p className="font-body text-sm text-red-600">{errors.submit}</p>
           )}
 
           <Button
             onClick={handleContinue}
             disabled={isSaving || anyUploading}
-            className="neo-btn-primary w-full mt-4"
+            className="sketch-btn-primary w-full mt-4"
           >
             {isSaving ? (
               <span className="flex items-center gap-2">

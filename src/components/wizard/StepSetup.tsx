@@ -102,19 +102,25 @@ export default function StepSetup() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <span className="font-mono text-xs text-primary uppercase tracking-widest">
-          Step 1 of 7
-        </span>
-        <h2 className="font-syne font-bold text-3xl mt-2 tracking-tight">
+        {/* Handwritten floating note */}
+        <div className="relative">
+          <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
+            Step 1 of 7
+          </span>
+          <span className="font-hand text-lg text-[var(--sketch-fg-muted)] absolute -top-6 left-32 rotate-[-5deg] animate-float hidden sm:block">
+            Let&apos;s get creative! ✏️
+          </span>
+        </div>
+        <h2 className="font-body font-bold text-3xl mt-3 tracking-tight text-[var(--sketch-fg)]">
           Let&apos;s set up your project
         </h2>
-        <p className="font-dm text-muted-foreground mt-2">
+        <p className="font-body text-[var(--sketch-fg-muted)] mt-2">
           Tell us about your tutorial video so we can generate the best script.
         </p>
 
         <div className="mt-8 space-y-6">
-          <div>
-            <label className="font-dm text-sm font-medium mb-2 block">
+          <div className="relative">
+            <label className="font-body text-sm font-semibold mb-2 block text-[var(--sketch-fg)]">
               Video Title
             </label>
             <input
@@ -122,24 +128,24 @@ export default function StepSetup() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. How to clean Windows temp files"
-              className="neo-input"
+              className="sketch-input"
             />
             {errors.title && (
-              <p className="font-dm text-xs text-destructive mt-1 flex items-center gap-1">
+              <p className="font-body text-xs text-red-600 mt-1 flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" />
                 {errors.title}
               </p>
             )}
             {aiFeedback?.titleQuality === "good" && title.length >= 15 && (
-              <p className="font-dm text-xs text-accent mt-1 flex items-center gap-1">
+              <p className="font-body text-xs text-emerald-600 mt-1 flex items-center gap-1">
                 <Check className="w-3 h-3" />
                 Great title!
               </p>
             )}
           </div>
 
-          <div>
-            <label className="font-dm text-sm font-medium mb-2 block">
+          <div className="relative">
+            <label className="font-body text-sm font-semibold mb-2 block text-[var(--sketch-fg)]">
               Topic Description
             </label>
             <textarea
@@ -147,10 +153,10 @@ export default function StepSetup() {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe what this video is about, who the audience is, and what they should be able to do after watching."
               rows={5}
-              className="neo-input resize-none"
+              className="sketch-input resize-none"
             />
             {errors.description && (
-              <p className="font-dm text-xs text-destructive mt-1 flex items-center gap-1">
+              <p className="font-body text-xs text-red-600 mt-1 flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" />
                 {errors.description}
               </p>
@@ -158,7 +164,7 @@ export default function StepSetup() {
           </div>
 
           <div>
-            <label className="font-dm text-sm font-medium mb-3 block">
+            <label className="font-body text-sm font-semibold mb-3 block text-[var(--sketch-fg)]">
               Target Platform
             </label>
             <div className="grid grid-cols-2 gap-3">
@@ -171,18 +177,19 @@ export default function StepSetup() {
                     onClick={() => setPlatform(p.value)}
                     className={`flex items-center gap-3 p-4 border-2 transition-all ${
                       isActive
-                        ? "border-primary bg-primary/5 shadow-[4px_4px_0px_0px_hsl(var(--primary))]"
-                        : "border-border bg-card hover:border-foreground/30"
+                        ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/10 shadow-[4px_4px_0px_0px_#FBBF24]"
+                        : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
                     }`}
+                    style={{ borderRadius: isActive ? "255px 15px 225px 15px/15px 225px 15px 255px" : "12px" }}
                   >
                     <Icon
                       className={`w-5 h-5 ${
-                        isActive ? "text-primary" : "text-muted-foreground"
+                        isActive ? "text-[var(--sketch-fg)]" : "text-[var(--sketch-fg-subtle)]"
                       }`}
                     />
                     <span
-                      className={`font-dm text-sm font-medium ${
-                        isActive ? "text-foreground" : "text-muted-foreground"
+                      className={`font-body text-sm font-medium ${
+                        isActive ? "text-[var(--sketch-fg)]" : "text-[var(--sketch-fg-subtle)]"
                       }`}
                     >
                       {p.label}
@@ -197,11 +204,11 @@ export default function StepSetup() {
             <motion.div
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
-              className="neo-card p-4 bg-primary/5 border-primary"
+              className="sketch-card p-4 bg-[#FBBF24]/5 border-[#FBBF24]"
             >
               <div className="flex items-start gap-2">
-                <Sparkles className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
-                <p className="font-dm text-sm">
+                <Sparkles className="w-4 h-4 text-[#FBBF24] flex-shrink-0 mt-0.5" />
+                <p className="font-body text-sm text-[var(--sketch-fg)]">
                   {aiFeedback.suggestions[0]}
                 </p>
               </div>
@@ -209,13 +216,13 @@ export default function StepSetup() {
           )}
 
           {errors.submit && (
-            <p className="font-dm text-xs text-destructive">{errors.submit}</p>
+            <p className="font-body text-xs text-red-600">{errors.submit}</p>
           )}
 
           <Button
             onClick={handleContinue}
             disabled={createProject.isPending}
-            className="neo-btn-primary w-full"
+            className="sketch-btn-primary w-full"
           >
             {createProject.isPending ? (
               <span className="flex items-center gap-2">

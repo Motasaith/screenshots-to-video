@@ -11,7 +11,7 @@ import FooterSection from "@/sections/FooterSection";
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen dot-grid">
       <Navbar />
       <main>
         <HeroSection />

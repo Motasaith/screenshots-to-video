@@ -39,7 +39,7 @@ const TYPE_COLORS: Record<string, string> = {
 
 export default function Changelog() {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen dot-grid">
       <Navbar />
       <main className="max-w-3xl mx-auto pt-32 pb-20 px-6">
         <motion.div
@@ -47,34 +47,34 @@ export default function Changelog() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-16 text-center"
         >
-          <h1 className="font-syne font-bold text-6xl tracking-tight mb-4">
-            <span className="text-primary">Changelog</span>
+          <h1 className="font-body font-bold text-6xl tracking-tight mb-4 text-[var(--sketch-fg)]">
+            <span className="text-[var(--sketch-accent)]">Changelog</span>
           </h1>
-          <p className="font-dm text-xl text-muted-foreground">
+          <p className="font-body text-xl text-[var(--sketch-fg-muted)]">
             Tracking every improvement, fix, and new feature of AIVideo.
           </p>
         </motion.div>
 
         <div className="space-y-12">
           {UPDATES.map((update) => (
-            <div key={update.version} className="relative pl-8 border-l-2 border-border">
-              <div className="absolute -left-2 top-0 w-4 h-4 rounded-full bg-primary border-4 border-background" />
+            <div key={update.version} className="relative pl-8 border-l-2 border-[var(--sketch-border-color)]">
+              <div className="absolute -left-2 top-0 w-4 h-4 rounded-full bg-[var(--sketch-accent)] border-4 border-[var(--sketch-bg)]" />
               
               <div className="flex items-center justify-between mb-6">
-                <h2 className="font-syne font-bold text-3xl">{update.version}</h2>
-                <span className="font-dm text-muted-foreground">{update.date}</span>
+                <h2 className="font-body font-bold text-3xl text-[var(--sketch-fg)]">{update.version}</h2>
+                <span className="font-body text-[var(--sketch-fg-muted)]">{update.date}</span>
               </div>
 
               <div className="grid gap-4">
                 {update.changes.map((change, cIdx) => (
                   <div 
                     key={cIdx} 
-                    className="neo-card p-4 bg-card flex items-start gap-4"
+                    className="sketch-card p-4 flex items-start gap-4"
                   >
-                    <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-sm shrink-0 ${TYPE_COLORS[change.type]}`}>
+                    <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-sm shrink-0 sketch-border-sm ${TYPE_COLORS[change.type]}`}>
                       {change.type}
                     </span>
-                    <p className="font-dm text-foreground leading-relaxed">
+                    <p className="font-body text-[var(--sketch-fg)] leading-relaxed">
                       {change.text}
                     </p>
                   </div>

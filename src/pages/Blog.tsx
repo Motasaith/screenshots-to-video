@@ -28,7 +28,7 @@ const POSTS = [
 
 export default function Blog() {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen dot-grid">
       <Navbar />
       <main className="max-w-6xl mx-auto pt-32 pb-20 px-6">
         <motion.div
@@ -36,10 +36,10 @@ export default function Blog() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-16"
         >
-          <h1 className="font-syne font-bold text-6xl tracking-tight mb-4">
-            The AIVideo <span className="text-primary">Blog</span>
+          <h1 className="font-body font-bold text-6xl tracking-tight mb-4 text-[var(--sketch-fg)]">
+            The AIVideo <span className="text-[var(--sketch-accent)]">Blog</span>
           </h1>
-          <p className="font-dm text-xl text-muted-foreground max-w-2xl">
+          <p className="font-body text-xl text-[var(--sketch-fg-muted)] max-w-2xl">
             Insights on AI video generation, technical communication, and the art of the cinematic tutorial.
           </p>
         </motion.div>
@@ -48,15 +48,15 @@ export default function Blog() {
           {POSTS.map((post) => (
             <div 
               key={post.id} 
-              className="neo-card p-6 bg-card hover:border-primary transition-colors cursor-pointer group"
+              className="sketch-card-hover p-6 cursor-pointer group bg-[var(--sketch-card-bg)]"
             >
               <div className="flex items-center gap-2 mb-4">
-                <span className="text-xs font-bold uppercase tracking-wider px-2 py-1 bg-primary/10 text-primary rounded-sm">
+                <span className="text-xs font-bold uppercase tracking-wider px-2 py-1 bg-[var(--sketch-accent)]/20 text-[var(--sketch-fg)] sketch-border-sm">
                   {post.category}
                 </span>
-                <span className="text-xs text-muted-foreground">{post.date}</span>
+                <span className="text-xs text-[var(--sketch-fg-muted)]">{post.date}</span>
               </div>
-              <h2 className="font-syne font-bold text-2xl mb-3 group-hover:text-primary transition-colors">
+              <h2 className="font-body font-bold text-2xl mb-3 text-[var(--sketch-fg)] group-hover:text-[var(--sketch-accent)] transition-colors">
                 {post.title}
               </h2>
               <p className="font-dm text-muted-foreground leading-relaxed mb-6">

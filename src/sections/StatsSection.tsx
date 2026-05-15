@@ -41,7 +41,7 @@ function AnimatedCounter({
   }, [isInView, value]);
 
   return (
-    <span className="font-syne font-extrabold text-4xl lg:text-5xl text-foreground">
+      <span className="font-body font-extrabold text-4xl lg:text-5xl text-[var(--sketch-fg)]">
       {decimals > 0 ? count.toFixed(decimals) : Math.round(count)}
       {suffix}
     </span>
@@ -53,7 +53,7 @@ export default function StatsSection() {
   const isInView = useInView(ref, { once: true, margin: "-50px" });
 
   return (
-    <section className="py-16 lg:py-20" ref={ref}>
+    <section className="py-16 lg:py-20 dot-grid" ref={ref}>
       <div className="w-full px-6 lg:px-12">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12">
           {stats.map((stat, index) => (
@@ -70,7 +70,7 @@ export default function StatsSection() {
                 decimals={stat.decimals}
                 isInView={isInView}
               />
-              <p className="font-dm text-sm text-muted-foreground mt-2">
+              <p className="font-body text-sm text-[var(--sketch-fg-muted)] mt-2">
                 {stat.label}
               </p>
             </motion.div>

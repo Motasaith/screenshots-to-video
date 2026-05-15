@@ -133,7 +133,7 @@ export default function StepScript() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <Loader2 className="w-8 h-8 animate-spin text-[var(--sketch-fg)]" />
       </div>
     );
   }
@@ -142,30 +142,33 @@ export default function StepScript() {
     <div className="max-w-3xl">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <div className="flex items-start justify-between">
-          <div>
-            <span className="font-mono text-xs text-primary uppercase tracking-widest">
+          <div className="relative">
+            <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
               Step 3 of 7
             </span>
-            <h2 className="font-syne font-bold text-3xl mt-2 tracking-tight">
+            <span className="font-hand text-lg text-[var(--sketch-fg-muted)] absolute -top-6 left-32 rotate-[-4deg] animate-float hidden sm:block">
+              Make it sound natural! 📝
+            </span>
+            <h2 className="font-body font-bold text-3xl mt-3 tracking-tight text-[var(--sketch-fg)]">
               Review your script
             </h2>
           </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 border-2 border-border bg-card shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] dark:shadow-[2px_2px_0px_0px_rgba(255,255,255,0.2)]">
+          <div className="flex items-center gap-2 px-3 py-1.5 border-2 border-[var(--sketch-border-color)] bg-[var(--sketch-card-bg)] shadow-[3px_3px_0px_0px_#FBBF24]">
             <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            <span className="font-mono text-xs font-medium text-foreground uppercase tracking-wider">AI Online</span>
+            <span className="font-mono text-xs font-medium text-[var(--sketch-fg)] uppercase tracking-wider">AI Online</span>
           </div>
         </div>
-        <p className="font-dm text-muted-foreground mt-2">
+        <p className="font-body text-[var(--sketch-fg-muted)] mt-2">
           Edit the AI-generated narration for each step. Keep it concise and clear.
         </p>
 
         {project?.steps && (
-          <div className="mt-4 neo-card p-3 bg-primary/5 border-primary inline-flex items-center gap-3">
-            <Check className="w-4 h-4 text-primary" />
-            <span className="font-dm text-sm">
+          <div className="mt-4 sketch-card p-3 bg-[#FBBF24]/5 border-[#FBBF24] inline-flex items-center gap-3">
+            <Check className="w-4 h-4 text-[var(--sketch-fg)]" />
+            <span className="font-body text-sm text-[var(--sketch-fg)]">
               {totalWords} words across {project.steps.length} steps
               {estimatedDuration > 0 && ` — approx. ${estimatedDuration}s of video`}
             </span>
@@ -185,10 +188,10 @@ export default function StepScript() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
-                className="neo-card p-4"
+                className="sketch-card p-4 bg-[var(--sketch-card-bg)]"
               >
                 <div className="flex items-start gap-3">
-                  <div className="w-12 h-12 bg-muted border border-border flex-shrink-0 flex items-center justify-center">
+                  <div className="w-12 h-12 bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-border-color)] flex-shrink-0 flex items-center justify-center sketch-border-sm overflow-hidden">
                     {step.screenshotPath ? (
                       <img
                         src={step.screenshotPath}
@@ -196,18 +199,18 @@ export default function StepScript() {
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <span className="font-mono text-[10px] text-muted-foreground">
+                      <span className="font-hand text-lg text-[var(--sketch-fg-subtle)]">
                         {index + 1}
                       </span>
                     )}
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="font-mono text-xs text-muted-foreground">
+                      <span className="font-mono text-xs text-[var(--sketch-fg-subtle)]">
                         Step {index + 1}
                       </span>
                       <div className="flex items-center gap-3">
-                        <span className="font-mono text-xs text-muted-foreground">
+                        <span className="font-mono text-xs text-[var(--sketch-fg-subtle)]">
                           {wordCount} words
                         </span>
                         {isLong && (
@@ -230,19 +233,19 @@ export default function StepScript() {
                         handleUpdateScript(step.id, e.target.value)
                       }
                       rows={3}
-                      className="neo-input resize-none text-sm"
+                      className="sketch-input resize-none text-sm"
                     />
                     <div className="mt-2 flex justify-between">
                       <button
                         onClick={() => handleDeleteStep(step.id)}
-                        className="font-dm text-xs text-muted-foreground hover:text-destructive flex items-center gap-1 transition-colors"
+                        className="font-hand text-sm text-[var(--sketch-fg-subtle)] hover:text-red-500 flex items-center gap-1 transition-colors"
                       >
                         <Trash2 className="w-3 h-3" />
                         Remove
                       </button>
                       <button
                         onClick={() => handleRegenerateStep(step.id)}
-                        className="font-dm text-xs text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors"
+                        className="font-hand text-sm text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg)] flex items-center gap-1 transition-colors"
                       >
                         <RefreshCw className="w-3 h-3" />
                         Regenerate
@@ -260,7 +263,7 @@ export default function StepScript() {
             variant="ghost"
             onClick={handleGenerate}
             disabled={isGenerating}
-            className="border-2 border-border flex-1"
+            className="sketch-btn-ghost flex-1"
           >
             {isGenerating ? (
               <span className="flex items-center gap-2">
@@ -277,7 +280,7 @@ export default function StepScript() {
           <Button
             onClick={handleContinue}
             disabled={updateStep.isPending}
-            className="neo-btn-primary flex-[2]"
+            className="sketch-btn-primary flex-[2]"
           >
             <span className="flex items-center gap-2">
               These look good

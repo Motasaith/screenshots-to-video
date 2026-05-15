@@ -44,7 +44,7 @@ export default function FeaturesSection() {
   const isInView = useInView(ref, { once: true, margin: "-100px" });
 
   return (
-    <section id="features" className="py-24 lg:py-32" ref={ref}>
+    <section id="features" className="py-24 lg:py-32 dot-grid" ref={ref}>
       <div className="w-full px-6 lg:px-12">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -52,10 +52,10 @@ export default function FeaturesSection() {
           transition={{ duration: 0.6 }}
           className="mb-16"
         >
-          <span className="font-mono text-xs text-primary uppercase tracking-widest">
+          <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
             Why AIVideo
           </span>
-          <h2 className="font-syne font-bold text-3xl lg:text-5xl mt-3 tracking-tight">
+          <h2 className="font-body font-bold text-3xl lg:text-5xl mt-3 tracking-tight text-[var(--sketch-fg)]">
             Built for technical
             <br />
             content creators
@@ -69,22 +69,22 @@ export default function FeaturesSection() {
             transition={{ duration: 0.6, delay: 0.2 }}
             className="lg:sticky lg:top-32 lg:self-start"
           >
-            <div className="neo-card p-8">
+            <div className="sketch-card p-8 bg-[var(--sketch-card-bg)]">
               <div className="flex items-center gap-3 mb-6">
-                <div className="w-12 h-12 bg-primary/10 border-2 border-primary flex items-center justify-center">
+                <div className="w-12 h-12 bg-[#FBBF24]/10 border-2 border-[#FBBF24] flex items-center justify-center sketch-border-sm">
                   {(() => {
                     const Icon = features[activeIndex].icon;
-                    return <Icon className="w-6 h-6 text-primary" />;
+                    return <Icon className="w-6 h-6 text-[#1E1B4B]" />;
                   })()}
                 </div>
-                <h3 className="font-syne font-bold text-2xl">
+                <h3 className="font-body font-bold text-2xl text-[var(--sketch-fg)]">
                   {features[activeIndex].title}
                 </h3>
               </div>
-              <p className="font-dm text-muted-foreground leading-relaxed mb-4">
+              <p className="font-body text-[var(--sketch-fg-muted)] leading-relaxed mb-4">
                 {features[activeIndex].description}
               </p>
-              <p className="font-dm text-sm text-muted-foreground/70 leading-relaxed">
+              <p className="font-body text-sm text-[var(--sketch-fg-subtle)] leading-relaxed">
                 {features[activeIndex].detail}
               </p>
             </div>
@@ -100,29 +100,31 @@ export default function FeaturesSection() {
                 onClick={() => setActiveIndex(index)}
                 className={`w-full text-left p-5 border-2 transition-all duration-200 ${
                   activeIndex === index
-                    ? "border-primary bg-primary/5 shadow-[4px_4px_0px_0px_hsl(var(--primary))]"
-                    : "border-border bg-card hover:border-foreground/30"
+                      ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/5 shadow-[4px_4px_0px_0px_#FBBF24]"
+                      : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-fg-muted)]"
                 }`}
+                style={{ borderRadius: activeIndex === index ? "255px 15px 225px 15px/15px 225px 15px 255px" : "12px" }}
               >
                 <div className="flex items-center gap-4">
                   <div
                     className={`w-10 h-10 flex items-center justify-center border-2 flex-shrink-0 ${
                       activeIndex === index
-                        ? "border-primary bg-primary/10"
-                        : "border-border bg-muted"
+                        ? "border-[#FBBF24] bg-[#FBBF24]/10"
+                          : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)]"
                     }`}
+                    style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
                   >
                     <feature.icon
                       className={`w-5 h-5 ${
-                        activeIndex === index ? "text-primary" : "text-muted-foreground"
+                        activeIndex === index ? "text-[var(--sketch-fg)]" : "text-[var(--sketch-fg-subtle)]"
                       }`}
                     />
                   </div>
                   <div>
-                    <h4 className="font-syne font-semibold text-lg">
+                    <h4 className="font-body font-semibold text-lg text-[var(--sketch-fg)]">
                       {feature.title}
                     </h4>
-                    <p className="font-dm text-sm text-muted-foreground line-clamp-1">
+                    <p className="font-body text-sm text-[var(--sketch-fg-subtle)] line-clamp-1">
                       {feature.description}
                     </p>
                   </div>

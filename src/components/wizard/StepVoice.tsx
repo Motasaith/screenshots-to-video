@@ -91,20 +91,25 @@ export default function StepVoice() {
   return (
     <div className="max-w-2xl">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <span className="font-mono text-xs text-primary uppercase tracking-widest">
-          Step 5 of 7
-        </span>
-        <h2 className="font-syne font-bold text-3xl mt-2 tracking-tight">
+        <div className="relative">
+          <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
+            Step 5 of 7
+          </span>
+          <span className="font-hand text-lg text-[var(--sketch-fg-muted)] absolute -top-6 left-32 rotate-[-2deg] animate-float hidden sm:block">
+            Pick your voice! 🎙️
+          </span>
+        </div>
+        <h2 className="font-body font-bold text-3xl mt-3 tracking-tight text-[var(--sketch-fg)]">
           Choose your voice and style
         </h2>
-        <p className="font-dm text-muted-foreground mt-2">
+        <p className="font-body text-[var(--sketch-fg-muted)] mt-2">
           Select a voice, set the speed, and configure video options.
         </p>
 
         <div className="mt-8 space-y-8">
           <div>
-            <h3 className="font-syne font-semibold text-lg mb-4 flex items-center gap-2">
-              <Volume2 className="w-5 h-5 text-primary" />
+            <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
+              <Volume2 className="w-5 h-5 text-[#FBBF24]" />
               Voice
             </h3>
             <div className="grid grid-cols-2 gap-3">
@@ -114,18 +119,19 @@ export default function StepVoice() {
                   onClick={() => setSelectedVoice(voice.id)}
                   className={`p-4 border-2 text-left transition-all ${
                     selectedVoice === voice.id
-                      ? "border-primary bg-primary/5 shadow-[4px_4px_0px_0px_hsl(var(--primary))]"
-                      : "border-border bg-card hover:border-foreground/30"
+                      ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/5 shadow-[4px_4px_0px_0px_#FBBF24]"
+                      : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
                   }`}
+                  style={{ borderRadius: selectedVoice === voice.id ? "255px 15px 225px 15px/15px 225px 15px 255px" : "12px" }}
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-dm font-semibold text-sm">
+                    <span className="font-body font-semibold text-sm text-[var(--sketch-fg)]">
                       {voice.name}
                     </span>
                     <button 
                       onClick={(e) => handlePlayPreview(e, voice.id)}
                       disabled={previewLoadingId !== null && previewLoadingId !== voice.id}
-                      className="text-xs text-muted-foreground hover:text-primary transition-colors disabled:opacity-50"
+                      className="text-xs text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg)] transition-colors disabled:opacity-50"
                     >
                       {previewLoadingId === voice.id ? (
                         <Loader2 className="w-3 h-3 animate-spin" />
@@ -137,10 +143,10 @@ export default function StepVoice() {
                     </button>
                   </div>
                   <div className="flex items-center gap-2 mt-2">
-                    <span className="font-mono text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground">
+                    <span className="font-mono text-[10px] px-1.5 py-0.5 bg-[#FBBF24]/10 text-[var(--sketch-fg-muted)] sketch-border-sm">
                       {voice.accent}
                     </span>
-                    <span className="font-mono text-[10px] px-1.5 py-0.5 bg-muted text-muted-foreground">
+                    <span className="font-mono text-[10px] px-1.5 py-0.5 bg-[#FBBF24]/10 text-[var(--sketch-fg-muted)] sketch-border-sm">
                       {voice.gender}
                     </span>
                   </div>
@@ -149,14 +155,14 @@ export default function StepVoice() {
             </div>
           </div>
 
-          <div className="border-t border-border pt-6">
-            <h3 className="font-syne font-semibold text-lg mb-4 flex items-center gap-2">
-              <Gauge className="w-5 h-5 text-primary" />
+          <div className="border-t border-[var(--sketch-fg-subtle)] pt-6">
+            <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
+              <Gauge className="w-5 h-5 text-[#FBBF24]" />
               Speaking Speed
             </h3>
-            <div className="neo-card p-4">
+            <div className="sketch-card p-4 bg-[var(--sketch-card-bg)]">
               <div className="flex items-center gap-4">
-                <span className="font-mono text-xs text-muted-foreground w-10">
+                <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] w-10">
                   0.8x
                 </span>
                 <input
@@ -166,23 +172,23 @@ export default function StepVoice() {
                   step={0.05}
                   value={speed}
                   onChange={(e) => setSpeed(Number(e.target.value))}
-                  className="flex-1 h-2 bg-muted appearance-none cursor-pointer accent-primary"
+                  className="flex-1 h-2 bg-[var(--sketch-fg-subtle)] appearance-none cursor-pointer accent-[#FBBF24]"
                 />
-                <span className="font-mono text-xs text-muted-foreground w-10">
+                <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] w-10">
                   1.3x
                 </span>
               </div>
               <div className="text-center mt-2">
-                <span className="font-syne font-bold text-2xl text-primary">
+                <span className="font-body font-bold text-2xl text-[var(--sketch-fg)]">
                   {speed.toFixed(2)}x
                 </span>
               </div>
             </div>
           </div>
 
-          <div className="border-t border-border pt-6">
-            <h3 className="font-syne font-semibold text-lg mb-4 flex items-center gap-2">
-              <Monitor className="w-5 h-5 text-primary" />
+          <div className="border-t border-[var(--sketch-fg-subtle)] pt-6">
+            <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
+              <Monitor className="w-5 h-5 text-[#FBBF24]" />
               Resolution
             </h3>
             <div className="grid grid-cols-3 gap-3">
@@ -192,13 +198,14 @@ export default function StepVoice() {
                   onClick={() => setResolution(res)}
                   className={`p-4 border-2 text-center transition-all ${
                     resolution === res
-                      ? "border-primary bg-primary/5 shadow-[4px_4px_0px_0px_hsl(var(--primary))]"
-                      : "border-border bg-card hover:border-foreground/30"
+                      ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/5 shadow-[4px_4px_0px_0px_#FBBF24]"
+                      : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
                   }`}
+                  style={{ borderRadius: resolution === res ? "255px 15px 225px 15px/15px 225px 15px 255px" : "12px" }}
                 >
-                  <span className="font-syne font-bold text-lg">{res}</span>
+                  <span className="font-body font-bold text-lg text-[var(--sketch-fg)]">{res}</span>
                   {res === "4k" && (
-                    <span className="block font-mono text-[10px] text-primary mt-1">
+                    <span className="block font-mono text-[10px] text-[#FBBF24] mt-1">
                       PRO
                     </span>
                   )}
@@ -207,22 +214,22 @@ export default function StepVoice() {
             </div>
           </div>
 
-          <div className="border-t border-border pt-6">
-            <h3 className="font-syne font-semibold text-lg mb-4 flex items-center gap-2">
-              <Music className="w-5 h-5 text-primary" />
+          <div className="border-t border-[var(--sketch-fg-subtle)] pt-6">
+            <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
+              <Music className="w-5 h-5 text-[#FBBF24]" />
               Background Music
             </h3>
-            <div className="neo-card p-4">
+            <div className="sketch-card p-4 bg-[var(--sketch-card-bg)]">
               <div className="flex items-center justify-between mb-4">
-                <span className="font-dm text-sm">Enable background music</span>
+                <span className="font-body text-sm text-[var(--sketch-fg)]">Enable background music</span>
                 <button
                   onClick={() => setMusicEnabled(!musicEnabled)}
                   className={`w-12 h-6 rounded-full transition-colors relative ${
-                    musicEnabled ? "bg-primary" : "bg-muted"
+                    musicEnabled ? "bg-[#FBBF24]" : "bg-[var(--sketch-fg-subtle)]"
                   }`}
                 >
                   <div
-                    className={`w-5 h-5 bg-white rounded-full absolute top-0.5 transition-transform ${
+                    className={`w-5 h-5 bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-border-color)] rounded-full absolute top-0.5 transition-transform ${
                       musicEnabled ? "translate-x-6" : "translate-x-0.5"
                     }`}
                   />
@@ -240,11 +247,12 @@ export default function StepVoice() {
                       onClick={() => setSelectedTrack(track.id)}
                       className={`w-full p-3 border-2 text-left transition-all ${
                         selectedTrack === track.id
-                          ? "border-primary bg-primary/5"
-                          : "border-border hover:border-foreground/30"
+                          ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/5"
+                          : "border-[var(--sketch-fg-subtle)] hover:border-[var(--sketch-border-color)]/40"
                       }`}
+                      style={{ borderRadius: selectedTrack === track.id ? "255px 15px 225px 15px/15px 225px 15px 255px" : "8px" }}
                     >
-                      <span className="font-dm text-sm">{track.name}</span>
+                      <span className="font-body text-sm text-[var(--sketch-fg)]">{track.name}</span>
                     </button>
                   ))}
                 </motion.div>
@@ -255,7 +263,7 @@ export default function StepVoice() {
           <Button
             onClick={handleContinue}
             disabled={updateProject.isPending}
-            className="neo-btn-primary w-full"
+            className="sketch-btn-primary w-full"
           >
             <span className="flex items-center gap-2">
               <Zap className="w-4 h-4" />

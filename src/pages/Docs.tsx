@@ -5,7 +5,7 @@ import FooterSection from "@/sections/FooterSection";
 
 export default function Docs() {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen dot-grid">
       <Navbar />
       
       <main className="max-w-4xl mx-auto pt-32 pb-20 px-6">
@@ -14,25 +14,25 @@ export default function Docs() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-12"
         >
-          <h1 className="font-syne font-bold text-5xl tracking-tight mb-4">
+          <h1 className="font-body font-bold text-5xl tracking-tight mb-4 text-[var(--sketch-fg)]">
             Documentation
           </h1>
-          <p className="font-dm text-lg text-muted-foreground">
+          <p className="font-body text-lg text-[var(--sketch-fg-muted)]">
             Learn how to create cinematic, AI-narrated tutorials from your screenshots.
           </p>
         </motion.div>
 
         <div className="space-y-12">
           <section>
-            <h2 className="font-syne font-bold text-2xl mb-4 flex items-center gap-2">
-              <Book className="w-6 h-6 text-primary" />
+            <h2 className="font-body font-bold text-2xl mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
+              <Book className="w-6 h-6 text-[var(--sketch-accent)]" />
               Quick Start
             </h2>
-            <div className="neo-card p-6 prose prose-invert max-w-none">
-              <p className="font-dm text-muted-foreground mb-4">
+            <div className="sketch-card p-6">
+              <p className="font-body text-[var(--sketch-fg-muted)] mb-4">
                 Creating your first AIVideo is simple and takes less than 5 minutes.
               </p>
-              <ol className="list-decimal pl-5 space-y-3 font-dm text-sm text-foreground">
+              <ol className="list-decimal pl-5 space-y-3 font-body text-sm text-[var(--sketch-fg)]">
                 <li><strong>Project Setup:</strong> Define your tutorial's title, audience, and target platform (YouTube, Teams, etc.). Our AI will help refine your description to maximize impact.</li>
                 <li><strong>Upload Screenshots:</strong> Take screenshots of the workflow you want to demonstrate. Upload them in order and provide a brief description of what action the user should take in each step.</li>
                 <li><strong>Script Generation:</strong> Our AI will convert your brief descriptions into a professional, conversational script tailored to your chosen platform.</li>
@@ -44,20 +44,20 @@ export default function Docs() {
           </section>
 
           <section>
-            <h2 className="font-syne font-bold text-2xl mb-4 flex items-center gap-2">
-              <Terminal className="w-6 h-6 text-accent" />
+            <h2 className="font-body font-bold text-2xl mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
+              <Terminal className="w-6 h-6 text-[var(--sketch-accent)]" />
               Best Practices
             </h2>
             <div className="grid md:grid-cols-2 gap-4">
-              <div className="neo-card p-5">
-                <h3 className="font-syne font-bold text-lg mb-2">Capturing Screenshots</h3>
-                <ul className="list-disc pl-5 font-dm text-sm text-muted-foreground space-y-1">
+              <div className="sketch-card p-5">
+                <h3 className="font-body font-bold text-lg mb-2 text-[var(--sketch-fg)]">Capturing Screenshots</h3>
+                <ul className="list-disc pl-5 font-body text-sm text-[var(--sketch-fg-muted)] space-y-1">
                   <li>Capture the full application window, not just small snippets.</li>
                   <li>Ensure the UI is clean (close unrelated tabs or notifications).</li>
                   <li>Use a consistent window size for all screenshots.</li>
                 </ul>
               </div>
-              <div className="neo-card p-5">
+              <div className="sketch-card p-5">
                 <h3 className="font-syne font-bold text-lg mb-2">Writing Descriptions</h3>
                 <ul className="list-disc pl-5 font-dm text-sm text-muted-foreground space-y-1">
                   <li>Keep it concise — describe the single action taking place.</li>

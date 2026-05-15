@@ -31,7 +31,7 @@ export default function TestimonialsSection() {
   const isInView = useInView(ref, { once: true, margin: "-100px" });
 
   return (
-    <section className="py-24 lg:py-32 border-y-2 border-border bg-muted/20" ref={ref}>
+    <section className="py-24 lg:py-32 border-y-2 border-[var(--sketch-fg-subtle)] bg-[var(--sketch-bg)]" ref={ref}>
       <div className="w-full px-6 lg:px-12">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -39,10 +39,10 @@ export default function TestimonialsSection() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <span className="font-mono text-xs text-primary uppercase tracking-widest">
+          <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
             Testimonials
           </span>
-          <h2 className="font-syne font-bold text-3xl lg:text-5xl mt-3 tracking-tight">
+          <h2 className="font-body font-bold text-3xl lg:text-5xl mt-3 tracking-tight text-[var(--sketch-fg)]">
             Loved by technical teams
           </h2>
         </motion.div>
@@ -54,25 +54,25 @@ export default function TestimonialsSection() {
               initial={{ opacity: 0, y: 30 }}
               animate={isInView ? { opacity: 1, y: 0 } : {}}
               transition={{ duration: 0.5, delay: index * 0.15 }}
-              className="neo-card-hover p-6 lg:p-8"
+              className="sketch-card-hover p-6 lg:p-8 bg-[var(--sketch-card-bg)]"
             >
-              <Quote className="w-8 h-8 text-primary/20 mb-4" />
+              <Quote className="w-8 h-8 text-[#FBBF24]/40 mb-4" />
               <div className="flex gap-1 mb-4">
                 {Array.from({ length: testimonial.rating }).map((_, i) => (
                   <Star
                     key={i}
-                    className="w-4 h-4 text-primary fill-primary"
+                    className="w-4 h-4 text-[#FBBF24] fill-[#FBBF24]"
                   />
                 ))}
               </div>
-              <p className="font-dm text-sm leading-relaxed mb-6">
+              <p className="font-body text-sm leading-relaxed mb-6 text-[var(--sketch-fg-muted)]">
                 {testimonial.content}
               </p>
-              <div className="border-t border-border pt-4">
-                <p className="font-syne font-semibold text-sm">
+              <div className="border-t border-[var(--sketch-fg-subtle)] pt-4">
+                <p className="font-body font-semibold text-sm text-[var(--sketch-fg)]">
                   {testimonial.name}
                 </p>
-                <p className="font-dm text-xs text-muted-foreground">
+                <p className="font-body text-xs text-[var(--sketch-fg-subtle)]">
                   {testimonial.role}
                 </p>
               </div>

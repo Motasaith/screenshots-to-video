@@ -59,6 +59,11 @@ module.exports = {
       boxShadow: {
         xs: "0 1px 2px 0 rgb(0 0 0 / 0.05)",
       },
+      fontFamily: {
+        sans: ['Inter', 'sans-serif'],
+        hand: ['Caveat', 'cursive'],
+        mono: ['JetBrains Mono', 'monospace'],
+      },
       keyframes: {
         "accordion-down": {
           from: { height: "0" },
@@ -72,11 +77,31 @@ module.exports = {
           "0%,70%,100%": { opacity: "1" },
           "20%,50%": { opacity: "0" },
         },
+        "float": {
+          "0%, 100%": { transform: "translateY(0px)" },
+          "50%": { transform: "translateY(-8px)" },
+        },
+        "float-delayed": {
+          "0%, 100%": { transform: "translateY(0px)" },
+          "50%": { transform: "translateY(-6px)" },
+        },
+        "wiggle": {
+          "0%, 100%": { transform: "rotate(-1deg)" },
+          "50%": { transform: "rotate(1deg)" },
+        },
+        "fade-scale": {
+          from: { opacity: "0", transform: "scale(0.95)" },
+          to: { opacity: "1", transform: "scale(1)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "caret-blink": "caret-blink 1.25s ease-out infinite",
+        "float": "float 3s ease-in-out infinite",
+        "float-delayed": "float-delayed 3.5s ease-in-out infinite",
+        "wiggle": "wiggle 2s ease-in-out infinite",
+        "fade-scale": "fade-scale 0.6s ease-out forwards",
       },
     },
   },

@@ -14,7 +14,7 @@ const CATEGORIES = [
 
 export default function HelpCenter() {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen dot-grid">
       <Navbar />
       <main className="max-w-5xl mx-auto pt-32 pb-20 px-6">
         <motion.div
@@ -22,14 +22,14 @@ export default function HelpCenter() {
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-16"
         >
-          <h1 className="font-syne font-bold text-6xl tracking-tight mb-6">
-            How can we <span className="text-primary">help?</span>
+          <h1 className="font-body font-bold text-6xl tracking-tight mb-6 text-[var(--sketch-fg)]">
+            How can we <span className="text-[var(--sketch-accent)]">help?</span>
           </h1>
           <div className="max-w-2xl mx-auto relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground w-5 h-5" />
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--sketch-fg-muted)] w-5 h-5" />
             <Input 
               placeholder="Search for answers..." 
-              className="pl-12 py-6 text-lg border-2"
+              className="pl-12 py-6 text-lg border-2 border-[var(--sketch-border-color)] sketch-input"
             />
           </div>
         </motion.div>
@@ -38,12 +38,12 @@ export default function HelpCenter() {
           {CATEGORIES.map((cat, idx) => {
             const Icon = cat.icon;
             return (
-              <div key={idx} className="neo-card p-6 bg-card hover:border-primary transition-colors cursor-pointer group">
-                <Icon className="w-8 h-8 text-primary mb-4" />
-                <h3 className="font-syne font-bold text-xl mb-2 group-hover:text-primary transition-colors">
+              <div key={idx} className="sketch-card-hover p-6 cursor-pointer group bg-[var(--sketch-card-bg)]">
+                <Icon className="w-8 h-8 text-[var(--sketch-accent)] mb-4" />
+                <h3 className="font-body font-bold text-xl mb-2 text-[var(--sketch-fg)] group-hover:text-[var(--sketch-accent)] transition-colors">
                   {cat.title}
                 </h3>
-                <p className="font-dm text-muted-foreground">{cat.desc}</p>
+                <p className="font-body text-[var(--sketch-fg-muted)]">{cat.desc}</p>
               </div>
             );
           })}

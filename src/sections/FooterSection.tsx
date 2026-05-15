@@ -30,45 +30,46 @@ const footerLinks = {
 
 export default function FooterSection() {
   return (
-    <footer className="border-t-2 border-border bg-muted/20 py-16">
+    <footer className="border-t-2 border-[var(--sketch-border-color)] bg-[var(--sketch-bg)] py-16 relative">
+      <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#FBBF24]/40" />
       <div className="w-full px-6 lg:px-12">
         <div className="grid lg:grid-cols-5 gap-12 lg:gap-8">
           <div className="lg:col-span-2">
             <Link to="/" className="flex items-center gap-2">
-              <Film className="w-6 h-6 text-primary" />
-              <span className="font-syne font-bold text-xl tracking-tight">
+              <Film className="w-6 h-6 text-[var(--sketch-fg)]" />
+              <span className="font-body font-bold text-xl tracking-tight text-[var(--sketch-fg)]">
                 AIVideo
               </span>
             </Link>
-            <p className="font-dm text-sm text-muted-foreground mt-4 max-w-xs leading-relaxed">
+            <p className="font-body text-sm text-[var(--sketch-fg-subtle)] mt-4 max-w-xs leading-relaxed">
               Turn screenshots into professional tutorial videos with cinematic
               zoom animations. Built for technical content creators.
             </p>
             <div className="flex gap-3 mt-6">
               <a
                 href="#"
-                className="w-9 h-9 border-2 border-border bg-card flex items-center justify-center hover:border-primary transition-colors"
+                className="w-9 h-9 border-2 border-[var(--sketch-border-color)] bg-[var(--sketch-card-bg)] flex items-center justify-center hover:border-[#FBBF24] transition-colors sketch-border-sm"
               >
-                <Twitter className="w-4 h-4" />
+                <Twitter className="w-4 h-4 text-[var(--sketch-fg)]" />
               </a>
               <a
                 href="#"
-                className="w-9 h-9 border-2 border-border bg-card flex items-center justify-center hover:border-primary transition-colors"
+                className="w-9 h-9 border-2 border-[var(--sketch-border-color)] bg-[var(--sketch-card-bg)] flex items-center justify-center hover:border-[#FBBF24] transition-colors sketch-border-sm"
               >
-                <Github className="w-4 h-4" />
+                <Github className="w-4 h-4 text-[var(--sketch-fg)]" />
               </a>
               <a
                 href="#"
-                className="w-9 h-9 border-2 border-border bg-card flex items-center justify-center hover:border-primary transition-colors"
+                className="w-9 h-9 border-2 border-[var(--sketch-border-color)] bg-[var(--sketch-card-bg)] flex items-center justify-center hover:border-[#FBBF24] transition-colors sketch-border-sm"
               >
-                <Linkedin className="w-4 h-4" />
+                <Linkedin className="w-4 h-4 text-[var(--sketch-fg)]" />
               </a>
             </div>
           </div>
 
           {Object.entries(footerLinks).map(([category, links]) => (
             <div key={category}>
-              <h4 className="font-syne font-semibold text-sm mb-4">
+              <h4 className="font-body font-semibold text-sm mb-4 text-[var(--sketch-fg)]">
                 {category}
               </h4>
               <ul className="space-y-2.5">
@@ -76,7 +77,7 @@ export default function FooterSection() {
                   <li key={link.name}>
                     <Link
                       to={link.href}
-                      className="font-dm text-sm text-muted-foreground hover:text-foreground transition-colors"
+                      className="font-body text-sm text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg)] transition-colors"
                     >
                       {link.name}
                     </Link>

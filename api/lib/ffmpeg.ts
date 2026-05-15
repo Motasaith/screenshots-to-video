@@ -140,6 +140,7 @@ export async function renderStepVideo(opts: {
     opts.zoomRectW !== undefined &&
     opts.zoomRectH !== undefined
   ) {
+    // drawbox is applied BEFORE scale+pad, so it sees original image pixels
     const rx = Math.round((opts.zoomRectX / 100) * imgWidth);
     const ry = Math.round((opts.zoomRectY / 100) * imgHeight);
     const rw = Math.round((opts.zoomRectW / 100) * imgWidth);
@@ -148,12 +149,13 @@ export async function renderStepVideo(opts: {
     drawboxFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=#f97316@1.0:thickness=6,`;
   }
 
-  // Build the zoom filter
+  // The zoompan filter operates AFTER scale+pad, so it sees output dimensions (outW x outH)
+  // We must use output dimensions for correct zoom math, not original image dimensions
   const zoomFilter = buildZoomFilter(
     opts.zoomTargetX,
     opts.zoomTargetY,
-    imgWidth, // Note: This isn't technically perfect since we scale+pad later, but the center target is roughly preserved.
-    imgHeight,
+    outW,
+    outH,
     opts.audioDuration,
     outputRes
   );

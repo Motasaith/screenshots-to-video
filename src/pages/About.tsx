@@ -5,7 +5,7 @@ import { Github, ExternalLink } from "lucide-react";
 
 export default function About() {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen dot-grid">
       <Navbar />
       <main className="max-w-4xl mx-auto pt-32 pb-20 px-6">
         <motion.div
@@ -13,24 +13,24 @@ export default function About() {
           animate={{ opacity: 1, y: 0 }}
           className="mb-12"
         >
-          <h1 className="font-syne font-bold text-5xl tracking-tight mb-4">
+          <h1 className="font-body font-bold text-5xl tracking-tight mb-4 text-[var(--sketch-fg)]">
             About AIVideo
           </h1>
-          <p className="font-dm text-lg text-muted-foreground">
+          <p className="font-body text-lg text-[var(--sketch-fg-muted)]">
             We are revolutionizing how technical teams share knowledge.
           </p>
         </motion.div>
         
         <div className="grid gap-8 md:grid-cols-2 mb-12">
-          <div className="neo-card p-8 bg-primary/5 border-2">
-            <h2 className="font-syne font-bold text-2xl mb-4">Our Mission</h2>
-            <p className="font-dm text-foreground leading-relaxed">
+          <div className="sketch-card p-8">
+            <h2 className="font-body font-bold text-2xl mb-4 text-[var(--sketch-fg)]">Our Mission</h2>
+            <p className="font-body text-[var(--sketch-fg)] leading-relaxed">
               We believe that creating high-quality, professional video documentation shouldn't require a film degree. Our mission is to empower developers, support agents, and technical writers to turn simple screenshots into cinematic masterpieces in minutes.
             </p>
           </div>
-          <div className="neo-card p-8 bg-card border-2">
-            <h2 className="font-syne font-bold text-2xl mb-4">The Platform</h2>
-            <p className="font-dm text-foreground leading-relaxed">
+          <div className="sketch-card p-8">
+            <h2 className="font-body font-bold text-2xl mb-4 text-[var(--sketch-fg)]">The Platform</h2>
+            <p className="font-body text-[var(--sketch-fg)] leading-relaxed">
               AIVideo combines cutting-edge edge-tts technology with robust FFmpeg rendering. By automating the zoom-panning and narration, we ensure your videos always look crisp, engaging, and professional.
             </p>
           </div>
@@ -40,19 +40,19 @@ export default function About() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="neo-card p-8 bg-card border-2"
+          className="sketch-card p-8"
         >
-          <h2 className="font-syne font-bold text-3xl mb-6 flex items-center gap-3">
+          <h2 className="font-body font-bold text-3xl mb-6 flex items-center gap-3 text-[var(--sketch-fg)]">
             The Creator
           </h2>
           <div className="flex flex-col md:flex-row gap-8 items-start">
             <div className="flex-1 space-y-4">
-              <h3 className="font-syne font-bold text-2xl text-primary">Abdul Rauf Azhar</h3>
-              <p className="font-dm text-foreground leading-relaxed">
+              <h3 className="font-body font-bold text-2xl text-[var(--sketch-accent)]">Abdul Rauf Azhar</h3>
+              <p className="font-body text-[var(--sketch-fg)] leading-relaxed">
                 Full stack developer with deep knowledge of AI and AI-integrated applications. 
                 Currently a Data Science student at KFUEIT University.
               </p>
-              <p className="font-dm text-muted-foreground leading-relaxed">
+              <p className="font-body text-[var(--sketch-fg-muted)] leading-relaxed">
                 I built AIVideo to solve a real problem: making technical communication 
                 visually engaging without the massive time investment of traditional video editing.
               </p>

@@ -39,23 +39,23 @@ export default function Videos() {
   if (!user) return null;
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b-2 border-border bg-card">
+    <div className="min-h-screen dot-grid">
+      <header className="border-b-2 border-[var(--sketch-border-color)] bg-[var(--sketch-card-bg)]/90 backdrop-blur-sm relative">
         <div className="w-full px-6 lg:px-12">
           <div className="flex items-center justify-between h-16">
             <div
               className="flex items-center gap-2 cursor-pointer"
               onClick={() => navigate("/")}
             >
-              <Film className="w-6 h-6 text-primary" />
-              <span className="font-syne font-bold text-xl">AIVideo</span>
+              <Film className="w-6 h-6 text-[var(--sketch-fg)]" />
+              <span className="font-body font-bold text-xl text-[var(--sketch-fg)]">AIVideo</span>
             </div>
             <div className="flex items-center gap-2 sm:gap-4">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => navigate("/dashboard")}
-                className="border-2 border-border gap-2 hidden sm:flex"
+                className="sketch-btn-ghost gap-2 hidden sm:flex"
               >
                 <LayoutDashboard className="w-4 h-4" />
                 Dashboard
@@ -64,7 +64,7 @@ export default function Videos() {
                 variant="ghost"
                 size="sm"
                 onClick={() => navigate("/settings")}
-                className="border-2 border-border"
+                className="sketch-btn-ghost"
               >
                 <Settings className="w-4 h-4" />
               </Button>
@@ -72,7 +72,7 @@ export default function Videos() {
                 variant="ghost"
                 size="sm"
                 onClick={logout}
-                className="border-2 border-border"
+                className="sketch-btn-ghost"
               >
                 <LogOut className="w-4 h-4" />
               </Button>
@@ -84,10 +84,10 @@ export default function Videos() {
       <main className="max-w-7xl mx-auto px-6 lg:px-12 py-12">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-12">
           <div>
-            <h1 className="font-syne font-bold text-5xl tracking-tight mb-2">
+            <h1 className="font-body font-bold text-5xl tracking-tight mb-2 text-[var(--sketch-fg)]">
               My Videos
             </h1>
-            <p className="font-dm text-lg text-muted-foreground">
+            <p className="font-body text-lg text-[var(--sketch-fg-muted)]">
               Your completed cinematic tutorials ready for the world.
             </p>
           </div>
@@ -103,37 +103,37 @@ export default function Videos() {
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.95 }}
-                  className="neo-card p-0 overflow-hidden flex flex-col group cursor-pointer"
+                  className="sketch-card-hover p-0 overflow-hidden flex flex-col group cursor-pointer bg-[var(--sketch-card-bg)]"
                   onClick={() => {
                     if (project.finalVideoPath) {
                       setSelectedVideo({ title: project.title, url: project.finalVideoPath });
                     }
                   }}
                 >
-                  <div className="aspect-video bg-muted/50 border-b-2 border-border relative flex items-center justify-center">
+                  <div className="aspect-video bg-[var(--sketch-bg)] border-b-2 border-[var(--sketch-border-color)] relative flex items-center justify-center">
                     {project.finalVideoPath ? (
                        <video 
                          src={project.finalVideoPath} 
                          className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
                        />
                     ) : (
-                       <Play className="w-12 h-12 text-primary opacity-50 group-hover:opacity-100 group-hover:scale-110 transition-all duration-300" />
+                       <Play className="w-12 h-12 text-[var(--sketch-fg)] opacity-50 group-hover:opacity-100 group-hover:scale-110 transition-all duration-300" />
                     )}
-                    <div className="absolute inset-0 flex items-center justify-center bg-background/20 opacity-0 group-hover:opacity-100 transition-all">
-                       <Play className="w-16 h-16 text-primary fill-primary" />
+                    <div className="absolute inset-0 flex items-center justify-center bg-[var(--sketch-bg)]/20 opacity-0 group-hover:opacity-100 transition-all">
+                       <Play className="w-16 h-16 text-[var(--sketch-fg)] fill-[var(--sketch-fg)]" />
                     </div>
                   </div>
-                  <div className="p-5 flex flex-col flex-1 bg-card relative z-10" onClick={(e) => e.stopPropagation()}>
-                    <h3 className="font-syne font-bold text-xl leading-tight line-clamp-2 mb-2">
+                  <div className="p-5 flex flex-col flex-1 bg-[var(--sketch-card-bg)] relative z-10" onClick={(e) => e.stopPropagation()}>
+                    <h3 className="font-body font-bold text-xl leading-tight line-clamp-2 mb-2 text-[var(--sketch-fg)]">
                       {project.title}
                     </h3>
-                    <p className="font-dm text-sm text-muted-foreground capitalize mb-6 mt-auto">
+                    <p className="font-body text-sm text-[var(--sketch-fg-muted)] capitalize mb-6 mt-auto">
                       {project.platform} format
                     </p>
                     <div className="flex items-center gap-2">
                       <Button 
                         size="sm" 
-                        className="flex-1 font-syne font-bold shadow-offset focus:shadow-offset focus:translate-y-0"
+                        className="flex-1 font-body font-bold sketch-btn-primary"
                         onClick={(e) => {
                           e.stopPropagation();
                           navigate(`/create/${project.id}/export`);
@@ -145,7 +145,7 @@ export default function Videos() {
                       <Button 
                         size="sm" 
                         variant="outline"
-                        className="border-2 font-syne font-bold hover:border-primary px-3"
+                        className="sketch-btn-ghost px-3"
                         disabled
                         title="Public sharing requires additional setup"
                       >
@@ -158,17 +158,17 @@ export default function Videos() {
             </AnimatePresence>
           </div>
         ) : (
-          <div className="neo-card p-16 text-center border-2 border-dashed">
-            <Film className="w-16 h-16 text-muted-foreground mx-auto mb-6 opacity-50" />
-            <h3 className="font-syne font-bold text-3xl mb-3">
+          <div className="sketch-card p-16 text-center border-2 border-dashed border-[var(--sketch-fg-subtle)]">
+            <Film className="w-16 h-16 text-[var(--sketch-fg-subtle)] mx-auto mb-6" />
+            <h3 className="font-body font-bold text-3xl mb-3 text-[var(--sketch-fg)]">
               No completed videos yet
             </h3>
-            <p className="font-dm text-lg text-muted-foreground mb-8 max-w-md mx-auto">
+            <p className="font-body text-lg text-[var(--sketch-fg-muted)] mb-8 max-w-md mx-auto">
               Once you finish rendering a project, it will appear here for easy downloading and sharing.
             </p>
             <Button
               onClick={() => navigate("/dashboard")}
-              className="neo-btn-primary py-6 px-8 text-lg"
+              className="sketch-btn-primary py-6 px-8 text-lg"
             >
               Go to Dashboard
             </Button>

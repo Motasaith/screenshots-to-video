@@ -109,23 +109,23 @@ export default function AIGuide() {
     <div className="flex flex-col h-full">
       <button
         onClick={() => setIsCollapsed(!isCollapsed)}
-        className="flex items-center justify-between p-4 border-b border-border bg-card lg:hidden"
+        className="flex items-center justify-between p-4 border-b-2 border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] lg:hidden"
       >
         <div className="flex items-center gap-2">
-          <Bot className="w-4 h-4 text-primary" />
-          <span className="font-syne font-semibold text-sm">AI Guide</span>
+          <Bot className="w-4 h-4 text-[var(--sketch-fg)]" />
+          <span className="font-body font-semibold text-sm text-[var(--sketch-fg)]">AI Guide</span>
           <div className="flex items-center gap-1.5 ml-2">
             <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
             </span>
-            <span className="font-mono text-[10px] text-muted-foreground">Online</span>
+            <span className="font-mono text-[10px] text-[var(--sketch-fg-subtle)]">Online</span>
           </div>
         </div>
         {isCollapsed ? (
-          <ChevronDown className="w-4 h-4" />
+          <ChevronDown className="w-4 h-4 text-[var(--sketch-fg)]" />
         ) : (
-          <ChevronUp className="w-4 h-4" />
+          <ChevronUp className="w-4 h-4 text-[var(--sketch-fg)]" />
         )}
       </button>
 
@@ -134,24 +134,24 @@ export default function AIGuide() {
           isCollapsed ? "hidden lg:flex" : "flex"
         }`}
       >
-        <div className="p-4 border-b border-border hidden lg:flex items-center justify-between">
+        <div className="p-4 border-b-2 border-[var(--sketch-fg-subtle)] hidden lg:flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-primary/10 border border-primary flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-primary" />
+            <div className="w-7 h-7 bg-[#FBBF24]/10 border-2 border-[#FBBF24] flex items-center justify-center sketch-border-sm">
+              <Sparkles className="w-4 h-4 text-[var(--sketch-fg)]" />
             </div>
             <div>
-              <span className="font-syne font-semibold text-sm">AI Guide</span>
-              <span className="block font-mono text-[10px] text-muted-foreground">
+              <span className="font-body font-semibold text-sm text-[var(--sketch-fg)]">AI Guide</span>
+              <span className="block font-mono text-[10px] text-[var(--sketch-fg-subtle)]">
                 Proactive assistant
               </span>
             </div>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-green-500"></span>
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500"></span>
             </span>
-            <span className="font-mono text-[10px] text-muted-foreground">Online</span>
+            <span className="font-mono text-[10px] text-[var(--sketch-fg-subtle)]">Online</span>
           </div>
         </div>
 
@@ -167,24 +167,26 @@ export default function AIGuide() {
                 }`}
               >
                 <div
-                  className={`w-6 h-6 flex-shrink-0 flex items-center justify-center border ${
+                  className={`w-6 h-6 flex-shrink-0 flex items-center justify-center border-2 ${
                     msg.role === "ai"
-                      ? "bg-primary/10 border-primary"
-                      : "bg-muted border-border"
+                      ? "bg-[#FBBF24]/10 border-[#FBBF24]"
+                      : "bg-[var(--sketch-card-bg)] border-[var(--sketch-fg-subtle)]"
                   }`}
+                  style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
                 >
                   {msg.role === "ai" ? (
-                    <Sparkles className="w-3 h-3 text-primary" />
+                    <Sparkles className="w-3 h-3 text-[var(--sketch-fg)]" />
                   ) : (
-                    <User className="w-3 h-3 text-muted-foreground" />
+                    <User className="w-3 h-3 text-[var(--sketch-fg-subtle)]" />
                   )}
                 </div>
                 <div
-                  className={`max-w-[85%] p-3 text-sm font-dm leading-relaxed ${
+                  className={`max-w-[85%] p-3 text-sm font-body leading-relaxed ${
                     msg.role === "ai"
-                      ? "bg-card border border-border"
-                      : "bg-primary text-primary-foreground"
+                      ? "bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-fg-subtle)] sketch-border-sm"
+                      : "bg-[var(--sketch-fg)] text-[var(--sketch-bg)]"
                   }`}
+                  style={msg.role === "user" ? { borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" } : {}}
                 >
                   {msg.content}
                 </div>
@@ -198,11 +200,15 @@ export default function AIGuide() {
               animate={{ opacity: 1 }}
               className="flex gap-2"
             >
-              <div className="w-6 h-6 flex-shrink-0 bg-primary/10 border border-primary flex items-center justify-center">
-                <Sparkles className="w-3 h-3 text-primary" />
+              <div className="w-6 h-6 flex-shrink-0 flex items-center justify-center border-2 bg-[#FBBF24]/10 border-[#FBBF24]" style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}>
+                <Sparkles className="w-3 h-3 text-[var(--sketch-fg)] animate-pulse" />
               </div>
-              <div className="bg-card border border-border p-3">
-                <Loader2 className="w-4 h-4 animate-spin text-primary" />
+              <div className="p-3 bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-fg-subtle)] sketch-border-sm">
+                <div className="flex gap-1">
+                  <div className="w-2 h-2 bg-[var(--sketch-fg-subtle)] rounded-full animate-bounce" />
+                  <div className="w-2 h-2 bg-[var(--sketch-fg-subtle)] rounded-full animate-bounce" style={{ animationDelay: "0.1s" }} />
+                  <div className="w-2 h-2 bg-[var(--sketch-fg-subtle)] rounded-full animate-bounce" style={{ animationDelay: "0.2s" }} />
+                </div>
               </div>
             </motion.div>
           )}
@@ -212,7 +218,7 @@ export default function AIGuide() {
 
         {messages.length === 1 && (
           <div className="px-4 pb-2">
-            <p className="font-mono text-[10px] text-muted-foreground mb-2 uppercase tracking-wider">
+            <p className="font-mono text-[10px] text-[var(--sketch-fg-subtle)] mb-2 uppercase tracking-wider">
               Quick questions
             </p>
             <div className="flex flex-wrap gap-2">
@@ -222,7 +228,8 @@ export default function AIGuide() {
                   onClick={() => {
                     setInput(q);
                   }}
-                  className="px-2 py-1 text-xs font-dm border border-border hover:border-primary hover:bg-primary/5 transition-colors"
+                  className="px-2 py-1 text-sm font-hand text-[var(--sketch-fg-muted)] border border-dashed border-[var(--sketch-fg-subtle)] hover:border-[var(--sketch-fg-muted)] hover:bg-[#FBBF24]/10 transition-colors"
+                  style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
                 >
                   {q}
                 </button>
@@ -231,7 +238,7 @@ export default function AIGuide() {
           </div>
         )}
 
-        <div className="p-3 border-t border-border">
+        <div className="p-3 border-t-2 border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)]">
           <div className="flex gap-2">
             <input
               type="text"
@@ -241,12 +248,12 @@ export default function AIGuide() {
                 if (e.key === "Enter") handleSend();
               }}
               placeholder="Ask anything..."
-              className="flex-1 px-3 py-2 bg-background border-2 border-border text-sm font-dm focus:outline-none focus:border-primary transition-colors"
+              className="flex-1 px-3 py-2 bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-border-color)] text-sm font-body focus:outline-none focus:border-[#FBBF24] transition-colors sketch-input"
             />
             <button
               onClick={handleSend}
               disabled={!input.trim() || isTyping}
-              className="w-9 h-9 bg-primary text-primary-foreground flex items-center justify-center hover:bg-primary/90 transition-colors disabled:opacity-50"
+              className="w-9 h-9 bg-[var(--sketch-fg)] text-[var(--sketch-bg)] flex items-center justify-center hover:bg-[var(--sketch-fg)]/80 transition-colors disabled:opacity-50 sketch-border-sm"
             >
               <Send className="w-4 h-4" />
             </button>

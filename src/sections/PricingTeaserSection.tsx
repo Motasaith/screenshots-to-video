@@ -45,7 +45,7 @@ export default function PricingTeaserSection() {
   const isInView = useInView(ref, { once: true, margin: "-100px" });
 
   return (
-    <section id="pricing" className="py-24 lg:py-32" ref={ref}>
+    <section id="pricing" className="py-24 lg:py-32 dot-grid" ref={ref}>
       <div className="w-full px-6 lg:px-12">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -53,13 +53,13 @@ export default function PricingTeaserSection() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <span className="font-mono text-xs text-primary uppercase tracking-widest">
+          <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
             Pricing
           </span>
-          <h2 className="font-syne font-bold text-3xl lg:text-5xl mt-3 tracking-tight">
+          <h2 className="font-body font-bold text-3xl lg:text-5xl mt-3 tracking-tight text-[var(--sketch-fg)]">
             Simple, transparent pricing
           </h2>
-          <p className="font-dm text-muted-foreground mt-4 max-w-lg mx-auto">
+          <p className="font-body text-[var(--sketch-fg-muted)] mt-4 max-w-lg mx-auto">
             Start free. Upgrade when you need more power.
           </p>
         </motion.div>
@@ -76,7 +76,7 @@ export default function PricingTeaserSection() {
               }`}
             >
               {plan.popular && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-4 py-1 text-xs font-semibold font-mono border-2 border-border shadow-[2px_2px_0px_0px_hsl(var(--border))]">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#FBBF24] text-[var(--sketch-fg)] px-4 py-1 text-xs font-semibold font-mono border-2 border-[var(--sketch-border-color)] shadow-[2px_2px_0px_0px_var(--sketch-card-bg)] sketch-border-sm">
                   <Zap className="w-3 h-3 inline mr-1" />
                   Most Popular
                 </div>
@@ -84,20 +84,21 @@ export default function PricingTeaserSection() {
               <div
                 className={`h-full p-6 lg:p-8 border-2 ${
                   plan.popular
-                    ? "border-primary bg-primary/5 shadow-[6px_6px_0px_0px_hsl(var(--primary))]"
-                    : "border-border bg-card shadow-[4px_4px_0px_0px_hsl(var(--border))]"
+                    ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/5 shadow-[6px_6px_0px_0px_#FBBF24]"
+                    : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] shadow-[4px_4px_0px_0px_var(--sketch-border-color)]"
                 }`}
+                style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
               >
-                <h3 className="font-syne font-bold text-xl">{plan.name}</h3>
+                <h3 className="font-body font-bold text-xl text-[var(--sketch-fg)]">{plan.name}</h3>
                 <div className="mt-4 flex items-baseline gap-1">
-                  <span className="font-syne font-extrabold text-4xl">
+                  <span className="font-body font-extrabold text-4xl text-[var(--sketch-fg)]">
                     {plan.price}
                   </span>
-                  <span className="font-dm text-sm text-muted-foreground">
+                  <span className="font-body text-sm text-[var(--sketch-fg-subtle)]">
                     {plan.period}
                   </span>
                 </div>
-                <p className="font-dm text-sm text-muted-foreground mt-2">
+                <p className="font-body text-sm text-[var(--sketch-fg-subtle)] mt-2">
                   {plan.description}
                 </p>
 
@@ -105,18 +106,18 @@ export default function PricingTeaserSection() {
                   {plan.features.map((feature, i) => (
                     <li
                       key={i}
-                      className="flex items-start gap-3 font-dm text-sm"
+                      className="flex items-start gap-3 font-body text-sm text-[#1E1B4B]/70"
                     >
-                      <Check className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
-                      <span>{feature}</span>
+                      <Check className="w-4 h-4 text-[#FBBF24] flex-shrink-0 mt-0.5" />
+                      <span className="text-[var(--sketch-fg-muted)]">{feature}</span>
                     </li>
                   ))}
                 </ul>
 
                 <button
                   disabled
-                  className={`mt-8 w-full neo-btn text-center opacity-70 cursor-not-allowed ${
-                    plan.popular ? "neo-btn-primary" : "neo-btn-ghost"
+                  className={`mt-8 w-full sketch-btn text-center opacity-70 cursor-not-allowed ${
+                    plan.popular ? "sketch-btn-primary" : "sketch-btn-ghost"
                   }`}
                 >
                   Coming Soon
