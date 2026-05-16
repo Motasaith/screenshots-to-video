@@ -72,7 +72,7 @@ export default function Wizard() {
   if (authLoading) {
     return (
       <div className="min-h-screen dot-grid flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-[#1E1B4B]" />
+        <Loader2 className="w-8 h-8 animate-spin text-[var(--sketch-fg)]" />
       </div>
     );
   }
@@ -92,9 +92,9 @@ export default function Wizard() {
   return (
     <div className="min-h-screen dot-grid flex flex-col">
       {/* Sketchbook Header */}
-      <header className="border-b-2 border-[#1E1B4B] bg-[#EDE8DD]/90 backdrop-blur-sm relative">
+      <header className="border-b-2 border-[var(--sketch-border-color)] bg-[var(--sketch-navbar-bg)] backdrop-blur-sm relative">
         {/* Hand-drawn accent line */}
-        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FBBF24]/60" />
+        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--sketch-accent)]/60" />
         <div className="w-full px-6 lg:px-12">
           <div className="flex items-center justify-between h-16">
             <button

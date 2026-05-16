@@ -22,6 +22,7 @@ import Videos from "./pages/Videos";
 import Careers from "./pages/Careers";
 import Legal from "./pages/Legal";
 import Admin from "./pages/Admin";
+import BlogPost from "./pages/BlogPost";
 import { trpc } from "./providers/trpc";
 import { useAuth } from "./hooks/useAuth";
 import { Wrench } from "lucide-react";
@@ -62,6 +63,7 @@ export default function App() {
       <Route path="/docs" element={<Docs />} />
       <Route path="/about" element={<About />} />
       <Route path="/blog" element={<Blog />} />
+      <Route path="/blog/:slug" element={<BlogPost />} />
       <Route path="/contact" element={<Contact />} />
       <Route path="/changelog" element={<Changelog />} />
       
