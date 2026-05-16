@@ -1,10 +1,23 @@
 import { motion } from "framer-motion";
 import Navbar from "@/components/Navbar";
 import FooterSection from "@/sections/FooterSection";
+import { SEO, createBreadcrumbSchema } from "@/components/SEO";
 
 export default function Privacy() {
+  const breadcrumbJsonLd = createBreadcrumbSchema([
+    { name: "Home", url: "https://aivideo.ai/" },
+    { name: "Privacy Policy", url: "https://aivideo.ai/privacy" },
+  ]);
+
   return (
     <div className="min-h-screen bg-background">
+      <SEO
+        title="Privacy Policy"
+        description="AIVideo's Privacy Policy — learn how we collect, use, and protect your data."
+        canonical="https://aivideo.ai/privacy"
+        noindex
+        jsonLd={breadcrumbJsonLd}
+      />
       <Navbar />
       <main className="max-w-4xl mx-auto pt-32 pb-20 px-6">
         <motion.div

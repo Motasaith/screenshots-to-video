@@ -8,10 +8,18 @@ import TestimonialsSection from "@/sections/TestimonialsSection";
 import PricingTeaserSection from "@/sections/PricingTeaserSection";
 import CTASection from "@/sections/CTASection";
 import FooterSection from "@/sections/FooterSection";
+import { SEO, organizationSchema, softwareApplicationSchema } from "@/components/SEO";
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen dot-grid">
+      <SEO
+        title="AIVideo — Turn Screenshots into Cinematic Video Tutorials"
+        description="AIVideo automatically transforms your screenshots and descriptions into a professional, narrated video tutorial with cinematic zoom animations."
+        keywords="AI video, tutorial maker, screen recording alternative, auto video generator, documentation, SaaS"
+        canonical="https://aivideo.ai/"
+        jsonLd={[organizationSchema, softwareApplicationSchema]}
+      />
       <Navbar />
       <main>
         <HeroSection />

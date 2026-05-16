@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /videos
+Disallow: /settings
+Disallow: /create/
+Disallow: /admin
+Disallow: /login
+
+Sitemap: https://aivideo.ai/sitemap.xml

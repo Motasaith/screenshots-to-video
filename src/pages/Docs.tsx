@@ -2,10 +2,22 @@ import { motion } from "framer-motion";
 import { Book, Terminal, Settings2 } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import FooterSection from "@/sections/FooterSection";
+import { SEO, createBreadcrumbSchema } from "@/components/SEO";
 
 export default function Docs() {
+  const breadcrumbJsonLd = createBreadcrumbSchema([
+    { name: "Home", url: "https://aivideo.ai/" },
+    { name: "Documentation", url: "https://aivideo.ai/docs" },
+  ]);
+
   return (
     <div className="min-h-screen dot-grid">
+      <SEO
+        title="Documentation"
+        description="Learn how to create cinematic, AI-narrated tutorials from your screenshots with AIVideo's documentation."
+        canonical="https://aivideo.ai/docs"
+        jsonLd={breadcrumbJsonLd}
+      />
       <Navbar />
       
       <main className="max-w-4xl mx-auto pt-32 pb-20 px-6">

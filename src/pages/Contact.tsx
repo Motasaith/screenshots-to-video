@@ -5,10 +5,22 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { SEO, createBreadcrumbSchema } from "@/components/SEO";
 
 export default function Contact() {
+  const breadcrumbJsonLd = createBreadcrumbSchema([
+    { name: "Home", url: "https://aivideo.ai/" },
+    { name: "Contact", url: "https://aivideo.ai/contact" },
+  ]);
+
   return (
     <div className="min-h-screen dot-grid">
+      <SEO
+        title="Contact Us"
+        description="Get in touch with the AIVideo team. Questions, feedback, or enterprise inquiries — we'd love to hear from you."
+        canonical="https://aivideo.ai/contact"
+        jsonLd={breadcrumbJsonLd}
+      />
       <Navbar />
       <main className="max-w-4xl mx-auto pt-32 pb-20 px-6">
         <div className="grid gap-16 md:grid-cols-2">

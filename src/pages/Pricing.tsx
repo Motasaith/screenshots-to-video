@@ -4,6 +4,7 @@ import { Check, Zap, ArrowLeft } from "lucide-react";
 import { Link } from "react-router";
 import Navbar from "@/components/Navbar";
 import FooterSection from "@/sections/FooterSection";
+import { SEO, createBreadcrumbSchema } from "@/components/SEO";
 
 const plans = [
   {
@@ -71,8 +72,19 @@ export default function Pricing() {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
 
+  const breadcrumbJsonLd = createBreadcrumbSchema([
+    { name: "Home", url: "https://aivideo.ai/" },
+    { name: "Pricing", url: "https://aivideo.ai/pricing" },
+  ]);
+
   return (
     <div className="min-h-screen bg-background">
+      <SEO
+        title="Pricing"
+        description="Simple, transparent pricing for AIVideo. Start free and upgrade when you need more power. No hidden fees."
+        canonical="https://aivideo.ai/pricing"
+        jsonLd={breadcrumbJsonLd}
+      />
       <Navbar />
       <main className="pt-28 pb-20" ref={ref}>
         <div className="w-full px-6 lg:px-12">

@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import Navbar from "@/components/Navbar";
 import FooterSection from "@/sections/FooterSection";
+import { SEO, createBreadcrumbSchema } from "@/components/SEO";
 
 const POSTS = [
   {
@@ -27,8 +28,19 @@ const POSTS = [
 ];
 
 export default function Blog() {
+  const breadcrumbJsonLd = createBreadcrumbSchema([
+    { name: "Home", url: "https://aivideo.ai/" },
+    { name: "Blog", url: "https://aivideo.ai/blog" },
+  ]);
+
   return (
     <div className="min-h-screen dot-grid">
+      <SEO
+        title="Blog"
+        description="Insights on AI video generation, technical communication, and the art of the cinematic tutorial."
+        canonical="https://aivideo.ai/blog"
+        jsonLd={breadcrumbJsonLd}
+      />
       <Navbar />
       <main className="max-w-6xl mx-auto pt-32 pb-20 px-6">
         <motion.div
