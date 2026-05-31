@@ -127,9 +127,14 @@ export default function Videos() {
                     <h3 className="font-body font-bold text-xl leading-tight line-clamp-2 mb-2 text-[var(--sketch-fg)]">
                       {project.title}
                     </h3>
-                    <p className="font-body text-sm text-[var(--sketch-fg-muted)] capitalize mb-6 mt-auto">
+                    <p className="font-body text-sm text-[var(--sketch-fg-muted)] capitalize mb-2 mt-auto">
                       {project.platform} format
                     </p>
+                    {project.expiresAt && (
+                      <span className="font-mono text-[10px] px-1.5 py-0.5 bg-amber-500/10 text-amber-600 sketch-border-sm inline-block mb-3">
+                        Expires in {Math.max(0, Math.ceil((new Date(project.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))}d
+                      </span>
+                    )}
                     <div className="flex items-center gap-2">
                       <Button 
                         size="sm" 

@@ -9,6 +9,8 @@ import * as cookie from "cookie";
 import { Session } from "@contracts/constants";
 import { getSessionCookieOptions } from "./lib/cookies";
 
+import { cleanupExpiredProjects, findExpiredProjects, findPendingExpiryProjects } from "./lib/cleanup";
+
 export const adminRouter = createRouter({
   getStats: adminQuery.query(async () => {
     const db = getDb();
@@ -92,6 +94,17 @@ export const adminRouter = createRouter({
         .where(eq(renderJobs.id, input.jobId));
       return { success: true };
     }),
+
+  runCleanup: adminQuery.mutation(async () => {
+    const cleaned = await cleanupExpiredProjects();
+    return { cleaned };
+  }),
+
+  getExpiredProjects: adminQuery.query(async () => {
+    const expired = await findExpiredProjects();
+    const pending = await findPendingExpiryProjects();
+    return { expired, pending };
+  }),
 
   listUsers: adminQuery
     .input(z.object({ limit: z.number().default(50), offset: z.number().default(0) }).optional())

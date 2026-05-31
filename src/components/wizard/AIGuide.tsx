@@ -9,7 +9,6 @@ import {
   ChevronUp,
   Bot,
   User,
-  Loader2,
 } from "lucide-react";
 
 interface Message {

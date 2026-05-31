@@ -121,6 +121,20 @@ export default function Dashboard() {
       </header>
 
       <main className="w-full px-6 lg:px-12 py-8">
+        {user?.plan === "free" && (
+          <div className="mb-6 p-4 bg-amber-500/5 border-2 border-amber-500 sketch-border-sm">
+            <p className="font-body text-sm text-amber-700">
+              🎓 You're on the Free plan (5 videos/month, 720p, 7-day expiry).
+              <button
+                onClick={() => navigate("/pricing")}
+                className="underline ml-1 font-semibold"
+              >
+                Upgrade to Pro
+              </button>
+            </p>
+          </div>
+        )}
+
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
           <div>
             <h1 className="font-body font-bold text-3xl tracking-tight text-[var(--sketch-fg)]">

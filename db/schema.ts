@@ -19,6 +19,8 @@ export const users = mysqlTable("users", {
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
   plan: mysqlEnum("plan", ["free", "pro", "team"]).default("free").notNull(),
   credits: int("credits").default(5).notNull(),
+  videosCreatedThisMonth: int("videosCreatedThisMonth").default(0).notNull(),
+  monthlyResetAt: timestamp("monthlyResetAt").defaultNow().notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt")
     .defaultNow()
@@ -49,6 +51,8 @@ export const projects = mysqlTable("projects", {
   musicEnabled: int("musicEnabled").default(0),
   musicTrack: varchar("musicTrack", { length: 100 }),
   finalVideoPath: text("finalVideoPath"),
+  completedAt: timestamp("completedAt"),
+  expiresAt: timestamp("expiresAt"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt")
     .defaultNow()

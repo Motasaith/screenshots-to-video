@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createRouter, authedQuery } from "./middleware";
+import { createRouter, authedQuery, rateLimitByUser } from "./middleware";
 import { getDb } from "./queries/connection";
 import { projects, steps } from "@db/schema";
 import { eq, and } from "drizzle-orm";
@@ -63,6 +63,7 @@ const PLATFORM_FALLBACK_SCRIPTS: Record<string, string[]> = {
 
 export const aiRouter = createRouter({
   validateSetup: authedQuery
+    .use(rateLimitByUser(60_000, 30))
     .input(
       z.object({
         title: z.string(),
@@ -110,6 +111,7 @@ export const aiRouter = createRouter({
     }),
 
   analyzeScreenshot: authedQuery
+    .use(rateLimitByUser(60_000, 20))
     .input(z.object({ stepId: z.number() }))
     .query(() => {
       // Vision model analysis is a V2 feature — return basic response
@@ -122,6 +124,7 @@ export const aiRouter = createRouter({
     }),
 
   generateScript: authedQuery
+    .use(rateLimitByUser(300_000, 3))
     .input(z.object({ projectId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const [project] = await getDb()
@@ -130,7 +133,7 @@ export const aiRouter = createRouter({
         .where(
           and(
             eq(projects.id, input.projectId),
-            eq(projects.userId, ctx.user.id)
+            eq(projects.userId, ctx.user!.id)
           )
         )
         .limit(1);
@@ -201,6 +204,7 @@ export const aiRouter = createRouter({
     }),
 
   suggestZooms: authedQuery
+    .use(rateLimitByUser(300_000, 5))
     .input(z.object({ projectId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const [project] = await getDb()
@@ -209,7 +213,7 @@ export const aiRouter = createRouter({
         .where(
           and(
             eq(projects.id, input.projectId),
-            eq(projects.userId, ctx.user.id)
+            eq(projects.userId, ctx.user!.id)
           )
         )
         .limit(1);
@@ -257,6 +261,7 @@ export const aiRouter = createRouter({
     }),
 
   guide: authedQuery
+    .use(rateLimitByUser(60_000, 20))
     .input(
       z.object({
         currentStep: z.string(),
@@ -318,6 +323,7 @@ export const aiRouter = createRouter({
     }),
 
   chat: authedQuery
+    .use(rateLimitByUser(60_000, 10))
     .input(
       z.object({
         history: z.array(z.object({ role: z.enum(["user", "ai"]), content: z.string() })),
@@ -343,6 +349,7 @@ export const aiRouter = createRouter({
     }),
 
   previewVoice: authedQuery
+    .use(rateLimitByUser(60_000, 5))
     .input(z.object({ voice: z.string(), speed: z.number().default(1.0) }))
     .mutation(async ({ input }) => {
       try {

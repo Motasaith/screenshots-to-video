@@ -10,6 +10,7 @@ import { Paths } from "@contracts/constants";
 import { authenticateRequest } from "./kimi/auth";
 import { uploadToR2, getSignedDownloadUrl, isR2Configured } from "./lib/r2";
 import { startRenderWorker } from "./lib/worker";
+import { checkRateLimit, getClientIP } from "./lib/ratelimit";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
 
@@ -20,12 +21,35 @@ app.get(Paths.oauthCallback, createOAuthCallbackHandler());
 // Accepts multipart form data with a single file field "file"
 // Returns the R2 storage key and a signed URL for display
 app.post("/api/upload", async (c) => {
+  // Rate limit by IP
+  const ip = getClientIP(c.req.raw.headers);
+  const ipLimit = checkRateLimit(`ip:${ip}:upload`, 60_000, 10);
+  if (!ipLimit.allowed) {
+    return c.json(
+      {
+        error: `Rate limit exceeded. Retry after ${Math.ceil((ipLimit.resetAt - Date.now()) / 1000)}s.`,
+      },
+      429
+    );
+  }
+
   // Authenticate the request
   let user;
   try {
     user = await authenticateRequest(c.req.raw.headers);
   } catch {
     return c.json({ error: "Unauthorized" }, 401);
+  }
+
+  // Rate limit by user
+  const userLimit = checkRateLimit(`user:${user.id}:upload`, 60_000, 10);
+  if (!userLimit.allowed) {
+    return c.json(
+      {
+        error: `Rate limit exceeded. Retry after ${Math.ceil((userLimit.resetAt - Date.now()) / 1000)}s.`,
+      },
+      429
+    );
   }
 
   if (!isR2Configured()) {

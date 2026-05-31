@@ -8,7 +8,7 @@ interface SEOProps {
   ogImage?: string;
   ogType?: "website" | "article" | "product";
   noindex?: boolean;
-  jsonLd?: Record<string, unknown>;
+  jsonLd?: any;
 }
 
 export function SEO({

@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
+import { useAuth } from "@/hooks/useAuth";
 import { motion } from "framer-motion";
 import {
   Download,
@@ -25,6 +26,7 @@ export default function StepExport() {
   const [regeneratingStep, setRegeneratingStep] = useState<number | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const { user } = useAuth();
 
   const { data: project, isLoading } = trpc.project.getById.useQuery(
     { id: projectIdNum },
@@ -87,6 +89,13 @@ export default function StepExport() {
 
   const videoUrl = renderStatus?.finalVideoUrl;
   const hasVideo = !!videoUrl;
+
+  // Calculate expiry info
+  const isFreeUser = user?.plan === "free";
+  const expiresAt = project?.expiresAt ? new Date(project.expiresAt) : null;
+  const daysLeft = expiresAt
+    ? Math.max(0, Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : null;
 
   if (isLoading) {
     return (
@@ -171,6 +180,15 @@ export default function StepExport() {
               </div>
             )}
           </div>
+
+          {isFreeUser && daysLeft !== null && (
+            <div className="mt-4 p-3 bg-amber-500/10 border-2 border-amber-500 sketch-border-sm">
+              <p className="font-body text-sm text-amber-700">
+                ⏳ Free tier: This video expires in {daysLeft} day{daysLeft !== 1 ? "s" : ""}.
+                Download now to keep it.
+              </p>
+            </div>
+          )}
 
           {/* Action buttons */}
           <div className="flex flex-wrap gap-3">

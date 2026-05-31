@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createRouter, authedQuery } from "./middleware";
+import { createRouter, authedQuery, rateLimitByUser } from "./middleware";
 import { getDb } from "./queries/connection";
 import { projects, steps, renderJobs } from "@db/schema";
 import { eq, and, desc } from "drizzle-orm";
@@ -7,6 +7,7 @@ import { getSignedDownloadUrl, isR2Configured } from "./lib/r2";
 
 export const renderRouter = createRouter({
   status: authedQuery
+    .use(rateLimitByUser(60_000, 60))
     .input(z.object({ projectId: z.number() }))
     .query(async ({ ctx, input }) => {
       const [project] = await getDb()
@@ -15,7 +16,7 @@ export const renderRouter = createRouter({
         .where(
           and(
             eq(projects.id, input.projectId),
-            eq(projects.userId, ctx.user.id)
+            eq(projects.userId, ctx.user!.id)
           )
         )
         .limit(1);
@@ -61,6 +62,7 @@ export const renderRouter = createRouter({
     }),
 
   start: authedQuery
+    .use(rateLimitByUser(600_000, 2))
     .input(z.object({ projectId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const [project] = await getDb()
@@ -69,7 +71,7 @@ export const renderRouter = createRouter({
         .where(
           and(
             eq(projects.id, input.projectId),
-            eq(projects.userId, ctx.user.id)
+            eq(projects.userId, ctx.user!.id)
           )
         )
         .limit(1);
@@ -126,6 +128,7 @@ export const renderRouter = createRouter({
    * Get a signed download URL for the final video.
    */
   getDownloadUrl: authedQuery
+    .use(rateLimitByUser(60_000, 30))
     .input(z.object({ projectId: z.number() }))
     .query(async ({ ctx, input }) => {
       const [project] = await getDb()
@@ -134,7 +137,7 @@ export const renderRouter = createRouter({
         .where(
           and(
             eq(projects.id, input.projectId),
-            eq(projects.userId, ctx.user.id)
+            eq(projects.userId, ctx.user!.id)
           )
         )
         .limit(1);
@@ -151,6 +154,7 @@ export const renderRouter = createRouter({
     }),
 
   regenerateStep: authedQuery
+    .use(rateLimitByUser(600_000, 3))
     .input(z.object({ stepId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const [step] = await getDb()
@@ -165,7 +169,7 @@ export const renderRouter = createRouter({
         .select()
         .from(projects)
         .where(
-          and(eq(projects.id, step.projectId), eq(projects.userId, ctx.user.id))
+          and(eq(projects.id, step.projectId), eq(projects.userId, ctx.user!.id))
         )
         .limit(1);
 

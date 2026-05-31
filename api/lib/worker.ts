@@ -1,15 +1,17 @@
 import { getDb } from "../queries/connection";
-import { projects, steps, renderJobs } from "@db/schema";
+import { projects, steps, renderJobs, users } from "@db/schema";
 import { eq, and, desc } from "drizzle-orm";
 import { uploadToR2, downloadFromR2 } from "./r2";
 import { generateTTSAudio, speedToRate, probeAudioDuration } from "./tts";
 import { renderStepVideo, concatenateSegments, resolutionToSize, cleanupTempFiles } from "./ffmpeg";
+import { cleanupExpiredProjects } from "./cleanup";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
 
 const POLL_INTERVAL_MS = 5000;
 let isRunning = false;
+let pollCount = 0;
 
 let lastErrorMsg = "";
 
@@ -27,6 +29,15 @@ export function startRenderWorker(): void {
     if (!isRunning) return;
 
     try {
+      // Run cleanup every 10th poll (~50 seconds)
+      pollCount++;
+      if (pollCount % 10 === 0) {
+        const cleaned = await cleanupExpiredProjects();
+        if (cleaned > 0) {
+          console.log(`[Worker] Cleaned up ${cleaned} expired projects`);
+        }
+      }
+
       await processNextJob();
       lastErrorMsg = ""; // Clear error on success
     } catch (err: any) {
@@ -280,11 +291,35 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
     });
 
     // ── DONE ──
+    // Set completion time and expiry for free users
+    const completedAt = new Date();
+    let expiresAt: Date | null = null;
+
+    const [projectRow] = await getDb()
+      .select()
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .limit(1);
+
+    if (projectRow && projectRow.userId) {
+      const [userRow] = await getDb()
+        .select({ plan: users.plan })
+        .from(users)
+        .where(eq(users.id, projectRow.userId))
+        .limit(1);
+
+      if (userRow?.plan === "free") {
+        expiresAt = new Date(completedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
+      }
+    }
+
     await getDb()
       .update(projects)
       .set({
         status: "complete",
         finalVideoPath: finalKey,
+        completedAt,
+        expiresAt,
       })
       .where(eq(projects.id, projectId));
 

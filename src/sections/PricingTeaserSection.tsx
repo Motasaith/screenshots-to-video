@@ -1,7 +1,6 @@
 import { useRef } from "react";
 import { motion, useInView } from "framer-motion";
 import { Check, Zap } from "lucide-react";
-import { Link } from "react-router";
 
 const plans = [
   {

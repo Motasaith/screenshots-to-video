@@ -1,11 +1,12 @@
 import { z } from "zod";
-import { createRouter, authedQuery } from "./middleware";
+import { createRouter, authedQuery, rateLimitByUser } from "./middleware";
 import { getDb } from "./queries/connection";
 import { steps, projects } from "@db/schema";
 import { eq, and } from "drizzle-orm";
 
 export const stepRouter = createRouter({
   create: authedQuery
+    .use(rateLimitByUser(60_000, 20))
     .input(
       z.object({
         projectId: z.number(),
@@ -21,7 +22,7 @@ export const stepRouter = createRouter({
         .where(
           and(
             eq(projects.id, input.projectId),
-            eq(projects.userId, ctx.user.id)
+            eq(projects.userId, ctx.user!.id)
           )
         )
         .limit(1);
@@ -49,6 +50,7 @@ export const stepRouter = createRouter({
     }),
 
   listByProject: authedQuery
+    .use(rateLimitByUser(60_000, 60))
     .input(z.object({ projectId: z.number() }))
     .query(async ({ ctx, input }) => {
       const [project] = await getDb()
@@ -57,7 +59,7 @@ export const stepRouter = createRouter({
         .where(
           and(
             eq(projects.id, input.projectId),
-            eq(projects.userId, ctx.user.id)
+            eq(projects.userId, ctx.user!.id)
           )
         )
         .limit(1);
@@ -72,6 +74,7 @@ export const stepRouter = createRouter({
     }),
 
   update: authedQuery
+    .use(rateLimitByUser(60_000, 30))
     .input(
       z.object({
         id: z.number(),
@@ -106,7 +109,7 @@ export const stepRouter = createRouter({
         .select()
         .from(projects)
         .where(
-          and(eq(projects.id, step.projectId), eq(projects.userId, ctx.user.id))
+          and(eq(projects.id, step.projectId), eq(projects.userId, ctx.user!.id))
         )
         .limit(1);
 
@@ -127,6 +130,7 @@ export const stepRouter = createRouter({
     }),
 
   delete: authedQuery
+    .use(rateLimitByUser(60_000, 20))
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const [step] = await getDb()
@@ -141,7 +145,7 @@ export const stepRouter = createRouter({
         .select()
         .from(projects)
         .where(
-          and(eq(projects.id, step.projectId), eq(projects.userId, ctx.user.id))
+          and(eq(projects.id, step.projectId), eq(projects.userId, ctx.user!.id))
         )
         .limit(1);
 

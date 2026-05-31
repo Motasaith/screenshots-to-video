@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import Navbar from "@/components/Navbar";
 import FooterSection from "@/sections/FooterSection";
-import { MessageSquare, Users, Award, Github } from "lucide-react";
+import { MessageSquare, Github } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function Community() {

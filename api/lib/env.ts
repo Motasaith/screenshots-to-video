@@ -28,7 +28,7 @@ export const env = {
   // ── LLM (OpenAI-compatible) ──
   llmBaseUrl: optional("LLM_BASE_URL"), // e.g. http://localhost:11434/v1 or https://api.openai.com/v1
   llmApiKey: optional("LLM_API_KEY"),
-  llmModel: optional("LLM_MODEL", "gpt-3.5-turbo"), // or llama3, minimax-m2, etc.
+  llmModel: optional("LLM_MODEL", "gemma4:31b-cloud"), // or llama3, minimax-m2, etc.
 
   // ── Kimi ──
   kimiOpenUrl: optional("KIMI_OPEN_URL", "https://api.kimi.ai"),

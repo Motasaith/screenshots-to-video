@@ -129,13 +129,12 @@ export default function BlogPost() {
   );
 
   const postUrl = `https://aivideo.ai/blog/${post.slug}`;
-  const relatedPosts = getRelatedPosts(post.slug);
+  const relatedPosts = getRelatedPosts(post);
 
   // Convert markdown-like content to HTML
   const renderContent = (content: string) => {
     const lines = content.trim().split("\n");
-    const elements: JSX.Element[] = [];
-    let inList = false;
+    const elements: React.ReactElement[] = [];
     let listItems: string[] = [];
     let key = 0;
 
@@ -149,7 +148,6 @@ export default function BlogPost() {
           </ul>
         );
         listItems = [];
-        inList = false;
       }
     };
 
@@ -181,7 +179,6 @@ export default function BlogPost() {
         flushList();
         // Skip code block markers for now
       } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
-        inList = true;
         listItems.push(trimmed.replace(/^[-*] /, "").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>"));
       } else if (trimmed.startsWith("| ") && trimmed.endsWith(" |")) {
         flushList();

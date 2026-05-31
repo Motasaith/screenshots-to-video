@@ -2,6 +2,7 @@ import { ErrorMessages } from "@contracts/constants";
 import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
+import { checkRateLimit, getClientIP } from "./lib/ratelimit";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
@@ -47,6 +48,62 @@ function requireRole(role: string) {
     }
 
     return next({ ctx: { ...ctx, user: ctx.user } });
+  });
+}
+
+/** Rate limit by IP address (for public/unauthenticated routes) */
+export function rateLimitByIP(windowMs: number, maxRequests: number) {
+  return t.middleware(async (opts) => {
+    const ip = getClientIP(opts.ctx.req.headers);
+    const result = checkRateLimit(`ip:${ip}:${opts.path}`, windowMs, maxRequests);
+
+    if (!result.allowed) {
+      throw new TRPCError({
+        code: "TOO_MANY_REQUESTS",
+        message: `Rate limit exceeded. Retry after ${Math.ceil((result.resetAt - Date.now()) / 1000)}s.`,
+      });
+    }
+
+    return opts.next({
+      ctx: {
+        ...opts.ctx,
+        rateLimit: result,
+      },
+    });
+  });
+}
+
+/** Rate limit by user ID (for authenticated routes) */
+export function rateLimitByUser(windowMs: number, maxRequests: number) {
+  return t.middleware(async (opts) => {
+    const userId = opts.ctx.user?.id;
+    let result: import("./lib/ratelimit").RateLimitResult;
+
+    if (!userId) {
+      // Fall back to IP if no user
+      const ip = getClientIP(opts.ctx.req.headers);
+      result = checkRateLimit(`ip:${ip}:${opts.path}`, windowMs, maxRequests);
+    } else {
+      result = checkRateLimit(
+        `user:${userId}:${opts.path}`,
+        windowMs,
+        maxRequests
+      );
+    }
+
+    if (!result.allowed) {
+      throw new TRPCError({
+        code: "TOO_MANY_REQUESTS",
+        message: `Rate limit exceeded. Retry after ${Math.ceil((result.resetAt - Date.now()) / 1000)}s.`,
+      });
+    }
+
+    return opts.next({
+      ctx: {
+        ...opts.ctx,
+        rateLimit: result,
+      },
+    });
   });
 }
 
