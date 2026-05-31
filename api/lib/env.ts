@@ -32,4 +32,7 @@ export const env = {
 
   // ── Kimi ──
   kimiOpenUrl: optional("KIMI_OPEN_URL", "https://api.kimi.ai"),
+
+  // ── Pexels (Stock Media) ──
+  pexelsApiKey: optional("PEXELS_API_KEY"),
 };

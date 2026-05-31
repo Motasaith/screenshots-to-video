@@ -5,6 +5,7 @@ import { stepRouter } from "./stepRouter";
 import { aiRouter } from "./aiRouter";
 import { renderRouter } from "./renderRouter";
 import { adminRouter } from "./adminRouter";
+import { studioRouter } from "./studioRouter";
 
 export const appRouter = createRouter({
   ping: publicQuery.query(() => ({ ok: true, ts: Date.now() })),
@@ -15,6 +16,7 @@ export const appRouter = createRouter({
   ai: aiRouter,
   render: renderRouter,
   admin: adminRouter,
+  studio: studioRouter,
 });
 
 export type AppRouter = typeof appRouter;

@@ -112,3 +112,90 @@ export const renderJobs = mysqlTable("render_jobs", {
 
 export type RenderJob = typeof renderJobs.$inferSelect;
 export type InsertRenderJob = typeof renderJobs.$inferInsert;
+
+// ── AI Video Studio Tables (completely separate from screenshot wizard) ──
+
+export const studioProjects = mysqlTable("studio_projects", {
+  id: serial("id").primaryKey(),
+  userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+  title: varchar("title", { length: 255 }).notNull(),
+  topic: text("topic").notNull(),
+  style: mysqlEnum("style", ["educational", "entertaining", "promotional", "documentary"])
+    .default("educational")
+    .notNull(),
+  targetDuration: int("targetDuration").default(120).notNull(), // seconds
+  audience: varchar("audience", { length: 255 }).default("general"),
+  tone: mysqlEnum("tone", ["professional", "casual", "energetic", "calm"])
+    .default("professional")
+    .notNull(),
+  platform: mysqlEnum("platform", ["youtube", "tiktok", "linkedin", "instagram"])
+    .default("youtube")
+    .notNull(),
+  resolution: mysqlEnum("resolution", ["720p", "1080p", "4k"])
+    .default("1080p")
+    .notNull(),
+  voice: varchar("voice", { length: 100 }).default("en-US-AriaNeural"),
+  speed: float("speed").default(1.0),
+  status: mysqlEnum("status", ["draft", "scripted", "media_ready", "processing", "complete", "error"])
+    .default("draft")
+    .notNull(),
+  scriptJson: text("scriptJson"), // Full generated script JSON
+  finalVideoPath: text("finalVideoPath"),
+  completedAt: timestamp("completedAt"),
+  expiresAt: timestamp("expiresAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
+export type StudioProject = typeof studioProjects.$inferSelect;
+export type InsertStudioProject = typeof studioProjects.$inferInsert;
+
+export const studioScenes = mysqlTable("studio_scenes", {
+  id: serial("id").primaryKey(),
+  projectId: bigint("projectId", { mode: "number", unsigned: true }).notNull(),
+  order: int("order").notNull(),
+  narration: text("narration").notNull(), // TTS text
+  sceneDescription: text("sceneDescription"), // Visual description
+  mediaType: mysqlEnum("mediaType", ["image", "video"]).default("image").notNull(),
+  mediaUrl: text("mediaUrl"), // Pexels URL
+  mediaLocalPath: text("mediaLocalPath"), // Downloaded local path
+  searchQuery: varchar("searchQuery", { length: 255 }), // What was searched on Pexels
+  photographerName: varchar("photographerName", { length: 255 }), // Pexels attribution
+  audioPath: text("audioPath"),
+  audioDuration: float("audioDuration"),
+  videoSegmentPath: text("videoSegmentPath"),
+  status: mysqlEnum("status", ["pending", "generating", "done", "error"])
+    .default("pending")
+    .notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
+export type StudioScene = typeof studioScenes.$inferSelect;
+export type InsertStudioScene = typeof studioScenes.$inferInsert;
+
+export const studioRenderJobs = mysqlTable("studio_render_jobs", {
+  id: serial("id").primaryKey(),
+  projectId: bigint("projectId", { mode: "number", unsigned: true }).notNull(),
+  status: mysqlEnum("status", ["queued", "processing", "complete", "error"])
+    .default("queued")
+    .notNull(),
+  currentStep: int("currentStep").default(0),
+  totalSteps: int("totalSteps").default(0),
+  stage: varchar("stage", { length: 50 }),
+  message: text("message"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
+export type StudioRenderJob = typeof studioRenderJobs.$inferSelect;
+export type InsertStudioRenderJob = typeof studioRenderJobs.$inferInsert;

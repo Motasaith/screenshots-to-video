@@ -12,12 +12,20 @@ export default function Videos() {
   const navigate = useNavigate();
   const [selectedVideo, setSelectedVideo] = useState<{title: string, url: string} | null>(null);
 
-  // Fetch only completed projects
-  const { data: projects, isLoading } = trpc.project.list.useQuery(undefined, {
+  // Fetch only completed projects (both standard and studio)
+  const { data: standardProjects, isLoading: standardLoading } = trpc.project.list.useQuery(undefined, {
+    enabled: !!user,
+  });
+  const { data: studioProjects, isLoading: studioLoading } = trpc.studio.list.useQuery(undefined, {
     enabled: !!user,
   });
 
-  const completedProjects = projects?.filter((p) => p.status === "complete") || [];
+  const completedProjects = [
+    ...(standardProjects?.filter((p) => p.status === "complete").map((p) => ({ ...p, type: "tutorial" as const })) || []),
+    ...(studioProjects?.filter((p) => p.status === "complete").map((p) => ({ ...p, type: "studio" as const })) || []),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const isLoading = standardLoading || studioLoading;
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -98,7 +106,7 @@ export default function Videos() {
             <AnimatePresence>
               {completedProjects.map((project) => (
                 <motion.div
-                  key={project.id}
+                  key={`${project.type}-${project.id}`}
                   layout
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -141,7 +149,11 @@ export default function Videos() {
                         className="flex-1 font-body font-bold sketch-btn-primary"
                         onClick={(e) => {
                           e.stopPropagation();
-                          navigate(`/create/${project.id}/export`);
+                          if (project.type === "studio") {
+                            navigate(`/studio/${project.id}/export`);
+                          } else {
+                            navigate(`/create/${project.id}/export`);
+                          }
                         }}
                       >
                         <Download className="w-4 h-4 mr-2" />

@@ -23,6 +23,7 @@ import Careers from "./pages/Careers";
 import Legal from "./pages/Legal";
 import Admin from "./pages/Admin";
 import BlogPost from "./pages/BlogPost";
+import StudioWizard from "./pages/StudioWizard";
 import { trpc } from "./providers/trpc";
 import { useAuth } from "./hooks/useAuth";
 import { Wrench } from "lucide-react";
@@ -85,6 +86,8 @@ export default function App() {
       <Route path="/pricing" element={<Pricing />} />
       <Route path="/settings" element={<Settings />} />
       <Route path="/create/:projectId/:step" element={<Wizard />} />
+      <Route path="/studio/new" element={<StudioWizard />} />
+      <Route path="/studio/:projectId/:step" element={<StudioWizard />} />
       <Route path="/admin" element={<Admin />} />
       <Route path="*" element={<NotFound />} />
     </Routes>

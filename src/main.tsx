@@ -8,6 +8,7 @@ import App from './App.tsx'
 
 import { ThemeProvider } from "@/components/ThemeProvider"
 import { ScrollToTop } from "@/components/ScrollToTop"
+import { Toaster } from "@/components/ui/sonner"
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
@@ -17,6 +18,7 @@ createRoot(document.getElementById('root')!).render(
         <TRPCProvider>
           <ThemeProvider>
             <App />
+            <Toaster />
           </ThemeProvider>
         </TRPCProvider>
       </BrowserRouter>

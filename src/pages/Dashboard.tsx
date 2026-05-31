@@ -14,6 +14,9 @@ import {
   Settings,
   Sparkles,
   LogOut,
+  Wand2,
+  Camera,
+  MonitorPlay,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -27,17 +30,34 @@ import {
 export default function Dashboard() {
   const { user, logout, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [deleteProjectInfo, setDeleteProjectInfo] = useState<{ id: number; type: "tutorial" | "studio" } | null>(null);
+  const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
 
-  const { data: projects, isLoading } = trpc.project.list.useQuery(undefined, {
+  const { data: standardProjects, isLoading: standardLoading } = trpc.project.list.useQuery(undefined, {
+    enabled: !!user,
+  });
+  const { data: studioProjects, isLoading: studioLoading } = trpc.studio.list.useQuery(undefined, {
     enabled: !!user,
   });
 
+  const projects = [
+    ...(standardProjects?.map((p) => ({ ...p, type: "tutorial" as const })) || []),
+    ...(studioProjects?.map((p) => ({ ...p, type: "studio" as const })) || []),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const isLoading = standardLoading || studioLoading;
+
   const utils = trpc.useUtils();
-  const deleteMutation = trpc.project.delete.useMutation({
+  const deleteProjectMutation = trpc.project.delete.useMutation({
     onSuccess: () => {
       utils.project.list.invalidate();
-      setDeleteId(null);
+      setDeleteProjectInfo(null);
+    },
+  });
+  const deleteStudioMutation = trpc.studio.delete.useMutation({
+    onSuccess: () => {
+      utils.studio.list.invalidate();
+      setDeleteProjectInfo(null);
     },
   });
 
@@ -145,7 +165,7 @@ export default function Dashboard() {
             </p>
           </div>
           <Button
-            onClick={() => navigate("/create/0/setup")}
+            onClick={() => setShowNewProjectDialog(true)}
             className="sketch-btn-primary"
           >
             <Plus className="w-4 h-4" />
@@ -186,17 +206,30 @@ export default function Dashboard() {
             <AnimatePresence>
               {projects.map((project) => (
                 <motion.div
-                  key={project.id}
+                  key={`${project.type}-${project.id}`}
                   layout
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, scale: 0.95 }}
                   className="sketch-card-hover p-5 cursor-pointer group bg-[var(--sketch-card-bg)]"
                   onClick={() => {
-                    if (project.status === "draft") {
-                      navigate(`/create/${project.id}/setup`);
+                    if (project.type === "studio") {
+                      const stepMap: Record<string, string> = {
+                        draft: "describe",
+                        scripted: "script",
+                        media_ready: "media",
+                        processing: "render",
+                        complete: "export",
+                        error: "render",
+                      };
+                      const step = stepMap[project.status] || "describe";
+                      navigate(`/studio/${project.id}/${step}`);
                     } else {
-                      navigate(`/create/${project.id}/export`);
+                      if (project.status === "draft") {
+                        navigate(`/create/${project.id}/setup`);
+                      } else {
+                        navigate(`/create/${project.id}/export`);
+                      }
                     }
                   }}
                 >
@@ -206,11 +239,18 @@ export default function Dashboard() {
                       <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] capitalize">
                         {project.status}
                       </span>
+                      <span className={`font-mono text-[9px] px-1.5 py-0.5 rounded-md sketch-border-sm ${
+                        project.type === "studio"
+                          ? "bg-amber-500/10 text-amber-600 border-amber-500/20"
+                          : "bg-blue-500/10 text-blue-600 border-blue-500/20"
+                      }`}>
+                        {project.type === "studio" ? "🎬 Studio" : "📸 Tutorial"}
+                      </span>
                     </div>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        setDeleteId(project.id);
+                        setDeleteProjectInfo({ id: project.id, type: project.type });
                       }}
                       className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:text-red-500"
                     >
@@ -250,7 +290,7 @@ export default function Dashboard() {
               Create your first video project to get started.
             </p>
             <Button
-              onClick={() => navigate("/create/0/setup")}
+              onClick={() => setShowNewProjectDialog(true)}
               className="sketch-btn-primary"
             >
               <Plus className="w-4 h-4" />
@@ -260,7 +300,69 @@ export default function Dashboard() {
         )}
       </main>
 
-      <Dialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
+      {/* New Project Type Selection Dialog */}
+      <Dialog open={showNewProjectDialog} onOpenChange={setShowNewProjectDialog}>
+        <DialogContent className="sketch-card border-2 bg-[var(--sketch-card-bg)] max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="font-body text-[var(--sketch-fg)] text-xl">
+              Create New Project
+            </DialogTitle>
+            <DialogDescription className="font-body text-[var(--sketch-fg-muted)]">
+              Choose how you want to create your video
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 mt-2">
+            <button
+              onClick={() => {
+                setShowNewProjectDialog(false);
+                navigate("/create/0/setup");
+              }}
+              className="sketch-card-hover p-5 text-left bg-[var(--sketch-card-bg)] group flex items-start gap-4 cursor-pointer"
+            >
+              <div className="w-12 h-12 flex items-center justify-center bg-blue-500/10 border-2 border-blue-500/30 rounded-xl flex-shrink-0 group-hover:bg-blue-500/20 transition-colors">
+                <Camera className="w-6 h-6 text-blue-500" />
+              </div>
+              <div>
+                <h3 className="font-body font-semibold text-[var(--sketch-fg)] group-hover:text-blue-500 transition-colors">
+                  📸 Screenshot Tutorial
+                </h3>
+                <p className="font-body text-sm text-[var(--sketch-fg-muted)] mt-1">
+                  Upload screenshots and turn them into a professional tutorial video with zoom effects and narration.
+                </p>
+                <span className="font-mono text-[10px] text-[var(--sketch-fg-subtle)] mt-2 inline-block">
+                  Upload → Script → Annotate → Render
+                </span>
+              </div>
+            </button>
+
+            <button
+              onClick={() => {
+                setShowNewProjectDialog(false);
+                navigate("/studio/new");
+              }}
+              className="sketch-card-hover p-5 text-left bg-[var(--sketch-card-bg)] group flex items-start gap-4 cursor-pointer"
+            >
+              <div className="w-12 h-12 flex items-center justify-center bg-[#FBBF24]/10 border-2 border-[#FBBF24]/30 rounded-xl flex-shrink-0 group-hover:bg-[#FBBF24]/20 transition-colors">
+                <Wand2 className="w-6 h-6 text-[#FBBF24]" />
+              </div>
+              <div>
+                <h3 className="font-body font-semibold text-[var(--sketch-fg)] group-hover:text-[#FBBF24] transition-colors">
+                  🎬 AI Video Studio
+                </h3>
+                <p className="font-body text-sm text-[var(--sketch-fg-muted)] mt-1">
+                  Describe your video topic and AI generates everything — script, stock footage, voiceover, and final video.
+                </p>
+                <span className="font-mono text-[10px] text-[var(--sketch-fg-subtle)] mt-2 inline-flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" />
+                  Powered by AI + Pexels
+                </span>
+              </div>
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteProjectInfo} onOpenChange={() => setDeleteProjectInfo(null)}>
         <DialogContent className="sketch-card border-2 bg-[var(--sketch-card-bg)]">
           <DialogHeader>
             <DialogTitle className="font-body text-[var(--sketch-fg)]">Delete Project</DialogTitle>
@@ -272,7 +374,7 @@ export default function Dashboard() {
           <div className="flex gap-3 justify-end mt-4">
             <Button
               variant="ghost"
-              onClick={() => setDeleteId(null)}
+              onClick={() => setDeleteProjectInfo(null)}
               className="sketch-btn-ghost"
             >
               Cancel
@@ -280,7 +382,13 @@ export default function Dashboard() {
             <Button
               variant="destructive"
               onClick={() => {
-                if (deleteId) deleteMutation.mutate({ id: deleteId });
+                if (deleteProjectInfo) {
+                  if (deleteProjectInfo.type === "studio") {
+                    deleteStudioMutation.mutate({ id: deleteProjectInfo.id });
+                  } else {
+                    deleteProjectMutation.mutate({ id: deleteProjectInfo.id });
+                  }
+                }
               }}
               className="sketch-btn"
             >
