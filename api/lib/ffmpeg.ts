@@ -8,6 +8,7 @@ import { nanoid } from "nanoid";
 // Use static binaries so the user doesn't need to install ffmpeg globally
 import ffmpegPath from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
+import { getCursorPng, buildCursorOverlayExpr } from "./cursorOverlay";
 
 const execFileAsync = promisify(execFile);
 
@@ -45,10 +46,33 @@ export async function probeImageDimensions(
 }
 
 /**
- * Build the FFmpeg zoompan filter expression.
+ * Probe the duration of a video/audio file using ffprobe.
+ */
+export async function probeMediaDuration(filePath: string): Promise<number> {
+  if (!ffprobeStatic.path) throw new Error("ffprobe-static path is undefined");
+  try {
+    const { stdout } = await execFileAsync(ffprobeStatic.path, [
+      "-v", "error",
+      "-show_entries", "format=duration",
+      "-of", "csv=p=0",
+      filePath,
+    ], {
+      timeout: 10000,
+      shell: true,
+    });
+    const duration = parseFloat(stdout.trim());
+    if (isNaN(duration)) throw new Error("Non-numeric duration");
+    return duration;
+  } catch {
+    return 10; // Fallback
+  }
+}
+
+/**
+ * Build the FFmpeg zoompan filter expression with SMOOTHSTEP easing.
  *
- * The zoom smoothly transitions from full-image (zoom=1) to a target zoom level,
- * panning to keep the target point centered.
+ * The zoom uses a cubic smoothstep curve (3t² - 2t³) for organic-feeling
+ * motion that starts slow, accelerates, then decelerates to a smooth stop.
  *
  * @param targetXPct - Target X as percentage (0-100) of image width
  * @param targetYPct - Target Y as percentage (0-100) of image height
@@ -67,28 +91,27 @@ export function buildZoomFilter(
 ): string {
   const fps = 25;
   const totalFrames = Math.max(Math.ceil(audioDuration * fps), fps); // at least 1 second
-  const maxZoom = 2.5;
-
-  // Zoom in during first 80% of frames, hold for last 20%
-  const zoomInFrames = Math.floor(totalFrames * 0.8);
+  const maxZoom = 1.8; // Reduced from 2.5 to avoid pixelation
 
   // Target pixel coordinates
   const targetPx = (targetXPct / 100) * imgWidth;
   const targetPy = (targetYPct / 100) * imgHeight;
 
-  // Zoom expression: linearly increase from 1.0 to maxZoom over zoomInFrames, then hold
-  const zoomExpr = `if(lte(on\\,${zoomInFrames})\\,1+${((maxZoom - 1) / zoomInFrames).toFixed(8)}*on\\,${maxZoom})`;
+  // ─── Smoothstep eased zoom ───
+  // progress = clamp(on / totalFrames, 0, 1)
+  // eased = 3 * progress² - 2 * progress³  (smoothstep)
+  // zoom = 1 + (maxZoom - 1) * eased
+  //
+  // This naturally decelerates to a stop — no need for a separate "hold" phase.
+  const zoomDelta = (maxZoom - 1).toFixed(6);
+  const tExpr = `min(on/${totalFrames},1)`;
+  const easedExpr = `(3*(${tExpr})*(${tExpr})-2*(${tExpr})*(${tExpr})*(${tExpr}))`;
+  const zoomExpr = `1+${zoomDelta}*${easedExpr}`;
 
   // Pan expressions: keep target point centered as zoom increases
-  // At zoom z: visible_width = iw/z, visible_height = ih/z
-  // To center target_px: x = target_px - (iw/z)/2 = target_px - iw/(2*z)
-  // But we also want to start at center of image, so we interpolate:
-  // x = (iw/2 - iw/(2*zoom)) + (target_px - iw/2) * (1 - 1/zoom)
-  //   = iw/2 * (1 - 1/zoom) + (target_px - iw/2) * (1 - 1/zoom)
-  //   = (1 - 1/zoom) * target_px
-  // Simplified: x = target_px - iw/(2*zoom)  [but clamped to valid range]
-  const xExpr = `max(0\\,min(iw-iw/zoom\\,${targetPx.toFixed(1)}-iw/(2*zoom)))`;
-  const yExpr = `max(0\\,min(ih-ih/zoom\\,${targetPy.toFixed(1)}-ih/(2*zoom)))`;
+  // x = target_px - iw/(2*zoom), clamped to valid range
+  const xExpr = `max(0,min(iw-iw/zoom,${targetPx.toFixed(1)}-iw/(2*zoom)))`;
+  const yExpr = `max(0,min(ih-ih/zoom,${targetPy.toFixed(1)}-ih/(2*zoom)))`;
 
   return (
     `zoompan=z='${zoomExpr}':` +
@@ -99,7 +122,11 @@ export function buildZoomFilter(
 }
 
 /**
- * Render a single step: screenshot + audio → video segment with zoom animation.
+ * Render a single step: screenshot + audio → video segment with:
+ * 1. Smooth eased zoom animation (smoothstep)
+ * 2. Animated cursor gliding to target
+ * 3. Click ripple effect at target
+ * 4. Optional highlight box
  */
 export async function renderStepVideo(opts: {
   screenshotPath: string;
@@ -118,6 +145,8 @@ export async function renderStepVideo(opts: {
   const outputPath = path.join(WORK_DIR, `segment_${nanoid(12)}.mp4`);
   const outputRes = opts.outputRes || "1920x1080";
   const [outW, outH] = outputRes.split("x").map(Number);
+  const fps = 25;
+  const totalFrames = Math.max(Math.ceil(opts.audioDuration * fps), fps);
 
   // Probe the source image dimensions
   let imgWidth: number;
@@ -149,10 +178,7 @@ export async function renderStepVideo(opts: {
     drawboxFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=#f97316@1.0:thickness=6,`;
   }
 
-  // The zoompan filter operates AFTER scale+pad, so it sees output dimensions (outW x outH).
-  // But the zoom coordinates are image-relative percentages (0-100).
-  // After scale+pad, the image may be padded with black bars, so we need to compute
-  // where the image content actually sits within the padded frame.
+  // ─── Compute zoom target in padded-frame coordinates ───
   const imgAspect = imgWidth / imgHeight;
   const outAspect = outW / outH;
 
@@ -188,10 +214,178 @@ export async function renderStepVideo(opts: {
     outputRes
   );
 
+  // ─── Cursor & click ripple setup ───
+  let cursorPngPath: string | null = null;
+  try {
+    cursorPngPath = await getCursorPng(32);
+  } catch (err: any) {
+    console.warn("[FFmpeg] Cursor PNG generation failed, skipping cursor overlay:", err.message);
+  }
+
+  // Cursor animation: starts at an offset position, glides to target
+  const cursorStartX = Math.max(0, zoomTargetPxX - outW * 0.15);
+  const cursorStartY = Math.max(0, zoomTargetPxY - outH * 0.12);
+
+  // Build the filter_complex chain
+  // The cursor and click ripple are composited BEFORE the zoompan
+  // so they move with the image during zoom.
+
+  let filterComplex: string;
+  const inputArgs: string[] = [
+    "-y",
+    "-loop", "1",
+    "-i", opts.screenshotPath,
+    "-i", opts.audioPath,
+  ];
+
+  if (cursorPngPath) {
+    // Add cursor as 3rd input
+    inputArgs.push("-i", cursorPngPath);
+
+    // ─── Cursor overlay expression ───
+    const travelFrames = Math.floor(totalFrames * 0.4);
+    const tExpr = `min(n/${travelFrames},1)`;
+    const easedExpr = `(3*(${tExpr})*(${tExpr})-2*(${tExpr})*(${tExpr})*(${tExpr}))`;
+
+    const cursorDx = zoomTargetPxX - cursorStartX;
+    const cursorDy = zoomTargetPxY - cursorStartY;
+    const cursorXExpr = `${cursorStartX.toFixed(0)}+${cursorDx.toFixed(0)}*${easedExpr}`;
+    const cursorYExpr = `${cursorStartY.toFixed(0)}+${cursorDy.toFixed(0)}*${easedExpr}`;
+
+    // ─── Click ripple: expanding ring drawn with drawbox workaround ───
+    // We'll use drawtext to render a "●" character that scales, as a simple
+    // and reliable click indicator. It appears at 40% of scene duration for 0.6s.
+    const arrivalTime = (opts.audioDuration * 0.4).toFixed(3);
+    const rippleEndTime = (opts.audioDuration * 0.4 + 0.6).toFixed(3);
+
+    // Click ripple: draw a fading circle using drawtext with a Unicode circle character
+    // We use multiple drawtext filters at different sizes for the expanding ring effect
+    const rippleFilters = buildClickRippleDrawtext(
+      zoomTargetPxX,
+      zoomTargetPxY,
+      parseFloat(arrivalTime),
+      parseFloat(rippleEndTime),
+    );
+
+    filterComplex =
+      // Step 1: Scale and pad the screenshot
+      `[0:v]${drawboxFilter}scale=${outW}:${outH}:force_original_aspect_ratio=decrease,` +
+      `pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2[base];` +
+      // Step 2: Overlay cursor on base (cursor moves with smoothstep easing)
+      `[base][2:v]overlay=x='${cursorXExpr}':y='${cursorYExpr}':` +
+      `enable='between(n,0,${totalFrames})'[withcursor];` +
+      // Step 3: Apply click ripple effect
+      `[withcursor]${rippleFilters}[withripple];` +
+      // Step 4: Apply zoompan with smoothstep easing
+      `[withripple]${zoomFilter}[v]`;
+  } else {
+    // No cursor available — just do eased zoom
+    filterComplex =
+      `[0:v]${drawboxFilter}scale=${outW}:${outH}:force_original_aspect_ratio=decrease,` +
+      `pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2,${zoomFilter}[v]`;
+  }
+
   // Construct the FFmpeg command
-  // 1. Loop the image for the duration of audio
-  // 2. Apply drawbox (optional) → scale → pad → zoompan filter
-  // 3. Map audio
+  const args = [
+    ...inputArgs,
+    "-filter_complex",
+    filterComplex,
+    "-map", "[v]",
+    "-map", "1:a",
+    "-c:v", "libx264",
+    "-preset", "medium",
+    "-crf", "23",
+    "-c:a", "aac",
+    "-b:a", "128k",
+    "-pix_fmt", "yuv420p",
+    "-shortest",
+    "-movflags", "+faststart",
+    outputPath,
+  ];
+
+  try {
+    if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
+    await execFileAsync(ffmpegPath, args, {
+      timeout: 180000, // 3 min per step (slightly longer due to cursor overlay)
+      shell: true,
+    });
+  } catch (err: any) {
+    // If the cursor/ripple filter fails, retry without effects
+    console.warn("[FFmpeg] Render with effects failed, retrying without:", err.message);
+    return renderStepVideoFallback(opts, outputPath);
+  }
+
+  // Verify output
+  const stat = await fs.stat(outputPath);
+  if (stat.size === 0) throw new Error("FFmpeg produced an empty video file");
+
+  return outputPath;
+}
+
+/**
+ * Fallback render without cursor/ripple effects (just eased zoom).
+ * Used when the full effects pipeline fails.
+ */
+async function renderStepVideoFallback(
+  opts: Parameters<typeof renderStepVideo>[0],
+  outputPath: string
+): Promise<string> {
+  const outputRes = opts.outputRes || "1920x1080";
+  const [outW, outH] = outputRes.split("x").map(Number);
+
+  let imgWidth: number, imgHeight: number;
+  try {
+    const dims = await probeImageDimensions(opts.screenshotPath);
+    imgWidth = dims.width;
+    imgHeight = dims.height;
+  } catch {
+    imgWidth = 1920;
+    imgHeight = 1080;
+  }
+
+  let drawboxFilter = "";
+  if (
+    opts.zoomRectX !== undefined &&
+    opts.zoomRectY !== undefined &&
+    opts.zoomRectW !== undefined &&
+    opts.zoomRectH !== undefined
+  ) {
+    const rx = Math.round((opts.zoomRectX / 100) * imgWidth);
+    const ry = Math.round((opts.zoomRectY / 100) * imgHeight);
+    const rw = Math.round((opts.zoomRectW / 100) * imgWidth);
+    const rh = Math.round((opts.zoomRectH / 100) * imgHeight);
+    drawboxFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=#f97316@1.0:thickness=6,`;
+  }
+
+  const imgAspect = imgWidth / imgHeight;
+  const outAspect = outW / outH;
+  let scaledImgW: number, scaledImgH: number, padOffsetX: number, padOffsetY: number;
+  if (imgAspect > outAspect) {
+    scaledImgW = outW;
+    scaledImgH = Math.round(outW / imgAspect);
+    padOffsetX = 0;
+    padOffsetY = Math.round((outH - scaledImgH) / 2);
+  } else {
+    scaledImgH = outH;
+    scaledImgW = Math.round(outH * imgAspect);
+    padOffsetX = Math.round((outW - scaledImgW) / 2);
+    padOffsetY = 0;
+  }
+
+  const zoomTargetPxX = padOffsetX + (opts.zoomTargetX / 100) * scaledImgW;
+  const zoomTargetPxY = padOffsetY + (opts.zoomTargetY / 100) * scaledImgH;
+  const adjustedZoomXPct = (zoomTargetPxX / outW) * 100;
+  const adjustedZoomYPct = (zoomTargetPxY / outH) * 100;
+
+  const zoomFilter = buildZoomFilter(
+    adjustedZoomXPct,
+    adjustedZoomYPct,
+    outW,
+    outH,
+    opts.audioDuration,
+    outputRes
+  );
+
   const args = [
     "-y",
     "-loop", "1",
@@ -212,17 +406,12 @@ export async function renderStepVideo(opts: {
     outputPath,
   ];
 
-  try {
-    if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
-    await execFileAsync(ffmpegPath, args, {
-      timeout: 120000, // 2 min per step
-      shell: true,
-    });
-  } catch (err: any) {
-    throw new Error(`FFmpeg render failed: ${err.stderr || err.message}`);
-  }
+  if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
+  await execFileAsync(ffmpegPath, args, {
+    timeout: 120000,
+    shell: true,
+  });
 
-  // Verify output
   const stat = await fs.stat(outputPath);
   if (stat.size === 0) throw new Error("FFmpeg produced an empty video file");
 
@@ -230,20 +419,179 @@ export async function renderStepVideo(opts: {
 }
 
 /**
- * Concatenate multiple video segments into a final MP4.
+ * Build drawtext-based click ripple filter.
+ * Uses a large Unicode bullet "●" character rendered as a fading, color-shifting
+ * circle at the target point. Three passes create expanding concentric rings.
+ */
+function buildClickRippleDrawtext(
+  targetX: number,
+  targetY: number,
+  arrivalTime: number,
+  endTime: number,
+): string {
+  // Three concentric ring pulses using drawtext with "●" at different sizes
+  // Each ring starts slightly staggered and fades out
+  const rings = [
+    { delay: 0.0, size: 20, alpha: 0.7 },
+    { delay: 0.1, size: 32, alpha: 0.5 },
+    { delay: 0.2, size: 48, alpha: 0.3 },
+  ];
+
+  // Build chained drawtext filters
+  let filterChain = "";
+  for (let i = 0; i < rings.length; i++) {
+    const ring = rings[i];
+    const startT = (arrivalTime + ring.delay).toFixed(3);
+    const endT = (endTime + ring.delay).toFixed(3);
+
+    // Alpha fades from ring.alpha to 0 over the duration
+    const duration = parseFloat(endT) - parseFloat(startT);
+    // FFmpeg alpha expression: alpha = baseAlpha * (1 - (t - startT) / duration)
+    const alphaExpr = `${ring.alpha.toFixed(2)}*(1-(t-${startT})/${duration.toFixed(3)})`;
+
+    filterChain +=
+      `drawtext=text='●':fontsize=${ring.size}:fontcolor=white@${ring.alpha.toFixed(1)}:` +
+      `x=${Math.round(targetX - ring.size / 4)}:y=${Math.round(targetY - ring.size / 3)}:` +
+      `enable='between(t,${startT},${endT})'`;
+
+    if (i < rings.length - 1) {
+      filterChain += ",";
+    }
+  }
+
+  return filterChain;
+}
+
+/**
+ * Concatenate multiple video segments into a final MP4 with crossfade transitions.
+ *
+ * Uses the xfade video filter and acrossfade audio filter to create smooth
+ * 0.5-second crossfade transitions between consecutive segments.
+ *
+ * @param segmentPaths - Array of video segment file paths
+ * @param segmentDurations - Array of durations (seconds) for each segment.
+ *                           If not provided, durations will be probed.
  */
 export async function concatenateSegments(
-  segmentPaths: string[]
+  segmentPaths: string[],
+  segmentDurations?: number[],
 ): Promise<string> {
   await ensureWorkDir();
 
   if (segmentPaths.length === 0) throw new Error("No segments to concatenate");
   if (segmentPaths.length === 1) return segmentPaths[0];
 
-  // Create a concat file listing
+  const concatId = nanoid(8);
+  const outputPath = path.join(WORK_DIR, `final_${concatId}.mp4`);
+
+  // For 2+ segments, use xfade crossfade transitions
+  const XFADE_DURATION = 0.5; // seconds
+
+  // Get durations if not provided
+  let durations = segmentDurations;
+  if (!durations || durations.length !== segmentPaths.length) {
+    durations = [];
+    for (const segPath of segmentPaths) {
+      const dur = await probeMediaDuration(segPath);
+      durations.push(dur);
+    }
+  }
+
+  // Build the input arguments
+  const inputArgs: string[] = [];
+  for (const segPath of segmentPaths) {
+    inputArgs.push("-i", segPath);
+  }
+
+  // Build the xfade filter chain
+  // For N segments, we need N-1 xfade filters chained together.
+  //
+  // [0:v][1:v]xfade=transition=fade:duration=0.5:offset=<dur0-0.5>[v01];
+  // [v01][2:v]xfade=transition=fade:duration=0.5:offset=<dur0+dur1-1.0>[v012];
+  // ...
+  //
+  // Audio: similar with acrossfade
+  let videoFilter = "";
+  let audioFilter = "";
+  let cumulativeDuration = 0;
+
+  if (segmentPaths.length === 2) {
+    // Simple case: just one xfade
+    const offset = Math.max(0, durations[0] - XFADE_DURATION);
+    videoFilter = `[0:v][1:v]xfade=transition=fade:duration=${XFADE_DURATION}:offset=${offset.toFixed(3)}[vout]`;
+    audioFilter = `[0:a][1:a]acrossfade=d=${XFADE_DURATION}:c1=tri:c2=tri[aout]`;
+  } else {
+    // Chain multiple xfade filters
+    let prevVideoLabel = "0:v";
+    let prevAudioLabel = "0:a";
+    cumulativeDuration = durations[0];
+
+    for (let i = 1; i < segmentPaths.length; i++) {
+      const offset = Math.max(0, cumulativeDuration - XFADE_DURATION);
+      const isLast = i === segmentPaths.length - 1;
+      const outVideoLabel = isLast ? "vout" : `v${i}`;
+      const outAudioLabel = isLast ? "aout" : `a${i}`;
+
+      videoFilter += `[${prevVideoLabel}][${i}:v]xfade=transition=fade:duration=${XFADE_DURATION}:offset=${offset.toFixed(3)}[${outVideoLabel}]`;
+      audioFilter += `[${prevAudioLabel}][${i}:a]acrossfade=d=${XFADE_DURATION}:c1=tri:c2=tri[${outAudioLabel}]`;
+
+      if (!isLast) {
+        videoFilter += ";";
+        audioFilter += ";";
+      }
+
+      // Each xfade reduces total duration by XFADE_DURATION
+      cumulativeDuration += durations[i] - XFADE_DURATION;
+      prevVideoLabel = outVideoLabel;
+      prevAudioLabel = outAudioLabel;
+    }
+  }
+
+  const filterComplex = `${videoFilter};${audioFilter}`;
+
+  const args = [
+    "-y",
+    ...inputArgs,
+    "-filter_complex", filterComplex,
+    "-map", "[vout]",
+    "-map", "[aout]",
+    "-c:v", "libx264",
+    "-preset", "medium",
+    "-crf", "23",
+    "-c:a", "aac",
+    "-b:a", "128k",
+    "-pix_fmt", "yuv420p",
+    "-movflags", "+faststart",
+    outputPath,
+  ];
+
+  try {
+    if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
+    await execFileAsync(ffmpegPath, args, {
+      timeout: 300000, // 5 min for crossfade concatenation (re-encodes)
+      shell: true,
+    });
+  } catch (err: any) {
+    // Fallback to simple concat if xfade fails
+    console.warn("[FFmpeg] Crossfade concat failed, falling back to hard cut:", err.message);
+    return concatenateSegmentsFallback(segmentPaths);
+  }
+
+  return outputPath;
+}
+
+/**
+ * Fallback concatenation without crossfade (simple concat demuxer, hard cut).
+ * Used when xfade filter fails.
+ */
+async function concatenateSegmentsFallback(
+  segmentPaths: string[]
+): Promise<string> {
+  await ensureWorkDir();
+
   const concatId = nanoid(8);
   const concatFile = path.join(WORK_DIR, `concat_${concatId}.txt`);
-  const outputPath = path.join(WORK_DIR, `final_${concatId}.mp4`);
+  const outputPath = path.join(WORK_DIR, `final_fallback_${concatId}.mp4`);
 
   const concatContent = segmentPaths
     .map((p) => `file '${p.replace(/\\/g, "/")}'`)

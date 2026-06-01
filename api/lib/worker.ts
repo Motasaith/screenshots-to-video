@@ -200,6 +200,7 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
     });
 
     const segmentPaths: string[] = [];
+    const segmentDurations: number[] = []; // Track durations for crossfade
 
     for (let i = 0; i < projectSteps.length; i++) {
       const step = projectSteps[i];
@@ -248,6 +249,7 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
       });
 
       segmentPaths.push(segmentPath);
+      segmentDurations.push(audioDuration); // Store duration for crossfade
       tempFiles.push(segmentPath);
 
       // Upload segment to R2
@@ -269,14 +271,14 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
       console.log(`[Worker] Step ${i + 1}/${totalSteps}: video segment rendered`);
     }
 
-    // ── STAGE 3: Concatenate segments ──
+    // ── STAGE 3: Concatenate segments with crossfade transitions ──
     await updateJob(jobId, {
       stage: "concatenating",
       currentStep: totalSteps,
-      message: "Merging video segments...",
+      message: "Merging video segments with transitions...",
     });
 
-    const finalLocalPath = await concatenateSegments(segmentPaths);
+    const finalLocalPath = await concatenateSegments(segmentPaths, segmentDurations);
     tempFiles.push(finalLocalPath);
 
     // ── STAGE 4: Upload final video ──
@@ -520,6 +522,7 @@ async function processStudioRenderJob(jobId: number, projectId: number): Promise
     });
 
     const segmentPaths: string[] = [];
+    const segmentDurations: number[] = []; // Track durations for crossfade
 
     for (let i = 0; i < scenes.length; i++) {
       const scene = scenes[i];
@@ -560,6 +563,7 @@ async function processStudioRenderJob(jobId: number, projectId: number): Promise
       }
 
       segmentPaths.push(segmentPath);
+      segmentDurations.push(audioDuration); // Store duration for crossfade
       tempFiles.push(segmentPath);
 
       // Upload segment
@@ -578,14 +582,14 @@ async function processStudioRenderJob(jobId: number, projectId: number): Promise
       console.log(`[Worker] Studio scene ${i + 1}/${totalSteps}: rendered`);
     }
 
-    // ── STAGE 3: Concatenate ──
+    // ── STAGE 3: Concatenate with crossfade transitions ──
     await updateStudioJob(jobId, {
       stage: "concatenating",
       currentStep: totalSteps,
-      message: "Merging scenes into final video...",
+      message: "Merging scenes with transitions...",
     });
 
-    const finalLocalPath = await concatenateSegments(segmentPaths);
+    const finalLocalPath = await concatenateSegments(segmentPaths, segmentDurations);
     tempFiles.push(finalLocalPath);
 
     // ── STAGE 4: Upload final ──
