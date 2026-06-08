@@ -4,6 +4,7 @@ import os from "os";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import ffmpegPath from "ffmpeg-static";
+import zlib from "zlib";
 
 const execFileAsync = promisify(execFile);
 
@@ -17,14 +18,68 @@ async function ensureOverlayDir(): Promise<string> {
   return OVERLAY_DIR;
 }
 
+// CRC32 implementation for PNG chunks
+function crc32(buf: Buffer): number {
+  let crc = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) {
+    const byte = buf[i];
+    crc ^= byte;
+    for (let j = 0; j < 8; j++) {
+      if (crc & 1) {
+        crc = (crc >>> 1) ^ 0xedb88320;
+      } else {
+        crc = crc >>> 1;
+      }
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+// Helper to create standard PNG buffer from RGBA pixels
+function createPngBuffer(width: number, height: number, pixels: Buffer): Buffer {
+  const signature = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const createChunk = (type: string, data: Buffer): Buffer => {
+    const lenBuf = Buffer.alloc(4);
+    lenBuf.writeUInt32BE(data.length, 0);
+    const typeBuf = Buffer.from(type, "ascii");
+    const crc = crc32(Buffer.concat([typeBuf, data]));
+    const crcBuf = Buffer.alloc(4);
+    crcBuf.writeUInt32BE(crc, 0);
+    return Buffer.concat([lenBuf, typeBuf, data, crcBuf]);
+  };
+
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 6; // color type (RGBA)
+  ihdr[10] = 0; // compression
+  ihdr[11] = 0; // filter
+  ihdr[12] = 0; // interlace
+
+  const scanlineLength = width * 4 + 1;
+  const idatRaw = Buffer.alloc(height * scanlineLength);
+  for (let y = 0; y < height; y++) {
+    idatRaw[y * scanlineLength] = 0; // Filter type 0 (None)
+    pixels.copy(idatRaw, y * scanlineLength + 1, y * width * 4, (y + 1) * width * 4);
+  }
+  const idatCompressed = zlib.deflateSync(idatRaw);
+
+  const ihdrChunk = createChunk("IHDR", ihdr);
+  const idatChunk = createChunk("IDAT", idatCompressed);
+  const iendChunk = createChunk("IEND", Buffer.alloc(0));
+
+  return Buffer.concat([signature, ihdrChunk, idatChunk, iendChunk]);
+}
+
 /**
  * Generate a macOS-style arrow cursor as a PNG file.
- * Uses an SVG written to disk and converted via FFmpeg.
  * Returns the path to the cached PNG.
  */
 export async function getCursorPng(size = 32): Promise<string> {
   await ensureOverlayDir();
-  const pngPath = path.join(OVERLAY_DIR, `cursor_${size}.png`);
+  // We only support size 32 for our native pixel grid
+  const pngPath = path.join(OVERLAY_DIR, `cursor_32.png`);
 
   // Use cached version if available
   try {
@@ -34,35 +89,73 @@ export async function getCursorPng(size = 32): Promise<string> {
     // Need to generate
   }
 
-  // macOS-style pointer cursor SVG — white fill, dark stroke, drop shadow
-  const svgContent = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24">
-  <defs>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feDropShadow dx="1" dy="1" stdDeviation="1" flood-color="#000" flood-opacity="0.4"/>
-    </filter>
-  </defs>
-  <path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87a.5.5 0 0 0 .35-.85L6.35 2.86a.5.5 0 0 0-.85.35z"
-        fill="white" stroke="#222" stroke-width="1.2" stroke-linejoin="round"
-        filter="url(#shadow)"/>
-</svg>`;
+  // macOS-style pointer cursor grid (32x32 pixels)
+  // '.' = transparent, '#' = black outline, 'W' = white fill
+  const grid = [
+    "#...............................",
+    "##..............................",
+    "#W#.............................",
+    "#WW#............................",
+    "#WWW#...........................",
+    "#WWWW#..........................",
+    "#WWWWW#.........................",
+    "#WWWWWW#........................",
+    "#WWWWWWW#.......................",
+    "#WWWWWWWW#......................",
+    "#WWWWWWWWW#.....................",
+    "#WWWWWWWWWW#....................",
+    "#WWWWWWWWWWW#...................",
+    "#WWWWWWWWWWWW#..................",
+    "#WWWWWWWWWWWWW#.................",
+    "#WWWWWWWWWWWWWW#................",
+    "#WWWWWWWWWWWWWWW#...............",
+    "#WWWWWWWWWW######...............",
+    "#WWWW#WWW#......................",
+    "#WWW#.#WWW#.....................",
+    "#WW#...#WWW#....................",
+    "#W#....#WWW#....................",
+    "##......#WWW#...................",
+    "#.......#WWW#...................",
+    ".........#WWW#..................",
+    ".........#WWW#..................",
+    "..........#WWW#.................",
+    "..........#WWW#.................",
+    "...........###..................",
+    "................................",
+    "................................",
+    "................................",
+  ];
 
-  const svgPath = path.join(OVERLAY_DIR, `cursor_${size}.svg`);
-  await fs.writeFile(svgPath, svgContent, "utf-8");
+  const pixels = Buffer.alloc(32 * 32 * 4);
+  for (let y = 0; y < 32; y++) {
+    const row = grid[y] || "";
+    for (let x = 0; x < 32; x++) {
+      const char = row[x] || ".";
+      const idx = (y * 32 + x) * 4;
+      if (char === "#") {
+        // Black outline
+        pixels[idx] = 0;
+        pixels[idx + 1] = 0;
+        pixels[idx + 2] = 0;
+        pixels[idx + 3] = 255;
+      } else if (char === "W") {
+        // White fill
+        pixels[idx] = 255;
+        pixels[idx + 1] = 255;
+        pixels[idx + 2] = 255;
+        pixels[idx + 3] = 255;
+      } else {
+        // Transparent
+        pixels[idx] = 0;
+        pixels[idx + 1] = 0;
+        pixels[idx + 2] = 0;
+        pixels[idx + 3] = 0;
+      }
+    }
+  }
 
-  // Convert SVG to PNG using FFmpeg
-  if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
-  await execFileAsync(ffmpegPath, [
-    "-y",
-    "-i", svgPath,
-    "-vf", `scale=${size}:${size}`,
-    pngPath,
-  ], {
-    timeout: 10000,
-    shell: true,
-  });
-
-  // Cleanup SVG
-  await fs.unlink(svgPath).catch(() => {});
+  const pngBuffer = createPngBuffer(32, 32, pixels);
+  await fs.writeFile(pngPath, pngBuffer);
 
   return pngPath;
 }
