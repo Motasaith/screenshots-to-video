@@ -21,6 +21,7 @@ import {
 import StudioDescribe from "@/components/studio/StudioDescribe";
 import StudioScript from "@/components/studio/StudioScript";
 import StudioMedia from "@/components/studio/StudioMedia";
+import StudioPreview from "@/components/studio/StudioPreview";
 import StudioVoice from "@/components/studio/StudioVoice";
 import StudioRender from "@/components/studio/StudioRender";
 import StudioExport from "@/components/studio/StudioExport";
@@ -92,6 +93,7 @@ export default function StudioWizard() {
     describe: <StudioDescribe />,
     script: <StudioScript />,
     media: <StudioMedia />,
+    preview: <StudioPreview />,
     voice: <StudioVoice />,
     render: <StudioRender />,
     export: <StudioExport />,

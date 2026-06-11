@@ -50,6 +50,13 @@ export const projects = mysqlTable("projects", {
     .notNull(),
   musicEnabled: int("musicEnabled").default(0),
   musicTrack: varchar("musicTrack", { length: 100 }),
+  aspectRatio: varchar("aspectRatio", { length: 10 }).default("16:9"),
+  randomize: int("randomize").default(0),
+  introTemplate: varchar("introTemplate", { length: 50 }),
+  outroTemplate: varchar("outroTemplate", { length: 50 }),
+  introText: text("introText"),
+  outroText: text("outroText"),
+  transitionDuration: float("transitionDuration").default(0.5),
   finalVideoPath: text("finalVideoPath"),
   completedAt: timestamp("completedAt"),
   expiresAt: timestamp("expiresAt"),
@@ -79,6 +86,7 @@ export const steps = mysqlTable("steps", {
   zoomRectHeight: float("zoomRectHeight"),
   audioPath: text("audioPath"),
   audioDuration: float("audioDuration"),
+  transition: varchar("transition", { length: 30 }).default("fade"),
   videoSegmentPath: text("videoSegmentPath"),
   status: mysqlEnum("status", ["pending", "generating", "done", "error"])
     .default("pending")
@@ -136,6 +144,15 @@ export const studioProjects = mysqlTable("studio_projects", {
     .notNull(),
   voice: varchar("voice", { length: 100 }).default("en-US-AriaNeural"),
   speed: float("speed").default(1.0),
+  musicEnabled: int("musicEnabled").default(0),
+  musicTrack: varchar("musicTrack", { length: 100 }),
+  aspectRatio: varchar("aspectRatio", { length: 10 }).default("16:9"),
+  randomize: int("randomize").default(0),
+  introTemplate: varchar("introTemplate", { length: 50 }),
+  outroTemplate: varchar("outroTemplate", { length: 50 }),
+  introText: text("introText"),
+  outroText: text("outroText"),
+  transitionDuration: float("transitionDuration").default(0.5),
   status: mysqlEnum("status", ["draft", "scripted", "media_ready", "processing", "complete", "error"])
     .default("draft")
     .notNull(),
@@ -166,6 +183,7 @@ export const studioScenes = mysqlTable("studio_scenes", {
   photographerName: varchar("photographerName", { length: 255 }), // Pexels attribution
   audioPath: text("audioPath"),
   audioDuration: float("audioDuration"),
+  transition: varchar("transition", { length: 30 }).default("fade"),
   videoSegmentPath: text("videoSegmentPath"),
   status: mysqlEnum("status", ["pending", "generating", "done", "error"])
     .default("pending")

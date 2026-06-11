@@ -38,11 +38,18 @@ const tones: { value: Tone; label: string; emoji: string }[] = [
   { value: "calm", label: "Calm", emoji: "🌿" },
 ];
 
-const platforms: { value: Platform; label: string; icon: typeof Youtube }[] = [
-  { value: "youtube", label: "YouTube", icon: Youtube },
-  { value: "tiktok", label: "TikTok", icon: Smartphone },
-  { value: "linkedin", label: "LinkedIn", icon: Linkedin },
-  { value: "instagram", label: "Instagram", icon: Instagram },
+const platforms: { value: Platform; label: string; aspect: string; icon: typeof Youtube }[] = [
+  { value: "youtube", label: "YouTube", aspect: "16:9", icon: Youtube },
+  { value: "tiktok", label: "TikTok", aspect: "9:16", icon: Smartphone },
+  { value: "linkedin", label: "LinkedIn", aspect: "1:1", icon: Linkedin },
+  { value: "instagram", label: "Instagram", aspect: "4:5", icon: Instagram },
+];
+
+const aspectRatios: { value: "16:9" | "9:16" | "1:1" | "4:5"; label: string; desc: string; iconW: string; iconH: string }[] = [
+  { value: "16:9", label: "Widescreen", desc: "YouTube, Vimeo", iconW: "w-6", iconH: "h-3.5" },
+  { value: "9:16", label: "Vertical", desc: "TikTok, Reels", iconW: "w-3.5", iconH: "h-6" },
+  { value: "1:1", label: "Square", desc: "Instagram, LinkedIn", iconW: "w-5", iconH: "h-5" },
+  { value: "4:5", label: "Portrait", desc: "Facebook, IG Feed", iconW: "w-4", iconH: "h-5" },
 ];
 
 function formatDuration(seconds: number): string {
@@ -79,6 +86,7 @@ export default function StudioDescribe() {
         audience: describe.audience,
         tone: describe.tone,
         platform: describe.platform,
+        aspectRatio: describe.aspectRatio,
       });
       setProjectId(result.id);
       navigate(`/studio/${result.id}/script`);
@@ -245,17 +253,56 @@ export default function StudioDescribe() {
                   <button
                     key={p.value}
                     onClick={() => setDescribe({ platform: p.value })}
-                    className={`flex items-center justify-center gap-2 p-3 border-2 transition-all ${
+                    className={`flex flex-col items-center justify-center p-3 border-2 transition-all text-center relative ${
                       isActive
                         ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/10 shadow-[3px_3px_0px_0px_#FBBF24]"
                         : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
                     }`}
                     style={{ borderRadius: isActive ? "255px 15px 225px 15px/15px 225px 15px 255px" : "12px" }}
                   >
-                    <Icon className={`w-4 h-4 ${isActive ? "text-[var(--sketch-fg)]" : "text-[var(--sketch-fg-subtle)]"}`} />
-                    <span className={`font-body text-sm ${isActive ? "text-[var(--sketch-fg)] font-medium" : "text-[var(--sketch-fg-subtle)]"}`}>
+                    <Icon className={`w-4 h-4 mb-1 ${isActive ? "text-[var(--sketch-fg)]" : "text-[var(--sketch-fg-subtle)]"}`} />
+                    <span className={`font-body text-sm block leading-none ${isActive ? "text-[var(--sketch-fg)] font-semibold" : "text-[var(--sketch-fg-subtle)]"}`}>
                       {p.label}
                     </span>
+                    <span className="font-mono text-[9px] text-[var(--sketch-fg-muted)] mt-1.5">
+                      {p.aspect}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Aspect Ratio */}
+          <div>
+            <label className="font-body text-sm font-semibold mb-3 block text-[var(--sketch-fg)]">
+              Aspect Ratio
+            </label>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {aspectRatios.map((ar) => {
+                const isActive = describe.aspectRatio === ar.value;
+                return (
+                  <button
+                    key={ar.value}
+                    onClick={() => setDescribe({ aspectRatio: ar.value })}
+                    className={`flex flex-col items-center gap-2 p-3 border-2 transition-all text-center ${
+                      isActive
+                        ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/10 shadow-[2px_2px_0px_0px_#FBBF24]"
+                        : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
+                    }`}
+                    style={{ borderRadius: isActive ? "12px 4px 12px 4px/4px 12px 4px 12px" : "8px" }}
+                  >
+                    <div className="h-8 flex items-center justify-center">
+                      <div className={`border-2 border-current rounded-sm ${ar.iconW} ${ar.iconH} ${isActive ? "text-[var(--sketch-fg)]" : "text-[var(--sketch-fg-subtle)]"}`} />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className={`font-body text-sm font-bold ${isActive ? "text-[var(--sketch-fg)]" : "text-[var(--sketch-fg-subtle)]"}`}>
+                        {ar.value}
+                      </span>
+                      <span className="font-mono text-[9px] text-[var(--sketch-fg-muted)] mt-0.5">
+                        {ar.label}
+                      </span>
+                    </div>
                   </button>
                 );
               })}

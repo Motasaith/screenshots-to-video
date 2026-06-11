@@ -494,19 +494,189 @@ async function concatenateSegmentsReencode(
   return outputPath;
 }
 
-/**
- * Convert a resolution string like "720p" or "1080p" to "WIDTHxHEIGHT".
- */
-export function resolutionToSize(res: string): string {
-  switch (res) {
-    case "720p":
-      return "1280x720";
-    case "4k":
-      return "3840x2160";
-    case "1080p":
+export function resolutionToSize(res: string, aspectRatio: string = "16:9"): string {
+  let shortEdge = 1080;
+  if (res === "720p") shortEdge = 720;
+  if (res === "4k") shortEdge = 2160;
+
+  switch (aspectRatio) {
+    case "9:16":
+      return `${shortEdge}x${Math.round(shortEdge * (16 / 9))}`;
+    case "1:1":
+      return `${shortEdge}x${shortEdge}`;
+    case "4:5":
+      return `${shortEdge}x${Math.round(shortEdge * (5 / 4))}`;
+    case "16:9":
     default:
-      return "1920x1080";
+      // Width is long edge, height is short edge
+      return `${Math.round(shortEdge * (16 / 9))}x${shortEdge}`;
   }
+}
+
+/**
+ * Generate a gradient background video segment with text overlay for Intro/Outro.
+ */
+export async function renderTextSegment(
+  template: string,
+  text: string,
+  outputRes: string,
+  durationSec: number = 3.0
+): Promise<string> {
+  await ensureWorkDir();
+  const outputPath = path.join(WORK_DIR, `text_${nanoid(12)}.mp4`);
+  const [outW, outH] = outputRes.split("x").map(Number);
+
+  // Simple gradient backgrounds based on template name
+  let color1 = "#1e3a8a"; // blue-900
+  let color2 = "#3b82f6"; // blue-500
+  if (template.includes("dark") || template.includes("fade")) {
+    color1 = "#000000";
+    color2 = "#1f2937"; // gray-800
+  } else if (template.includes("warm") || template.includes("title")) {
+    color1 = "#7c2d12"; // orange-900
+    color2 = "#f97316"; // orange-500
+  }
+
+  // A very simple ffmpeg filter to create a gradient and draw text
+  // Since drawtext needs font files which might not be reliable across OS, 
+  // we can use a simpler approach or default font.
+  // Windows: fontfile=C\\\\:/Windows/Fonts/arial.ttf
+  // Linux: fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
+  // Or just rely on default if available, but drawtext often fails without fontfile.
+  // Instead, let's just use subtitles or simple drawtext without fontfile if possible.
+  // ffmpeg often supports 'font=Arial' or default if fontfile isn't specified, but it's risky.
+  // A safer cross-platform way is to skip text if we can't ensure font, but user wants text.
+  // Let's use drawtext without fontfile, which uses default builtin font on some builds, or fail.
+  // Actually, we can just use a simple color background to be safe if drawtext is too complex to setup cross-platform.
+  
+  // Let's try drawtext with a generic font name. If it fails, fallback to just gradient.
+  const escapedText = text.replace(/'/g, "\\'").replace(/:/g, "\\:");
+  
+  // Create a silent audio track of the same duration
+  const filterComplex = 
+    `color=c=${color1}:s=${outputRes}:d=${durationSec}[bg];` + 
+    `[bg]drawtext=text='${escapedText}':fontcolor=white:fontsize=${Math.round(outH * 0.08)}:x=(w-text_w)/2:y=(h-text_h)/2[v];` +
+    `anullsrc=r=44100:cl=stereo[a]`;
+
+  const args = [
+    "-y",
+    "-f", "lavfi",
+    "-i", "nullsrc", // dummy input
+    "-filter_complex", filterComplex,
+    "-map", "[v]",
+    "-map", "[a]",
+    "-c:v", "libx264",
+    "-preset", "medium",
+    "-crf", "23",
+    "-c:a", "aac",
+    "-t", durationSec.toString(),
+    "-pix_fmt", "yuv420p",
+    outputPath,
+  ];
+
+  if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
+  try {
+    await execFileAsync(ffmpegPath, args, { timeout: 60000, shell: true });
+  } catch (err: any) {
+    console.warn("Failed to render text segment with drawtext. Rendering without text.");
+    // Fallback: just colored background
+    const fbFilter = `color=c=${color1}:s=${outputRes}:d=${durationSec}[v];anullsrc=r=44100:cl=stereo[a]`;
+    const fbArgs = [
+      "-y", "-f", "lavfi", "-i", "nullsrc",
+      "-filter_complex", fbFilter,
+      "-map", "[v]", "-map", "[a]",
+      "-c:v", "libx264", "-c:a", "aac", "-t", durationSec.toString(), "-pix_fmt", "yuv420p",
+      outputPath
+    ];
+    await execFileAsync(ffmpegPath, fbArgs, { timeout: 60000, shell: true });
+  }
+
+  return outputPath;
+}
+
+/**
+ * Concatenate segments with FFmpeg xfade transitions.
+ */
+export async function concatenateSegmentsWithTransitions(
+  segmentPaths: string[],
+  transitions: string[],
+  transitionDuration: number = 0.5
+): Promise<string> {
+  await ensureWorkDir();
+
+  if (segmentPaths.length === 0) throw new Error("No segments to concatenate");
+  if (segmentPaths.length === 1) return segmentPaths[0];
+
+  const outputPath = path.join(WORK_DIR, `final_xfade_${nanoid(8)}.mp4`);
+  
+  // Probe durations
+  const durations = [];
+  for (const p of segmentPaths) {
+    durations.push(await probeMediaDuration(p));
+  }
+
+  let filterComplex = "";
+  let currentOffset = durations[0] - transitionDuration;
+  
+  // Input arguments
+  const args = ["-y"];
+  for (const p of segmentPaths) {
+    args.push("-i", p);
+  }
+
+  // Build the xfade filter chain
+  // Audio crossfade is also needed
+  let lastV = "[0:v]";
+  let lastA = "[0:a]";
+  
+  for (let i = 1; i < segmentPaths.length; i++) {
+    const nextV = `[${i}:v]`;
+    const nextA = `[${i}:a]`;
+    const outV = `[v_xfade${i}]`;
+    const outA = `[a_xfade${i}]`;
+    
+    // Map transition names from our frontend to ffmpeg xfade names
+    // fade, slide-left, slide-right, slide-up, flip, dissolve
+    let tName = "fade";
+    const reqT = transitions[i - 1] || "fade";
+    if (reqT === "slide-left") tName = "slideleft";
+    if (reqT === "slide-right") tName = "slideright";
+    if (reqT === "slide-up") tName = "slideup";
+    if (reqT === "flip") tName = "pixelize"; // flip doesn't exist in basic xfade, use pixelize or wipeleft
+    if (reqT === "dissolve") tName = "fade";
+
+    filterComplex += `${lastV}${nextV}xfade=transition=${tName}:duration=${transitionDuration}:offset=${currentOffset.toFixed(3)}${outV};`;
+    filterComplex += `${lastA}${nextA}acrossfade=d=${transitionDuration}${outA};`;
+    
+    lastV = outV;
+    lastA = outA;
+    currentOffset += durations[i] - transitionDuration;
+  }
+
+  args.push("-filter_complex", filterComplex.slice(0, -1)); // remove trailing semicolon
+  args.push("-map", lastV);
+  args.push("-map", lastA);
+  args.push("-c:v", "libx264", "-preset", "medium", "-crf", "20");
+  args.push("-c:a", "aac", "-b:a", "160k");
+  args.push("-pix_fmt", "yuv420p");
+  args.push("-movflags", "+faststart");
+  args.push(outputPath);
+
+  if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
+  try {
+    await execFileAsync(ffmpegPath, args, {
+      timeout: 600000, // 10 minutes max for complex xfade
+      shell: true,
+    });
+  } catch (err: any) {
+    console.warn("[FFmpeg] xfade concat failed, falling back to simple concat:", err.message);
+    return concatenateSegments(segmentPaths);
+  }
+
+  const stat = await fs.stat(outputPath);
+  if (stat.size === 0) throw new Error("FFmpeg produced an empty final video");
+
+  return outputPath;
 }
 
 /**
@@ -522,4 +692,67 @@ export async function cleanupTempFiles(paths: string[]): Promise<void> {
       // Ignore cleanup errors
     }
   }
+}
+
+/**
+ * Download and cache background music MP3 files from public royalty-free URLs.
+ */
+async function getMusicTrackPath(trackId: string): Promise<string> {
+  const musicUrls: Record<string, string> = {
+    ambient: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+    corporate: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+    tech: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+    calm: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+    upbeat: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3",
+  };
+  const url = musicUrls[trackId] || musicUrls.ambient;
+  const dir = path.join(os.tmpdir(), "aivideo-music");
+  await fs.mkdir(dir, { recursive: true });
+  const destPath = path.join(dir, `${trackId}.mp3`);
+
+  try {
+    await fs.access(destPath);
+    return destPath;
+  } catch {
+    console.log(`[FFmpeg] Downloading background music track: ${trackId} from ${url}`);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Failed to download music track: status ${res.status}`);
+    const arrayBuffer = await res.arrayBuffer();
+    await fs.writeFile(destPath, Buffer.from(arrayBuffer));
+    return destPath;
+  }
+}
+
+/**
+ * Mix a background music track into a video containing audio in FFmpeg.
+ */
+export async function mixBackgroundMusic(
+  videoPath: string,
+  trackId: string
+): Promise<string> {
+  const musicPath = await getMusicTrackPath(trackId);
+  const outputPath = path.join(WORK_DIR, `mixed_${nanoid(12)}.mp4`);
+
+  const args = [
+    "-y",
+    "-i", videoPath,
+    "-stream_loop", "-1",
+    "-i", musicPath,
+    "-filter_complex", "[1:a]volume=0.05[bg];[0:a][bg]amix=inputs=2:duration=first:dropout_transition=2[a]",
+    "-map", "0:v",
+    "-map", "[a]",
+    "-c:v", "copy",
+    "-c:a", "aac",
+    "-b:a", "160k",
+    "-shortest",
+    outputPath,
+  ];
+
+  if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
+  await execFileAsync(ffmpegPath, args, {
+    timeout: 180000,
+    shell: true,
+  });
+
+  return outputPath;
 }

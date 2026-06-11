@@ -49,6 +49,7 @@ export const projectRouter = createRouter({
         title: z.string().min(3).max(100),
         description: z.string().min(10).max(1000),
         platform: z.enum(["youtube", "teams", "tiktok", "linkedin"]),
+        aspectRatio: z.enum(["16:9", "9:16", "1:1", "4:5"]).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -78,6 +79,7 @@ export const projectRouter = createRouter({
           title: input.title,
           description: input.description,
           platform: input.platform,
+          aspectRatio: input.aspectRatio || "16:9",
           status: "draft",
         })
         .$returningId();
@@ -104,12 +106,23 @@ export const projectRouter = createRouter({
         resolution: z.enum(["720p", "1080p", "4k"]).optional(),
         musicEnabled: z.number().optional(),
         musicTrack: z.string().optional(),
+        aspectRatio: z.enum(["16:9", "9:16", "1:1", "4:5"]).optional(),
+        randomize: z.boolean().optional(),
+        introTemplate: z.string().optional(),
+        outroTemplate: z.string().optional(),
+        introText: z.string().optional(),
+        outroText: z.string().optional(),
+        transitionDuration: z.number().min(0.1).max(3).optional(),
         finalVideoPath: z.string().optional(),
         status: z.enum(["draft", "processing", "complete", "error"]).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input;
+      const { id, randomize, ...data } = input;
+      const updateData = {
+        ...data,
+        ...(randomize !== undefined ? { randomize: randomize ? 1 : 0 } : {}),
+      };
 
       // Free tier enforcement
       if (ctx.user!.plan === "free" && data.resolution && data.resolution !== "720p") {
@@ -127,7 +140,7 @@ export const projectRouter = createRouter({
 
       await getDb()
         .update(projects)
-        .set(data)
+        .set(updateData)
         .where(
           and(eq(projects.id, id), eq(projects.userId, ctx.user!.id))
         );

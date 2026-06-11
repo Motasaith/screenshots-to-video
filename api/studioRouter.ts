@@ -61,6 +61,7 @@ export const studioRouter = createRouter({
         audience: z.string().min(2).max(255),
         tone: z.enum(["professional", "casual", "energetic", "calm"]),
         platform: z.enum(["youtube", "tiktok", "linkedin", "instagram"]),
+        aspectRatio: z.enum(["16:9", "9:16", "1:1", "4:5"]).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -94,6 +95,7 @@ export const studioRouter = createRouter({
           audience: input.audience,
           tone: input.tone,
           platform: input.platform,
+          aspectRatio: input.aspectRatio || "16:9",
           status: "draft",
         })
         .$returningId();
@@ -245,6 +247,7 @@ export const studioRouter = createRouter({
         mediaUrl: z.string().optional(),
         searchQuery: z.string().optional(),
         photographerName: z.string().optional(),
+        transition: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -312,10 +315,23 @@ export const studioRouter = createRouter({
         voice: z.string().optional(),
         speed: z.number().min(0.8).max(1.3).optional(),
         resolution: z.enum(["720p", "1080p", "4k"]).optional(),
+        musicEnabled: z.number().optional(),
+        musicTrack: z.string().optional(),
+        aspectRatio: z.enum(["16:9", "9:16", "1:1", "4:5"]).optional(),
+        randomize: z.boolean().optional(),
+        introTemplate: z.string().optional(),
+        outroTemplate: z.string().optional(),
+        introText: z.string().optional(),
+        outroText: z.string().optional(),
+        transitionDuration: z.number().min(0.1).max(3).optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { id, ...data } = input;
+      const { id, randomize, ...data } = input;
+      const updateData = {
+        ...data,
+        ...(randomize !== undefined ? { randomize: randomize ? 1 : 0 } : {}),
+      };
 
       // Free tier enforcement
       if (ctx.user!.plan === "free" && data.resolution && data.resolution !== "720p") {
@@ -325,9 +341,16 @@ export const studioRouter = createRouter({
         });
       }
 
+      if (ctx.user!.plan === "free" && data.musicEnabled) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Free tier: background music is a Pro feature. Upgrade to enable it.",
+        });
+      }
+
       await getDb()
         .update(studioProjects)
-        .set(data)
+        .set(updateData)
         .where(
           and(
             eq(studioProjects.id, id),

@@ -4,14 +4,19 @@ export type StudioStep =
   | "describe"
   | "script"
   | "media"
+  | "preview"
   | "voice"
   | "render"
   | "export";
+
+export type AspectRatio = "16:9" | "9:16" | "1:1" | "4:5";
+export type TransitionType = "fade" | "slide-left" | "slide-right" | "slide-up" | "flip" | "dissolve";
 
 export const studioStepOrder: StudioStep[] = [
   "describe",
   "script",
   "media",
+  "preview",
   "voice",
   "render",
   "export",
@@ -23,6 +28,7 @@ export const studioStepLabels: Record<StudioStep, string> = {
   describe: "Describe",
   script: "Script",
   media: "Media",
+  preview: "Preview",
   voice: "Voice",
   render: "Render",
   export: "Export",
@@ -48,12 +54,25 @@ interface StudioDescribeData {
   audience: string;
   tone: "professional" | "casual" | "energetic" | "calm";
   platform: "youtube" | "tiktok" | "linkedin" | "instagram";
+  aspectRatio: AspectRatio;
 }
 
 interface StudioVoiceData {
   voice: string;
   speed: number;
   resolution: "720p" | "1080p" | "4k";
+  musicEnabled: boolean;
+  musicTrack?: string;
+  randomize: boolean;
+}
+
+interface StudioPreviewData {
+  sceneTransitions: Record<number, TransitionType>;
+  transitionDuration: number;
+  introTemplate: string;
+  outroTemplate: string;
+  introText: string;
+  outroText: string;
 }
 
 interface StudioState {
@@ -62,6 +81,7 @@ interface StudioState {
   describe: StudioDescribeData;
   scenes: StudioScene[];
   voice: StudioVoiceData;
+  preview: StudioPreviewData;
   isLoading: boolean;
   error: string | null;
 
@@ -71,6 +91,7 @@ interface StudioState {
   setScenes: (scenes: StudioScene[]) => void;
   updateScene: (index: number, data: Partial<StudioScene>) => void;
   setVoice: (data: Partial<StudioVoiceData>) => void;
+  setPreview: (data: Partial<StudioPreviewData>) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
   reset: () => void;
@@ -86,12 +107,24 @@ const initialState = {
     audience: "general audience",
     tone: "professional" as const,
     platform: "youtube" as const,
+    aspectRatio: "16:9" as AspectRatio,
   },
   scenes: [] as StudioScene[],
   voice: {
     voice: "en-US-AriaNeural",
     speed: 1.0,
     resolution: "1080p" as const,
+    musicEnabled: false,
+    musicTrack: "ambient",
+    randomize: false,
+  },
+  preview: {
+    sceneTransitions: {} as Record<number, TransitionType>,
+    transitionDuration: 0.5,
+    introTemplate: "",
+    outroTemplate: "",
+    introText: "",
+    outroText: "",
   },
   isLoading: false,
   error: null as string | null,
@@ -118,6 +151,10 @@ export const useStudioStore = create<StudioState>((set) => ({
   setVoice: (data) =>
     set((state) => ({
       voice: { ...state.voice, ...data },
+    })),
+  setPreview: (data) =>
+    set((state) => ({
+      preview: { ...state.preview, ...data },
     })),
   setLoading: (loading) => set({ isLoading: loading }),
   setError: (error) => set({ error }),

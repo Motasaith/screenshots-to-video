@@ -9,6 +9,8 @@ import {
   validateProjectSetup,
   getGuideMessage,
   getChatMessageResponse,
+  getProactiveFeedback,
+  checkCopyrightImages,
 } from "./lib/llm";
 import { generateTTSAudio, speedToRate } from "./lib/tts";
 import fs from "fs/promises";
@@ -61,6 +63,15 @@ const PLATFORM_FALLBACK_SCRIPTS: Record<string, string[]> = {
   ],
 };
 
+function isGibberish(text: string): boolean {
+  if (!text) return false;
+  // More than 4 consecutive identical characters (e.g. jjjjjjj)
+  if (/(.)\1{4,}/.test(text)) return true;
+  // 6 or more consecutive consonants (e.g. fsfsgsfgg)
+  if (/[bcdfghjklmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ]{6,}/.test(text)) return true;
+  return false;
+}
+
 export const aiRouter = createRouter({
   validateSetup: authedQuery
     .use(rateLimitByUser(60_000, 30))
@@ -72,6 +83,17 @@ export const aiRouter = createRouter({
       })
     )
     .query(async ({ input }) => {
+      // Fast heuristic check first to override hallucinations
+      if (isGibberish(input.title) || isGibberish(input.description)) {
+        return {
+          titleQuality: isGibberish(input.title) ? "vague" : (input.title.length < 15 ? "vague" : "good"),
+          descriptionQuality: isGibberish(input.description) ? "needs_more_detail" : (input.description.length < 50 ? "needs_more_detail" : "good"),
+          suggestions: ["It looks like you typed random letters. Please use descriptive text for your video so we can generate a good script!"],
+          audienceClarity: false,
+          outcomeClarity: false,
+        };
+      }
+
       // Try real LLM validation
       if (isLLMConfigured()) {
         try {
@@ -87,13 +109,17 @@ export const aiRouter = createRouter({
 
       // Fallback: heuristic analysis
       const titleQuality =
-        input.title.length < 15
+        isGibberish(input.title)
           ? "vague"
-          : input.title.length > 80
-            ? "too_long"
-            : "good";
+          : input.title.length < 15
+            ? "vague"
+            : input.title.length > 80
+              ? "too_long"
+              : "good";
       const descQuality =
-        input.description.length < 50
+        isGibberish(input.description)
+          ? "needs_more_detail"
+          : input.description.length < 50
           ? "needs_more_detail"
           : input.description.length > 300
             ? "excellent"
@@ -260,6 +286,34 @@ export const aiRouter = createRouter({
       return { suggestions };
     }),
 
+  checkCopyright: authedQuery
+    .use(rateLimitByUser(60_000, 3))
+    .input(z.object({ projectId: z.number() }))
+    .mutation(async ({ input }) => {
+      // Find the project steps
+      const projectSteps = await getDb()
+        .select()
+        .from(steps)
+        .where(eq(steps.projectId, input.projectId))
+        .orderBy(steps.order);
+
+      // Extract up to 3 screenshot paths
+      const imagePaths = projectSteps
+        .map((s) => s.screenshotPath)
+        .filter((p): p is string => Boolean(p))
+        .slice(0, 3);
+
+      if (imagePaths.length === 0) {
+        return {
+          isClear: true,
+          reason: "No screenshots to check. Safe to proceed.",
+        };
+      }
+
+      // Send to Vision LLM
+      return await checkCopyrightImages(imagePaths);
+    }),
+
   guide: authedQuery
     .use(rateLimitByUser(60_000, 20))
     .input(
@@ -320,6 +374,40 @@ export const aiRouter = createRouter({
           responses[`${input.currentStep}_load`] ||
           "I'm here to help. Ask me anything about your project.",
       };
+    }),
+
+  proactiveFeedback: authedQuery
+    .use(rateLimitByUser(60_000, 20))
+    .input(
+      z.object({
+        currentStep: z.string(),
+        context: z.object({}).passthrough(),
+      })
+    )
+    .mutation(async ({ input }) => {
+      const title = (input.context as any)?.projectData?.title || "";
+      const desc = (input.context as any)?.projectData?.description || "";
+      
+      // Fast heuristic check first (overrides LLM if obvious gibberish is found)
+      if (title.length > 5 && isGibberish(title)) {
+        return { message: "It looks like your title might be random letters. Try giving your project a clear, descriptive name!" };
+      }
+      if (desc.length > 10 && isGibberish(desc)) {
+        return { message: "Your description seems to contain some random typing. Adding a clear description helps generate a much better script!" };
+      }
+
+      if (isLLMConfigured()) {
+        try {
+          const message = await getProactiveFeedback(
+            input.currentStep,
+            input.context as Record<string, any>
+          );
+          return { message };
+        } catch (err) {
+          console.warn("LLM proactive feedback failed:", err);
+        }
+      }
+      return { message: "" };
     }),
 
   chat: authedQuery

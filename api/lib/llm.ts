@@ -2,7 +2,7 @@ import { env } from "./env";
 
 interface ChatMessage {
   role: "system" | "user" | "assistant";
-  content: string;
+  content: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
 }
 
 interface ChatResponse {
@@ -245,6 +245,115 @@ Give one short guidance message for the user right now. Return ONLY the message 
   );
 
   return response.trim();
+}
+
+/**
+ * Proactively check user text for gibberish/quality and return a suggestion if bad.
+ * Returns empty string if the input looks good.
+ */
+export async function getProactiveFeedback(
+  currentStep: string,
+  context: Record<string, any>
+): Promise<string> {
+  const prompt = `You are a helpful AI assistant inside a video creation tool. Your job is to monitor what the user is typing in real-time and provide proactive guidance ONLY if they are making a mistake, typing gibberish, or leaving things completely vague.
+
+Current step: ${currentStep}
+Context (User's current form state): ${JSON.stringify(context)}
+
+Rules:
+1. If the user's text looks like gibberish (e.g. "asdfasdf", "sddddaaaaaaaaa"), tell them politely that the text looks random and they should type something meaningful.
+2. If the user's text is extremely vague (e.g., "video", "stuff"), suggest they add more detail.
+3. If the user's text looks reasonably normal or is just unfinished, DO NOT say anything.
+4. If you decide to say something, keep it to ONE short, friendly sentence.
+5. If everything looks fine, return the exact text: "OK"
+
+Return ONLY the message text or "OK".`;
+
+  const response = await chatCompletion(
+    [
+      {
+        role: "system",
+        content: "You are a concise AI assistant evaluating user input. Respond with plain text only.",
+      },
+      { role: "user", content: prompt },
+    ],
+    { temperature: 0.3, maxTokens: 100 }
+  );
+
+  const cleanResponse = response.trim();
+  if (cleanResponse === "OK" || cleanResponse.toLowerCase() === "ok" || cleanResponse === "") {
+    return "";
+  }
+  return cleanResponse;
+}
+
+/**
+ * Check screenshots for copyright violations using a Vision LLM.
+ */
+export async function checkCopyrightImages(imagePaths: string[]): Promise<{ isClear: boolean; reason: string }> {
+  if (!isLLMConfigured() || imagePaths.length === 0) {
+    return { isClear: true, reason: "No images provided or LLM not configured." };
+  }
+
+  try {
+
+    const fs = await import("fs/promises");
+    const path = await import("path");
+
+    // Only check up to 3 images to save tokens
+    const pathsToCheck = imagePaths.slice(0, 3);
+    const contentParts: any[] = [
+      {
+        type: "text",
+        text: "You are a copyright checker. Analyze these screenshots. Are there any obvious copyrighted materials prominently featured, such as major movie characters, well-known video game assets (unless it's a generic UI), or registered logos that are the main subject? Reply in JSON format: { \"isClear\": true/false, \"reason\": \"Short explanation\" }. If it's just generic desktop UI, websites, or basic apps, it is clear.",
+      },
+    ];
+
+    for (const imgPath of pathsToCheck) {
+      try {
+        const fullPath = path.resolve(imgPath);
+        const buffer = await fs.readFile(fullPath);
+        const base64 = buffer.toString("base64");
+        // Simple MIME type inference
+        const mime = fullPath.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
+        contentParts.push({
+          type: "image_url",
+          image_url: { url: `data:${mime};base64,${base64}` },
+        });
+      } catch (e) {
+        console.warn(`Could not read image for copyright check: ${imgPath}`, e);
+      }
+    }
+
+    if (contentParts.length === 1) {
+      // No valid images were read
+      return { isClear: true, reason: "No readable images found." };
+    }
+
+    const response = await chatCompletion(
+      [{ role: "user", content: contentParts }],
+      {
+        model: env.visionLlmModel,
+        temperature: 0.1,
+        jsonMode: true,
+        maxTokens: 150,
+      }
+    );
+
+    try {
+      const result = JSON.parse(response);
+      return {
+        isClear: result.isClear ?? true,
+        reason: result.reason ?? "Passed inspection.",
+      };
+    } catch {
+      // Fallback if parsing fails
+      return { isClear: true, reason: "Passed inspection." };
+    }
+  } catch (error) {
+    console.error("Vision API Error during copyright check:", error);
+    return { isClear: true, reason: "Vision API failed, proceeding gracefully." };
+  }
 }
 
 /**

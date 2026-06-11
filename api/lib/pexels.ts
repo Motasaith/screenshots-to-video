@@ -136,13 +136,15 @@ export async function searchVideos(
 export async function searchMedia(
   query: string,
   mediaType: "image" | "video" | "both" = "both",
-  perPage = 3
+  perPage = 3,
+  randomize = false
 ): Promise<PexelsResult[]> {
   const results: PexelsResult[] = [];
+  const fetchCount = randomize ? Math.max(15, perPage * 3) : perPage;
 
   if (mediaType === "image" || mediaType === "both") {
     try {
-      const photos = await searchPhotos(query, perPage);
+      const photos = await searchPhotos(query, fetchCount);
       results.push(...photos);
     } catch (err) {
       console.warn("[Pexels] Photo search failed:", err);
@@ -151,14 +153,18 @@ export async function searchMedia(
 
   if (mediaType === "video" || mediaType === "both") {
     try {
-      const videos = await searchVideos(query, perPage);
+      const videos = await searchVideos(query, fetchCount);
       results.push(...videos);
     } catch (err) {
       console.warn("[Pexels] Video search failed:", err);
     }
   }
 
-  return results;
+  if (randomize) {
+    results.sort(() => Math.random() - 0.5);
+  }
+
+  return results.slice(0, perPage);
 }
 
 /**

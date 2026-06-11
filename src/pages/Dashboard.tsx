@@ -200,6 +200,16 @@ export default function Dashboard() {
           </div>
         </div>
 
+        {/* AdSense Placeholder */}
+        <div className="w-full bg-[var(--sketch-card-bg)] border-2 border-dashed border-[var(--sketch-fg-subtle)] p-6 mb-8 text-center flex flex-col items-center justify-center">
+          <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] uppercase tracking-widest bg-[var(--sketch-fg-subtle)]/10 px-2 py-1 sketch-border-sm mb-2 inline-block">
+            Advertisement
+          </span>
+          <p className="font-body text-sm text-[var(--sketch-fg-muted)]">
+            Google AdSense Placeholder (728x90)
+          </p>
+        </div>
+
         {projects && projects.length > 0 ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             <AnimatePresence>

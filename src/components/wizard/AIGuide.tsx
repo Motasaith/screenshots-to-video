@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams } from "react-router";
+import { useWizardStore } from "@/hooks/useWizardStore";
 import { trpc } from "@/providers/trpc";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -29,16 +30,67 @@ export default function AIGuide() {
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const { stepData } = useWizardStore();
+  const currentStepData = stepData[step as keyof typeof stepData] || {};
+  
+  const fullContext = {
+    projectId: projectIdNum,
+    projectData: stepData.setup,
+    currentStepData,
+  };
+
   const guideQuery = trpc.ai.guide.useQuery(
     {
       currentStep: step || "setup",
       eventType: `${step || "setup"}_load`,
-      context: { projectId: projectIdNum },
+      context: fullContext,
     },
     { enabled: !!step && projectIdNum > 0 }
   );
 
   const chatMutation = trpc.ai.chat.useMutation();
+  const proactiveMutation = trpc.ai.proactiveFeedback.useMutation();
+
+  // Debounced proactive feedback
+  useEffect(() => {
+    if (!step) return;
+
+    const timeout = setTimeout(async () => {
+      try {
+        const response = await proactiveMutation.mutateAsync({
+          currentStep: step,
+          context: fullContext,
+        });
+
+        if (response.message) {
+          setMessages((prev) => {
+            // Avoid duplicate messages
+            if (prev.length > 0 && prev[prev.length - 1].content === response.message) {
+              return prev;
+            }
+            return [
+              ...prev,
+              {
+                id: `ai-proactive-${Date.now()}`,
+                role: "ai",
+                content: response.message,
+              },
+            ];
+          });
+        }
+      } catch (err) {
+        // Ignore proactive errors silently
+      }
+    }, 3000);
+
+    return () => clearTimeout(timeout);
+  }, [
+    stepData.setup.title,
+    stepData.setup.description,
+    (currentStepData as any)?.description,
+    (currentStepData as any)?.narration,
+    step
+  ]);
 
   useEffect(() => {
     if (guideQuery.data?.message && messages.length === 0) {
@@ -74,7 +126,7 @@ export default function AIGuide() {
       const response = await chatMutation.mutateAsync({
         history: newMessages.map(m => ({ role: m.role, content: m.content })),
         currentStep: step || "setup",
-        context: { projectId: projectIdNum },
+        context: fullContext,
       });
 
       const aiMessage: Message = {

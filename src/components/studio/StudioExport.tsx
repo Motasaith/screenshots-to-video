@@ -123,6 +123,16 @@ export default function StudioExport() {
                 </Button>
               </div>
 
+              {/* AdSense Placeholder */}
+              <div className="sketch-card bg-[var(--sketch-card-bg)] border-2 border-dashed border-[var(--sketch-fg-subtle)] p-6 text-center flex flex-col items-center justify-center">
+                <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] uppercase tracking-widest bg-[var(--sketch-fg-subtle)]/10 px-2 py-1 sketch-border-sm mb-2 inline-block">
+                  Advertisement
+                </span>
+                <p className="font-body text-sm text-[var(--sketch-fg-muted)]">
+                  Google AdSense Placeholder (728x90)
+                </p>
+              </div>
+
               {/* Attribution note */}
               <div className="sketch-card p-4 bg-[var(--sketch-card-bg)]">
                 <p className="font-body text-xs text-[var(--sketch-fg-subtle)]">

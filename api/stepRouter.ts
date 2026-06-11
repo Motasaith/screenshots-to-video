@@ -90,6 +90,7 @@ export const stepRouter = createRouter({
         zoomRectHeight: z.number().min(0).max(100).optional(),
         audioPath: z.string().optional(),
         audioDuration: z.number().optional(),
+        transition: z.string().optional(),
         videoSegmentPath: z.string().optional(),
         status: z.enum(["pending", "generating", "done", "error"]).optional(),
       })

@@ -5,15 +5,20 @@ type WizardStep =
   | "upload"
   | "script"
   | "annotate"
+  | "preview"
   | "voice"
   | "render"
   | "export";
+
+export type AspectRatio = "16:9" | "9:16" | "1:1" | "4:5";
+export type TransitionType = "fade" | "slide-left" | "slide-right" | "slide-up" | "flip" | "dissolve";
 
 interface WizardStepData {
   setup: {
     title: string;
     description: string;
     platform: "youtube" | "teams" | "tiktok" | "linkedin";
+    aspectRatio: AspectRatio;
   };
   upload: {
     steps: Array<{
@@ -40,12 +45,21 @@ interface WizardStepData {
       }
     >;
   };
+  preview: {
+    stepTransitions: Record<number, TransitionType>;
+    transitionDuration: number;
+    introTemplate: string;
+    outroTemplate: string;
+    introText: string;
+    outroText: string;
+  };
   voice: {
     voice: string;
     speed: number;
     resolution: "720p" | "1080p" | "4k";
     musicEnabled: boolean;
     musicTrack?: string;
+    randomize: boolean;
   };
 }
 
@@ -85,6 +99,7 @@ const initialState: Omit<
       title: "",
       description: "",
       platform: "youtube",
+      aspectRatio: "16:9",
     },
     upload: {
       steps: [],
@@ -95,11 +110,20 @@ const initialState: Omit<
     annotate: {
       annotations: {},
     },
+    preview: {
+      stepTransitions: {},
+      transitionDuration: 0.5,
+      introTemplate: "",
+      outroTemplate: "",
+      introText: "",
+      outroText: "",
+    },
     voice: {
       voice: "en-US-AriaNeural",
       speed: 1.0,
       resolution: "1080p",
       musicEnabled: false,
+      randomize: false,
     },
   },
 };
@@ -126,6 +150,7 @@ export const stepOrder: WizardStep[] = [
   "upload",
   "script",
   "annotate",
+  "preview",
   "voice",
   "render",
   "export",
@@ -138,6 +163,7 @@ export const stepLabels: Record<WizardStep, string> = {
   upload: "Upload",
   script: "Script",
   annotate: "Annotate",
+  preview: "Preview",
   voice: "Voice",
   render: "Render",
   export: "Export",

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams } from "react-router";
-import { useWizardStore } from "@/hooks/useWizardStore";
+import { useWizardStore, type AspectRatio } from "@/hooks/useWizardStore";
 import { trpc } from "@/providers/trpc";
 import { motion } from "framer-motion";
 import {
@@ -17,11 +17,18 @@ import { Button } from "@/components/ui/button";
 
 type Platform = "youtube" | "teams" | "tiktok" | "linkedin";
 
-const platforms: { value: Platform; label: string; icon: typeof Youtube }[] = [
-  { value: "youtube", label: "YouTube", icon: Youtube },
-  { value: "teams", label: "Microsoft Teams", icon: MessageSquare },
-  { value: "tiktok", label: "TikTok", icon: Smartphone },
-  { value: "linkedin", label: "LinkedIn", icon: Linkedin },
+const platforms: { value: Platform; label: string; aspect: string; icon: typeof Youtube }[] = [
+  { value: "youtube", label: "YouTube", aspect: "16:9", icon: Youtube },
+  { value: "teams", label: "Microsoft Teams", aspect: "16:9", icon: MessageSquare },
+  { value: "tiktok", label: "TikTok", aspect: "9:16", icon: Smartphone },
+  { value: "linkedin", label: "LinkedIn", aspect: "1:1", icon: Linkedin },
+];
+
+const aspectRatios: { value: AspectRatio; label: string; desc: string; iconW: string; iconH: string }[] = [
+  { value: "16:9", label: "Widescreen", desc: "YouTube, Vimeo", iconW: "w-6", iconH: "h-3.5" },
+  { value: "9:16", label: "Vertical", desc: "TikTok, Reels", iconW: "w-3.5", iconH: "h-6" },
+  { value: "1:1", label: "Square", desc: "Instagram, LinkedIn", iconW: "w-5", iconH: "h-5" },
+  { value: "4:5", label: "Portrait", desc: "Facebook, IG Feed", iconW: "w-4", iconH: "h-5" },
 ];
 
 export default function StepSetup() {
@@ -34,7 +41,13 @@ export default function StepSetup() {
   const [title, setTitle] = useState(setup.title);
   const [description, setDescription] = useState(setup.description);
   const [platform, setPlatform] = useState<Platform>(setup.platform);
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>(setup.aspectRatio || "16:9");
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Sync local state to store so AIGuide can read it in real-time
+  useEffect(() => {
+    setStepData("setup", { title, description, platform, aspectRatio });
+  }, [title, description, platform, aspectRatio, setStepData]);
   const [aiFeedback, setAiFeedback] = useState<{
     titleQuality: string;
     descriptionQuality: string;
@@ -71,8 +84,6 @@ export default function StepSetup() {
   const handleContinue = async () => {
     if (!validate()) return;
 
-    setStepData("setup", { title, description, platform });
-
     try {
       let id = projectIdNum;
       if (id === 0) {
@@ -80,6 +91,7 @@ export default function StepSetup() {
           title,
           description,
           platform,
+          aspectRatio,
         });
         id = result.id;
       } else {
@@ -88,6 +100,7 @@ export default function StepSetup() {
           title,
           description,
           platform,
+          aspectRatio,
         });
       }
       navigate(`/create/${id}/upload`);
@@ -175,7 +188,7 @@ export default function StepSetup() {
                   <button
                     key={p.value}
                     onClick={() => setPlatform(p.value)}
-                    className={`flex items-center gap-3 p-4 border-2 transition-all ${
+                    className={`flex items-center gap-3 p-4 border-2 transition-all text-left ${
                       isActive
                         ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/10 shadow-[4px_4px_0px_0px_#FBBF24]"
                         : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
@@ -183,17 +196,57 @@ export default function StepSetup() {
                     style={{ borderRadius: isActive ? "255px 15px 225px 15px/15px 225px 15px 255px" : "12px" }}
                   >
                     <Icon
-                      className={`w-5 h-5 ${
+                      className={`w-5 h-5 flex-shrink-0 ${
                         isActive ? "text-[var(--sketch-fg)]" : "text-[var(--sketch-fg-subtle)]"
                       }`}
                     />
-                    <span
-                      className={`font-body text-sm font-medium ${
-                        isActive ? "text-[var(--sketch-fg)]" : "text-[var(--sketch-fg-subtle)]"
-                      }`}
-                    >
-                      {p.label}
-                    </span>
+                    <div className="flex flex-col">
+                      <span
+                        className={`font-body text-sm font-semibold leading-none ${
+                          isActive ? "text-[var(--sketch-fg)]" : "text-[var(--sketch-fg-subtle)]"
+                        }`}
+                      >
+                        {p.label}
+                      </span>
+                      <span className="font-mono text-[10px] text-[var(--sketch-fg-muted)] mt-1.5">
+                        Aspect: {p.aspect}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <label className="font-body text-sm font-semibold mb-3 block text-[var(--sketch-fg)]">
+              Aspect Ratio
+            </label>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {aspectRatios.map((ar) => {
+                const isActive = aspectRatio === ar.value;
+                return (
+                  <button
+                    key={ar.value}
+                    onClick={() => setAspectRatio(ar.value)}
+                    className={`flex flex-col items-center gap-2 p-3 border-2 transition-all text-center ${
+                      isActive
+                        ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/10 shadow-[2px_2px_0px_0px_#FBBF24]"
+                        : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
+                    }`}
+                    style={{ borderRadius: isActive ? "12px 4px 12px 4px/4px 12px 4px 12px" : "8px" }}
+                  >
+                    <div className="h-8 flex items-center justify-center">
+                      <div className={`border-2 border-current rounded-sm ${ar.iconW} ${ar.iconH} ${isActive ? "text-[var(--sketch-fg)]" : "text-[var(--sketch-fg-subtle)]"}`} />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className={`font-body text-sm font-bold ${isActive ? "text-[var(--sketch-fg)]" : "text-[var(--sketch-fg-subtle)]"}`}>
+                        {ar.value}
+                      </span>
+                      <span className="font-mono text-[9px] text-[var(--sketch-fg-muted)] mt-0.5">
+                        {ar.label}
+                      </span>
+                    </div>
                   </button>
                 );
               })}

@@ -11,9 +11,13 @@ import {
   Zap,
   Volume2,
   Loader2,
-  Square
+  Square,
+  Lock,
+  Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
 
 const voices = [
   // Newer Microsoft "Multilingual" voices — the most natural-sounding
@@ -44,13 +48,17 @@ const musicTracks = [
 export default function StepVoice() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const projectIdNum = Number(projectId) || 0;
+
+  const isFreePlan = user?.plan === "free";
 
   const [selectedVoice, setSelectedVoice] = useState("en-US-AndrewMultilingualNeural");
   const [speed, setSpeed] = useState(1.0);
   const [resolution, setResolution] = useState<"720p" | "1080p" | "4k">("1080p");
   const [musicEnabled, setMusicEnabled] = useState(false);
   const [selectedTrack, setSelectedTrack] = useState("ambient");
+  const [randomize, setRandomize] = useState(false);
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRef = useState(() => new Audio())[0];
@@ -93,6 +101,7 @@ export default function StepVoice() {
       resolution,
       musicEnabled: musicEnabled ? 1 : 0,
       musicTrack: musicEnabled ? selectedTrack : undefined,
+      randomize: randomize,
     });
     navigate(`/create/${projectIdNum}/render`);
   };
@@ -167,6 +176,58 @@ export default function StepVoice() {
                 </button>
               ))}
             </div>
+
+            {/* ElevenLabs PRO Section */}
+            <div className="mt-6 border-2 border-amber-500/20 bg-amber-500/5 p-4" style={{ borderRadius: "12px" }}>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="font-body font-semibold text-sm flex items-center gap-2 text-[var(--sketch-fg)]">
+                  <Sparkles className="w-4 h-4 text-amber-500" />
+                  ElevenLabs Ultra-Real Voices
+                </h4>
+                {isFreePlan && (
+                  <span className="font-mono text-[10px] bg-amber-500/20 text-amber-600 px-1.5 py-0.5 sketch-border-sm flex items-center gap-1">
+                    <Lock className="w-3 h-3" /> PRO
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { id: "elevenlabs:adam", name: "Adam", accent: "US", gender: "Male" },
+                  { id: "elevenlabs:rachel", name: "Rachel", accent: "US", gender: "Female" }
+                ].map((voice) => (
+                  <button
+                    key={voice.id}
+                    onClick={() => {
+                      if (isFreePlan) {
+                        toast.error("ElevenLabs voices are a Pro feature. Upgrade your plan to use them.");
+                        return;
+                      }
+                      setSelectedVoice(voice.id);
+                    }}
+                    className={`p-3 border-2 text-left transition-all relative ${
+                      selectedVoice === voice.id
+                        ? "border-amber-500 bg-amber-500/10 shadow-[2px_2px_0px_0px_#F59E0B]"
+                        : isFreePlan
+                          ? "border-[var(--sketch-fg-subtle)]/45 bg-[var(--sketch-card-bg)]/50 opacity-75 cursor-not-allowed"
+                          : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-amber-500/40"
+                    }`}
+                    style={{ borderRadius: "8px" }}
+                  >
+                    <span className="font-body font-semibold text-sm text-[var(--sketch-fg)]">
+                      {voice.name}
+                    </span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="font-mono text-[9px] px-1.5 py-0.5 bg-amber-500/10 text-amber-700 sketch-border-sm">
+                        {voice.accent}
+                      </span>
+                      <span className="font-mono text-[9px] px-1.5 py-0.5 bg-amber-500/10 text-amber-700 sketch-border-sm">
+                        {voice.gender}
+                      </span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           <div className="border-t border-[var(--sketch-fg-subtle)] pt-6">
@@ -206,25 +267,41 @@ export default function StepVoice() {
               Resolution
             </h3>
             <div className="grid grid-cols-3 gap-3">
-              {(["720p", "1080p", "4k"] as const).map((res) => (
-                <button
-                  key={res}
-                  onClick={() => setResolution(res)}
-                  className={`p-4 border-2 text-center transition-all ${
-                    resolution === res
-                      ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/5 shadow-[4px_4px_0px_0px_#FBBF24]"
-                      : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
-                  }`}
-                  style={{ borderRadius: resolution === res ? "255px 15px 225px 15px/15px 225px 15px 255px" : "12px" }}
-                >
-                  <span className="font-body font-bold text-lg text-[var(--sketch-fg)]">{res}</span>
-                  {res === "4k" && (
-                    <span className="block font-mono text-[10px] text-[#FBBF24] mt-1">
-                      PRO
-                    </span>
-                  )}
-                </button>
-              ))}
+              {(["720p", "1080p", "4k"] as const).map((res) => {
+                const isActive = resolution === res;
+                const isLocked = isFreePlan && (res === "1080p" || res === "4k");
+
+                return (
+                  <button
+                    key={res}
+                    onClick={() => {
+                      if (isLocked) {
+                        toast.error(`${res} is a Pro feature. Upgrade your plan to unlock high resolution rendering.`);
+                        return;
+                      }
+                      setResolution(res);
+                    }}
+                    className={`p-4 border-2 text-center transition-all relative ${
+                      isActive
+                        ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/5 shadow-[4px_4px_0px_0px_#FBBF24]"
+                        : isLocked
+                          ? "border-[var(--sketch-fg-subtle)]/45 bg-[var(--sketch-card-bg)]/50 opacity-75 cursor-not-allowed"
+                          : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
+                    }`}
+                    style={{ borderRadius: isActive ? "255px 15px 225px 15px/15px 225px 15px 255px" : "12px" }}
+                  >
+                    {isLocked && (
+                      <Lock className="w-3.5 h-3.5 text-amber-600 absolute top-2 right-2" />
+                    )}
+                    <span className="font-body font-bold text-lg text-[var(--sketch-fg)]">{res}</span>
+                    {res === "4k" && !isLocked && (
+                      <span className="block font-mono text-[10px] text-[#FBBF24] mt-1">
+                        PRO
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -232,12 +309,23 @@ export default function StepVoice() {
             <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
               <Music className="w-5 h-5 text-[#FBBF24]" />
               Background Music
+              {isFreePlan && (
+                <span className="font-mono text-[10px] bg-[#FBBF24]/20 text-[#FBBF24] px-1.5 py-0.5 sketch-border-sm flex items-center gap-1">
+                  <Lock className="w-3 h-3" /> PRO
+                </span>
+              )}
             </h3>
             <div className="sketch-card p-4 bg-[var(--sketch-card-bg)]">
               <div className="flex items-center justify-between mb-4">
                 <span className="font-body text-sm text-[var(--sketch-fg)]">Enable background music</span>
                 <button
-                  onClick={() => setMusicEnabled(!musicEnabled)}
+                  onClick={() => {
+                    if (isFreePlan) {
+                      toast.error("Background music is a Pro feature. Upgrade your plan to enable it.");
+                      return;
+                    }
+                    setMusicEnabled(!musicEnabled);
+                  }}
                   className={`w-12 h-6 rounded-full transition-colors relative ${
                     musicEnabled ? "bg-[#FBBF24]" : "bg-[var(--sketch-fg-subtle)]"
                   }`}
@@ -271,6 +359,33 @@ export default function StepVoice() {
                   ))}
                 </motion.div>
               )}
+            </div>
+          </div>
+
+          <div className="border-t border-[var(--sketch-fg-subtle)] pt-6">
+            <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
+              <Sparkles className="w-5 h-5 text-[#FBBF24]" />
+              Randomize Generation
+            </h3>
+            <div className="sketch-card p-4 bg-[var(--sketch-card-bg)]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="font-body text-sm font-semibold text-[var(--sketch-fg)] block">Enable Randomization</span>
+                  <span className="font-body text-xs text-[var(--sketch-fg-muted)]">Randomizes zooms and camera movements for a truly unique video. Best for YouTube.</span>
+                </div>
+                <button
+                  onClick={() => setRandomize(!randomize)}
+                  className={`w-12 h-6 rounded-full transition-colors relative flex-shrink-0 ${
+                    randomize ? "bg-[#FBBF24]" : "bg-[var(--sketch-fg-subtle)]"
+                  }`}
+                >
+                  <div
+                    className={`w-5 h-5 bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-border-color)] rounded-full absolute top-0.5 transition-transform ${
+                      randomize ? "translate-x-6" : "translate-x-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
             </div>
           </div>
 

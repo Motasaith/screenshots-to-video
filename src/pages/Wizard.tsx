@@ -15,6 +15,7 @@ import StepSetup from "@/components/wizard/StepSetup";
 import StepUpload from "@/components/wizard/StepUpload";
 import StepScript from "@/components/wizard/StepScript";
 import StepAnnotate from "@/components/wizard/StepAnnotate";
+import StepPreview from "@/components/wizard/StepPreview";
 import StepVoice from "@/components/wizard/StepVoice";
 import StepRender from "@/components/wizard/StepRender";
 import StepExport from "@/components/wizard/StepExport";
@@ -84,6 +85,7 @@ export default function Wizard() {
     upload: <StepUpload />,
     script: <StepScript />,
     annotate: <StepAnnotate />,
+    preview: <StepPreview />,
     voice: <StepVoice />,
     render: <StepRender />,
     export: <StepExport />,

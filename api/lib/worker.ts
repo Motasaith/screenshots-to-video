@@ -3,7 +3,7 @@ import { projects, steps, renderJobs, users, studioProjects, studioScenes, studi
 import { eq, and, desc } from "drizzle-orm";
 import { uploadToR2, downloadFromR2 } from "./r2";
 import { generateTTSAudio, speedToRate, probeAudioDuration } from "./tts";
-import { renderStepVideo, concatenateSegments, resolutionToSize, cleanupTempFiles } from "./ffmpeg";
+import { renderStepVideo, concatenateSegments, concatenateSegmentsWithTransitions, renderTextSegment, resolutionToSize, cleanupTempFiles, mixBackgroundMusic } from "./ffmpeg";
 import { renderSceneWithImage, renderSceneWithVideo } from "./studioRenderer";
 import { downloadMedia } from "./pexels";
 import { cleanupExpiredProjects } from "./cleanup";
@@ -133,7 +133,7 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
     if (projectSteps.length === 0) throw new Error("No steps in project");
 
     const totalSteps = projectSteps.length;
-    const outputRes = resolutionToSize(project.resolution || "1080p");
+    const outputRes = resolutionToSize(project.resolution || "1080p", project.aspectRatio || "16:9");
 
     // Mark job as processing
     await updateJob(jobId, {
@@ -231,8 +231,13 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
       const audioDuration = (step as any)._audioDuration;
 
       // Use zoom target, default to center if not set
-      const zoomX = step.zoomTargetX ?? 50;
-      const zoomY = step.zoomTargetY ?? 50;
+      let zoomX = step.zoomTargetX ?? 50;
+      let zoomY = step.zoomTargetY ?? 50;
+
+      if (project.randomize) {
+        zoomX = Math.max(0, Math.min(100, zoomX + (Math.random() * 20 - 10)));
+        zoomY = Math.max(0, Math.min(100, zoomY + (Math.random() * 20 - 10)));
+      }
 
       // Render the video segment
       const segmentPath = await renderStepVideo({
@@ -278,8 +283,53 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
       message: "Merging video segments with transitions...",
     });
 
-    const finalLocalPath = await concatenateSegments(segmentPaths, segmentDurations);
+    const transitions: string[] = [];
+    for (let i = 0; i < projectSteps.length; i++) {
+      transitions.push(projectSteps[i].transition || "fade");
+    }
+
+    if (project.introTemplate && project.introText) {
+      const introPath = await renderTextSegment(project.introTemplate, project.introText, outputRes, 3.0);
+      segmentPaths.unshift(introPath);
+      segmentDurations.unshift(3.0);
+      transitions.unshift("fade");
+      tempFiles.push(introPath);
+    }
+    if (project.outroTemplate && project.outroText) {
+      const outroPath = await renderTextSegment(project.outroTemplate, project.outroText, outputRes, 3.0);
+      segmentPaths.push(outroPath);
+      segmentDurations.push(3.0);
+      transitions.push("fade");
+      tempFiles.push(outroPath);
+    }
+
+    // We only need N-1 transitions for N segments
+    let finalLocalPath;
+    if (transitions.length > 1) {
+      finalLocalPath = await concatenateSegmentsWithTransitions(
+        segmentPaths, 
+        transitions.slice(0, segmentPaths.length - 1), 
+        project.transitionDuration || 0.5
+      );
+    } else {
+      finalLocalPath = await concatenateSegments(segmentPaths, segmentDurations);
+    }
     tempFiles.push(finalLocalPath);
+
+    let finalVideoPathToUpload = finalLocalPath;
+    if (project.musicEnabled && project.musicTrack) {
+      try {
+        await updateJob(jobId, {
+          stage: "mixing_audio",
+          message: "Adding background music...",
+        });
+        const mixedPath = await mixBackgroundMusic(finalLocalPath, project.musicTrack);
+        tempFiles.push(mixedPath);
+        finalVideoPathToUpload = mixedPath;
+      } catch (err: any) {
+        console.error("[Worker] Failed to mix background music for project:", err.message);
+      }
+    }
 
     // ── STAGE 4: Upload final video ──
     await updateJob(jobId, {
@@ -288,7 +338,7 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
       message: "Uploading final video...",
     });
 
-    const finalBuffer = await fs.readFile(finalLocalPath);
+    const finalBuffer = await fs.readFile(finalVideoPathToUpload);
     const finalKey = await uploadToR2(finalBuffer, {
       folder: `projects/${projectId}`,
       filename: `final_${projectId}.mp4`,
@@ -443,7 +493,7 @@ async function processStudioRenderJob(jobId: number, projectId: number): Promise
     if (scenes.length === 0) throw new Error("No scenes in studio project");
 
     const totalSteps = scenes.length;
-    const outputRes = resolutionToSize(project.resolution || "1080p");
+    const outputRes = resolutionToSize(project.resolution || "1080p", project.aspectRatio || "16:9");
 
     await updateStudioJob(jobId, {
       status: "processing",
@@ -589,8 +639,52 @@ async function processStudioRenderJob(jobId: number, projectId: number): Promise
       message: "Merging scenes with transitions...",
     });
 
-    const finalLocalPath = await concatenateSegments(segmentPaths, segmentDurations);
+    const transitions: string[] = [];
+    for (let i = 0; i < scenes.length; i++) {
+      transitions.push(scenes[i].transition || "fade");
+    }
+
+    if (project.introTemplate && project.introText) {
+      const introPath = await renderTextSegment(project.introTemplate, project.introText, outputRes, 3.0);
+      segmentPaths.unshift(introPath);
+      segmentDurations.unshift(3.0);
+      transitions.unshift("fade");
+      tempFiles.push(introPath);
+    }
+    if (project.outroTemplate && project.outroText) {
+      const outroPath = await renderTextSegment(project.outroTemplate, project.outroText, outputRes, 3.0);
+      segmentPaths.push(outroPath);
+      segmentDurations.push(3.0);
+      transitions.push("fade");
+      tempFiles.push(outroPath);
+    }
+
+    let finalLocalPath;
+    if (transitions.length > 1) {
+      finalLocalPath = await concatenateSegmentsWithTransitions(
+        segmentPaths, 
+        transitions.slice(0, segmentPaths.length - 1), 
+        project.transitionDuration || 0.5
+      );
+    } else {
+      finalLocalPath = await concatenateSegments(segmentPaths, segmentDurations);
+    }
     tempFiles.push(finalLocalPath);
+
+    let finalVideoPathToUpload = finalLocalPath;
+    if (project.musicEnabled && project.musicTrack) {
+      try {
+        await updateStudioJob(jobId, {
+          stage: "mixing_audio",
+          message: "Adding background music...",
+        });
+        const mixedPath = await mixBackgroundMusic(finalLocalPath, project.musicTrack);
+        tempFiles.push(mixedPath);
+        finalVideoPathToUpload = mixedPath;
+      } catch (err: any) {
+        console.error("[Worker] Failed to mix background music for studio project:", err.message);
+      }
+    }
 
     // ── STAGE 4: Upload final ──
     await updateStudioJob(jobId, {
@@ -599,7 +693,7 @@ async function processStudioRenderJob(jobId: number, projectId: number): Promise
       message: "Uploading final video...",
     });
 
-    const finalBuffer = await fs.readFile(finalLocalPath);
+    const finalBuffer = await fs.readFile(finalVideoPathToUpload);
     const finalKey = await uploadToR2(finalBuffer, {
       folder: `studio/${projectId}`,
       filename: `final_${projectId}.mp4`,

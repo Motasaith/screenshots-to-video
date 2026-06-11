@@ -31,6 +31,7 @@ export const env = {
   llmBaseUrl: optional("LLM_BASE_URL"),
   llmApiKey: optional("LLM_API_KEY"),
   llmModel: optional("LLM_MODEL", "gpt-oss:120b"), // good free default on Ollama Cloud; also try qwen3:235b, deepseek-v3.1:671b
+  visionLlmModel: optional("VISION_LLM_MODEL", "gpt-4o"), // Dedicated vision model for copyright checking
 
   // ── Kimi ──
   kimiOpenUrl: optional("KIMI_OPEN_URL", "https://api.kimi.ai"),
