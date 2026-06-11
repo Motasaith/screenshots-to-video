@@ -40,7 +40,7 @@ Platform: ${opts.platform}
 Create approximately ${approxSceneCount} scenes. The total narration time across all scenes should add up to roughly ${opts.targetDuration} seconds (estimate ~2.5 words per second of speech).
 
 For each scene:
-- "narration": The exact text that will be spoken by a text-to-speech engine. Be natural, clear, and engaging. Avoid complex punctuation or special characters.
+- "narration": The exact text spoken by a text-to-speech engine — write it the way a real person TALKS, not the way an article reads. Always use contractions (it's, you'll, don't). Vary sentence length; mix short punchy lines with longer ones. Occasionally (not every scene) open with a natural spoken transition like "Now,", "So,", "Here's the interesting part —", "Okay,". Once or twice in the whole video, add a small human touch like "hmm", "you know", or a brief aside. Use commas and "..." to create natural pauses. The first scene should hook the viewer conversationally; the last should wrap up warmly. No markdown, no emoji, no special characters.
 - "sceneDescription": A brief description of what the viewer should see during this scene.
 - "searchQuery": A 2-4 word search term to find relevant stock footage/photos on Pexels. Be specific and visual (e.g. "typing laptop office", "sunset cityscape", "team meeting"). Avoid abstract terms.
 - "mediaType": Either "image" or "video". Use "video" for action scenes, "image" for static concepts.

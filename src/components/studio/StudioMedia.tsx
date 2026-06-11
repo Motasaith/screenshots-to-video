@@ -9,7 +9,6 @@ import {
   Image,
   Film,
   RefreshCw,
-  X,
   User,
   Loader2,
 } from "lucide-react";

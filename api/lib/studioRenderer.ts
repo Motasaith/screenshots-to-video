@@ -7,7 +7,14 @@ import { nanoid } from "nanoid";
 
 import ffmpegPath from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
-import { concatenateSegments, resolutionToSize, cleanupTempFiles } from "./ffmpeg";
+import {
+  concatenateSegments,
+  resolutionToSize,
+  cleanupTempFiles,
+  RENDER_FPS,
+  AUDIO_LEAD_IN,
+  AUDIO_TAIL,
+} from "./ffmpeg";
 
 const execFileAsync = promisify(execFile);
 const WORK_DIR = path.join(os.tmpdir(), "aivideo-studio-render");
@@ -40,8 +47,21 @@ async function probeVideoDuration(filePath: string): Promise<number> {
   }
 }
 
+/** Shared audio treatment: lead-in/tail silence + loudness normalization. */
+function studioAudioFilter(): string {
+  const delayMs = Math.round(AUDIO_LEAD_IN * 1000);
+  return (
+    `adelay=${delayMs}:all=1,` +
+    `apad=pad_dur=${AUDIO_TAIL},` +
+    `loudnorm=I=-16:TP=-1.5:LRA=11`
+  );
+}
+
 /**
- * Render a scene from a static image with Ken Burns pan/zoom effect + audio.
+ * Render a scene from a static image with a documentary-style Ken Burns
+ * effect: a gentle eased zoom with a slow drift, rendered on a supersampled
+ * canvas so the motion is jitter-free (zoompan rounds pan offsets to whole
+ * pixels — supersampling gives sub-pixel precision at the output size).
  */
 export async function renderSceneWithImage(opts: {
   imagePath: string | null;
@@ -54,7 +74,7 @@ export async function renderSceneWithImage(opts: {
   const outputPath = path.join(WORK_DIR, `studio_img_${nanoid(12)}.mp4`);
   const outputRes = opts.outputRes || "1920x1080";
   const [outW, outH] = outputRes.split("x").map(Number);
-  const fps = 25;
+  const paddedDuration = opts.audioDuration + AUDIO_LEAD_IN + AUDIO_TAIL;
 
   let args: string[];
 
@@ -63,35 +83,47 @@ export async function renderSceneWithImage(opts: {
     args = [
       "-y",
       "-f", "lavfi",
-      "-i", `color=c=black:s=${outW}x${outH}:r=${fps}:d=${opts.audioDuration}`,
+      "-i", `color=c=black:s=${outW}x${outH}:r=${RENDER_FPS}:d=${paddedDuration.toFixed(3)}`,
       "-i", opts.audioPath,
+      "-filter_complex", `[1:a]${studioAudioFilter()}[a]`,
       "-map", "0:v",
-      "-map", "1:a",
+      "-map", "[a]",
       "-c:v", "libx264",
       "-preset", "medium",
-      "-crf", "23",
+      "-crf", "20",
       "-c:a", "aac",
-      "-b:a", "128k",
+      "-b:a", "160k",
+      "-ar", "44100",
       "-pix_fmt", "yuv420p",
-      "-shortest",
+      "-t", paddedDuration.toFixed(3),
       "-movflags", "+faststart",
       outputPath,
     ];
   } else {
-    const totalFrames = Math.max(Math.ceil(opts.audioDuration * fps), fps);
+    const totalFrames = Math.max(Math.ceil(paddedDuration * RENDER_FPS), RENDER_FPS);
 
-    // Ken Burns effect: gentle zoom from 1.0 to 1.3 with slight pan
-    const maxZoom = 1.3;
-    const zoomExpr = `1+${((maxZoom - 1) / totalFrames).toFixed(8)}*on`;
-    // Pan from center-left to center-right
-    const xExpr = `iw/2-(iw/zoom/2)+on*${(0.1 / totalFrames).toFixed(8)}*iw`;
+    // Supersampled canvas (2x, even dimensions) to eliminate zoompan jitter
+    const ssFactor = Math.min(2, 4200 / outW);
+    const ssW = 2 * Math.round((outW * ssFactor) / 2);
+    const ssH = 2 * Math.round((outH * ssFactor) / 2);
+
+    // Gentle Ken Burns: ease from 1.0 to ~1.18 over the whole scene.
+    // Smoothstep start/end so the motion breathes instead of marching.
+    const maxZoom = 1.18;
+    const t = `min(on/${totalFrames},1)`;
+    const eased = `(3*(${t})*(${t})-2*(${t})*(${t})*(${t}))`;
+    const zoomExpr = `1+${(maxZoom - 1).toFixed(6)}*${eased}`;
+
+    // Slow horizontal drift (≈4% of width) while staying vertically centered
+    const driftExpr = `(iw*0.04)*${eased}`;
+    const xExpr = `max(0,min(iw-iw/zoom,iw/2-(iw/zoom/2)+${driftExpr}))`;
     const yExpr = `ih/2-(ih/zoom/2)`;
 
     const zoomFilter =
       `zoompan=z='${zoomExpr}':` +
       `x='${xExpr}':` +
       `y='${yExpr}':` +
-      `d=${totalFrames}:s=${outputRes}:fps=${fps}`;
+      `d=${totalFrames}:s=${outputRes}:fps=${RENDER_FPS}`;
 
     args = [
       "-y",
@@ -99,16 +131,19 @@ export async function renderSceneWithImage(opts: {
       "-i", opts.imagePath,
       "-i", opts.audioPath,
       "-filter_complex",
-      `[0:v]scale=${outW}:${outH}:force_original_aspect_ratio=decrease,pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2,${zoomFilter}[v]`,
+      `[0:v]scale=${ssW}:${ssH}:force_original_aspect_ratio=increase:flags=lanczos,` +
+        `crop=${ssW}:${ssH},${zoomFilter},format=yuv420p[v];` +
+        `[1:a]${studioAudioFilter()}[a]`,
       "-map", "[v]",
-      "-map", "1:a",
+      "-map", "[a]",
       "-c:v", "libx264",
       "-preset", "medium",
-      "-crf", "23",
+      "-crf", "20",
       "-c:a", "aac",
-      "-b:a", "128k",
+      "-b:a", "160k",
+      "-ar", "44100",
       "-pix_fmt", "yuv420p",
-      "-shortest",
+      "-t", paddedDuration.toFixed(3),
       "-movflags", "+faststart",
       outputPath,
     ];
@@ -117,7 +152,7 @@ export async function renderSceneWithImage(opts: {
   try {
     if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
     await execFileAsync(ffmpegPath, args, {
-      timeout: 120000,
+      timeout: 300000,
       shell: true,
     });
   } catch (err: any) {
@@ -144,15 +179,16 @@ export async function renderSceneWithVideo(opts: {
   const outputPath = path.join(WORK_DIR, `studio_vid_${nanoid(12)}.mp4`);
   const outputRes = opts.outputRes || "1920x1080";
   const [outW, outH] = outputRes.split("x").map(Number);
+  const paddedDuration = opts.audioDuration + AUDIO_LEAD_IN + AUDIO_TAIL;
 
   // Probe the video duration
   const videoDuration = await probeVideoDuration(opts.videoPath);
 
   let inputArgs: string[];
 
-  if (videoDuration < opts.audioDuration) {
+  if (videoDuration < paddedDuration) {
     // Loop the video to match audio duration
-    const loopCount = Math.ceil(opts.audioDuration / videoDuration);
+    const loopCount = Math.ceil(paddedDuration / videoDuration);
     inputArgs = [
       "-stream_loop", String(loopCount),
       "-i", opts.videoPath,
@@ -169,17 +205,19 @@ export async function renderSceneWithVideo(opts: {
     ...inputArgs,
     "-i", opts.audioPath,
     "-filter_complex",
-    `[0:v]scale=${outW}:${outH}:force_original_aspect_ratio=decrease,pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2[v]`,
+    `[0:v]scale=${outW}:${outH}:force_original_aspect_ratio=decrease,` +
+      `pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2,fps=${RENDER_FPS},format=yuv420p[v];` +
+      `[1:a]${studioAudioFilter()}[a]`,
     "-map", "[v]",
-    "-map", "1:a",
+    "-map", "[a]",
     "-c:v", "libx264",
     "-preset", "medium",
-    "-crf", "23",
+    "-crf", "20",
     "-c:a", "aac",
-    "-b:a", "128k",
+    "-b:a", "160k",
+    "-ar", "44100",
     "-pix_fmt", "yuv420p",
-    "-t", String(opts.audioDuration),
-    "-shortest",
+    "-t", paddedDuration.toFixed(3),
     "-movflags", "+faststart",
     outputPath,
   ];
@@ -187,7 +225,7 @@ export async function renderSceneWithVideo(opts: {
   try {
     if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
     await execFileAsync(ffmpegPath, args, {
-      timeout: 180000,
+      timeout: 300000,
       shell: true,
     });
   } catch (err: any) {

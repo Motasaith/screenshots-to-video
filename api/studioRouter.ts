@@ -5,7 +5,7 @@ import { studioProjects, studioScenes, studioRenderJobs, users } from "@db/schem
 import { eq, and, desc } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { isLLMConfigured } from "./lib/llm";
-import { generateVideoScript, refineScene } from "./lib/studioLlm";
+import { generateVideoScript } from "./lib/studioLlm";
 import { searchMedia, isPexelsConfigured } from "./lib/pexels";
 import { generateTTSAudio, speedToRate } from "./lib/tts";
 import { getSignedDownloadUrl, isR2Configured } from "./lib/r2";

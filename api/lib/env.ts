@@ -26,9 +26,11 @@ export const env = {
   uploadthingAppId: optional("UPLOADTHING_APP_ID"),
 
   // ── LLM (OpenAI-compatible) ──
-  llmBaseUrl: optional("LLM_BASE_URL"), // e.g. http://localhost:11434/v1 or https://api.openai.com/v1
+  // Ollama Cloud: LLM_BASE_URL=https://ollama.com/v1 + LLM_API_KEY=<key from ollama.com/settings/keys>
+  // Local Ollama: LLM_BASE_URL=http://localhost:11434/v1 (no key needed)
+  llmBaseUrl: optional("LLM_BASE_URL"),
   llmApiKey: optional("LLM_API_KEY"),
-  llmModel: optional("LLM_MODEL", "gemma4:31b-cloud"), // or llama3, minimax-m2, etc.
+  llmModel: optional("LLM_MODEL", "gpt-oss:120b"), // good free default on Ollama Cloud; also try qwen3:235b, deepseek-v3.1:671b
 
   // ── Kimi ──
   kimiOpenUrl: optional("KIMI_OPEN_URL", "https://api.kimi.ai"),

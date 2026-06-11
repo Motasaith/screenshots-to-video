@@ -16,13 +16,22 @@ import {
 import { Button } from "@/components/ui/button";
 
 const voices = [
-  { id: "en-US-AriaNeural", name: "Aria", accent: "US", gender: "Female" },
+  // Newer Microsoft "Multilingual" voices — the most natural-sounding
+  { id: "en-US-AndrewMultilingualNeural", name: "Andrew", accent: "US", gender: "Male", tag: "Natural" },
+  { id: "en-US-AvaMultilingualNeural", name: "Ava", accent: "US", gender: "Female", tag: "Natural" },
+  { id: "en-US-BrianMultilingualNeural", name: "Brian", accent: "US", gender: "Male", tag: "Natural" },
+  { id: "en-US-EmmaMultilingualNeural", name: "Emma", accent: "US", gender: "Female", tag: "Natural" },
+  // Classic neural voices
   { id: "en-GB-SoniaNeural", name: "Sonia", accent: "UK", gender: "Female" },
-  { id: "en-US-GuyNeural", name: "Guy", accent: "US", gender: "Male" },
   { id: "en-GB-RyanNeural", name: "Ryan", accent: "UK", gender: "Male" },
-  { id: "en-US-JennyNeural", name: "Jenny", accent: "US", gender: "Female" },
   { id: "en-AU-NatashaNeural", name: "Natasha", accent: "AU", gender: "Female" },
-];
+  { id: "en-US-GuyNeural", name: "Guy", accent: "US", gender: "Male" },
+  // Kokoro — runs locally on the server, ultra-realistic (slower to render)
+  { id: "kokoro:af_heart", name: "Heart", accent: "US", gender: "Female", tag: "Ultra-real" },
+  { id: "kokoro:am_michael", name: "Michael", accent: "US", gender: "Male", tag: "Ultra-real" },
+  { id: "kokoro:bf_emma", name: "Emma B.", accent: "UK", gender: "Female", tag: "Ultra-real" },
+  { id: "kokoro:af_bella", name: "Bella", accent: "US", gender: "Female", tag: "Ultra-real" },
+] as Array<{ id: string; name: string; accent: string; gender: string; tag?: string }>;
 
 const musicTracks = [
   { id: "ambient", name: "Ambient" },
@@ -37,7 +46,7 @@ export default function StepVoice() {
   const navigate = useNavigate();
   const projectIdNum = Number(projectId) || 0;
 
-  const [selectedVoice, setSelectedVoice] = useState("en-US-AriaNeural");
+  const [selectedVoice, setSelectedVoice] = useState("en-US-AndrewMultilingualNeural");
   const [speed, setSpeed] = useState(1.0);
   const [resolution, setResolution] = useState<"720p" | "1080p" | "4k">("1080p");
   const [musicEnabled, setMusicEnabled] = useState(false);
@@ -149,6 +158,11 @@ export default function StepVoice() {
                     <span className="font-mono text-[10px] px-1.5 py-0.5 bg-[#FBBF24]/10 text-[var(--sketch-fg-muted)] sketch-border-sm">
                       {voice.gender}
                     </span>
+                    {voice.tag && (
+                      <span className="font-mono text-[10px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 sketch-border-sm">
+                        {voice.tag}
+                      </span>
+                    )}
                   </div>
                 </button>
               ))}

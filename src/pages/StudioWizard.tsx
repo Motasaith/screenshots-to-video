@@ -43,7 +43,7 @@ export default function StudioWizard() {
   const projectIdNum = Number(pid) || 0;
   const currentStepIdx = studioStepIndex(currentStep);
 
-  const { data: project } = trpc.studio.getById.useQuery(
+  trpc.studio.getById.useQuery(
     { id: projectIdNum },
     { enabled: projectIdNum > 0 && !!user }
   );

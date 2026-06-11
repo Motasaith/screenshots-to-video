@@ -366,7 +366,8 @@ export const aiRouter = createRouter({
         // Clean up temp file
         await fs.unlink(filePath).catch(() => {});
 
-        return { audioData: `data:audio/mp3;base64,${base64}` };
+        const mime = filePath.endsWith(".wav") ? "audio/wav" : "audio/mp3";
+        return { audioData: `data:${mime};base64,${base64}` };
       } catch (err: any) {
         throw new Error(`Failed to generate voice preview: ${err.message}`);
       }

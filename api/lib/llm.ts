@@ -85,23 +85,29 @@ export async function generateTutorialScript(
     .map((s) => `Step ${s.order}: ${s.description}`)
     .join("\n");
 
-  const prompt = `You are a professional tutorial narrator. Generate a clear, natural-sounding voiceover script for each step of this tutorial.
+  const prompt = `You are a friendly YouTuber recording a screen tutorial voiceover. Write the narration for each step EXACTLY as a real person would say it out loud — this text goes straight into a text-to-speech engine.
 
 Video topic: ${description}
 Target platform: ${platform}
-Target audience: inferred from the topic description
 
-For each step, write 1-3 sentences maximum. Be specific about what the viewer should see or do. No filler phrases like "Now we will..." — just describe the action directly.
+How a real tutorial narrator talks:
+- Conversational and warm, like explaining to a friend sitting next to you. Always use contractions (we're, you'll, it's, don't).
+- OCCASIONALLY open a step with a natural spoken transition: "Alright,", "Okay, so", "Next up,", "Now,", "And then", "Here's the thing —". Vary them; never use the same opener twice in a row, and leave some steps with no opener at all.
+- Once or twice in the WHOLE video (not every step), add a small human touch like "hmm, let's see", "right, so", or a brief aside ("...and that's it, easy").
+- Step 1 should greet the viewer briefly and say what they'll learn (one short sentence, no channel-style intro). The LAST step should wrap up naturally ("And that's all there is to it...").
+- Use punctuation to control speech rhythm: commas for short pauses, "..." for a thinking pause, "—" for a beat. Short sentences. Vary sentence length.
+- Refer to what's on screen: "this button right here", "up in the top corner", "see that menu?".
+- 1-3 sentences per step. Be specific about the action. No markdown, no emoji, no stage directions, no quotes around UI names — say them plainly.
 
 Steps:
 ${stepsText}
 
 Return ONLY a JSON object with this exact format:
-{"scripts": ["script for step 1", "script for step 2", ...]}`;
+{"scripts": ["narration for step 1", "narration for step 2", ...]}`;
 
   const response = await chatCompletion(
     [{ role: "user", content: prompt }],
-    { temperature: 0.6, jsonMode: true }
+    { temperature: 0.8, jsonMode: true }
   );
 
   // Strip markdown code fences if present (common with smaller models like gemma3)

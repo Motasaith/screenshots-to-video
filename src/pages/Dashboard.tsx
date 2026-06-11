@@ -16,7 +16,6 @@ import {
   LogOut,
   Wand2,
   Camera,
-  MonitorPlay,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {

@@ -8,11 +8,27 @@ import { nanoid } from "nanoid";
 // Use static binaries so the user doesn't need to install ffmpeg globally
 import ffmpegPath from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
-import { getCursorPng, buildCursorOverlayExpr } from "./cursorOverlay";
 
 const execFileAsync = promisify(execFile);
 
 const WORK_DIR = path.join(os.tmpdir(), "aivideo-render");
+
+// ─────────────────────────────────────────────────────────────────
+// Rendering constants — tuned to mimic human-edited tutorial videos
+// ─────────────────────────────────────────────────────────────────
+export const RENDER_FPS = 30;
+
+/**
+ * Supersampling: zoompan rounds pan offsets to whole input pixels, which
+ * causes the infamous "jittery zoom". Rendering the zoom on a 2x-upscaled
+ * canvas gives sub-pixel precision at the output size → buttery motion.
+ * Capped so 4K outputs don't explode memory.
+ */
+const MAX_SS_WIDTH = 4200;
+
+/** Silence padding around narration so speech never starts on frame 0. */
+export const AUDIO_LEAD_IN = 0.4; // seconds of silence before narration
+export const AUDIO_TAIL = 0.6; // seconds of silence after narration
 
 /**
  * Ensure the work directory exists.
@@ -69,64 +85,143 @@ export async function probeMediaDuration(filePath: string): Promise<number> {
 }
 
 /**
- * Build the FFmpeg zoompan filter expression with SMOOTHSTEP easing.
+ * Smoothstep helper as an FFmpeg expression.
+ * t is clamped to [0,1], then eased with 3t² - 2t³.
+ */
+function smoothstepExpr(frameVar: string, startFrame: number, durFrames: number): string {
+  const t = `min(max((${frameVar}-${startFrame})/${Math.max(durFrames, 1)},0),1)`;
+  return `(3*(${t})*(${t})-2*(${t})*(${t})*(${t}))`;
+}
+
+/**
+ * Compute the zoom motion phases for a clip, in seconds.
  *
- * The zoom uses a cubic smoothstep curve (3t² - 2t³) for organic-feeling
- * motion that starts slow, accelerates, then decelerates to a smooth stop.
+ * Human tutorial editing pattern:
+ *   1. Show the full screen briefly (viewer orients themselves)
+ *   2. Quick, smooth zoom into the target (~1s)
+ *   3. HOLD on the target while narrating (this is where old code failed —
+ *      it zoomed continuously for the whole clip, which screams "AI")
+ *   4. Zoom back out just before the cut so the next step starts wide
+ */
+export function computeZoomPhases(duration: number): {
+  holdStart: number; // seconds at z=1 before zooming
+  zoomInDur: number;
+  zoomOutStart: number; // -1 means "no zoom out" (clip too short)
+  zoomOutDur: number;
+} {
+  let holdStart = 0.7;
+  let zoomInDur = 1.1;
+  let zoomOutDur = 0.9;
+
+  // Very short clip: tighten everything, skip the zoom-out
+  if (duration < 4.2) {
+    holdStart = 0.3;
+    zoomInDur = 0.8;
+    return { holdStart, zoomInDur, zoomOutStart: -1, zoomOutDur: 0 };
+  }
+
+  // Need at least ~1s of hold at full zoom for the zoom-out to feel natural
+  const zoomOutStart = duration - zoomOutDur - 0.15;
+  if (zoomOutStart < holdStart + zoomInDur + 1.0) {
+    return { holdStart, zoomInDur, zoomOutStart: -1, zoomOutDur: 0 };
+  }
+
+  return { holdStart, zoomInDur, zoomOutStart, zoomOutDur };
+}
+
+/**
+ * Build the FFmpeg zoompan filter with the human-style in→hold→out motion.
  *
- * @param targetXPct - Target X as percentage (0-100) of image width
- * @param targetYPct - Target Y as percentage (0-100) of image height
- * @param imgWidth   - Source image width in pixels
- * @param imgHeight  - Source image height in pixels
- * @param audioDuration - Duration of the audio in seconds
- * @param outputRes  - Output resolution string, e.g. "1920x1080"
+ * IMPORTANT: this expects to run on a SUPERSAMPLED frame (ssW x ssH) and
+ * downscales to outputRes inside zoompan, which is what kills the jitter.
+ *
+ * @param targetXPx - Target X in supersampled-frame pixels
+ * @param targetYPx - Target Y in supersampled-frame pixels
+ * @param durationSec - Total clip duration (incl. audio padding)
+ * @param outputRes - Final output resolution, e.g. "1920x1080"
+ * @param maxZoom - Peak zoom level
  */
 export function buildZoomFilter(
-  targetXPct: number,
-  targetYPct: number,
-  imgWidth: number,
-  imgHeight: number,
-  audioDuration: number,
-  outputRes = "1920x1080"
+  targetXPx: number,
+  targetYPx: number,
+  durationSec: number,
+  outputRes: string,
+  maxZoom = 1.6
 ): string {
-  const fps = 25;
-  const totalFrames = Math.max(Math.ceil(audioDuration * fps), fps); // at least 1 second
-  const maxZoom = 1.8; // Reduced from 2.5 to avoid pixelation
+  const totalFrames = Math.max(Math.ceil(durationSec * RENDER_FPS), RENDER_FPS);
+  const phases = computeZoomPhases(durationSec);
 
-  // Target pixel coordinates
-  const targetPx = (targetXPct / 100) * imgWidth;
-  const targetPy = (targetYPct / 100) * imgHeight;
+  const aF = Math.round(phases.holdStart * RENDER_FPS);
+  const bF = Math.round(phases.zoomInDur * RENDER_FPS);
 
-  // ─── Smoothstep eased zoom ───
-  // progress = clamp(on / totalFrames, 0, 1)
-  // eased = 3 * progress² - 2 * progress³  (smoothstep)
-  // zoom = 1 + (maxZoom - 1) * eased
-  //
-  // This naturally decelerates to a stop — no need for a separate "hold" phase.
   const zoomDelta = (maxZoom - 1).toFixed(6);
-  const tExpr = `min(on/${totalFrames},1)`;
-  const easedExpr = `(3*(${tExpr})*(${tExpr})-2*(${tExpr})*(${tExpr})*(${tExpr}))`;
-  const zoomExpr = `1+${zoomDelta}*${easedExpr}`;
+  const pIn = smoothstepExpr("on", aF, bF);
 
-  // Pan expressions: keep target point centered as zoom increases
-  // x = target_px - iw/(2*zoom), clamped to valid range
-  const xExpr = `max(0,min(iw-iw/zoom,${targetPx.toFixed(1)}-iw/(2*zoom)))`;
-  const yExpr = `max(0,min(ih-ih/zoom,${targetPy.toFixed(1)}-ih/(2*zoom)))`;
+  let zoomExpr: string;
+  if (phases.zoomOutStart > 0) {
+    const cF = Math.round(phases.zoomOutStart * RENDER_FPS);
+    const dF = Math.round(phases.zoomOutDur * RENDER_FPS);
+    const pOut = smoothstepExpr("on", cF, dF);
+    // z = 1 + Δ·(easeIn − easeOut): rises to maxZoom, holds, returns to 1
+    zoomExpr = `1+${zoomDelta}*(${pIn}-${pOut})`;
+  } else {
+    zoomExpr = `1+${zoomDelta}*${pIn}`;
+  }
+
+  // Keep the target point centered as zoom changes, clamped to frame bounds
+  const xExpr = `max(0,min(iw-iw/zoom,${targetXPx.toFixed(1)}-iw/(2*zoom)))`;
+  const yExpr = `max(0,min(ih-ih/zoom,${targetYPx.toFixed(1)}-ih/(2*zoom)))`;
 
   return (
     `zoompan=z='${zoomExpr}':` +
     `x='${xExpr}':` +
     `y='${yExpr}':` +
-    `d=${totalFrames}:s=${outputRes}:fps=${fps}`
+    `d=${totalFrames}:s=${outputRes}:fps=${RENDER_FPS}`
+  );
+}
+
+/**
+ * Compute geometry for fitting an image into a canvas (letterbox/pillarbox).
+ */
+function fitGeometry(
+  imgW: number,
+  imgH: number,
+  canvasW: number,
+  canvasH: number
+): { scaledW: number; scaledH: number; offsetX: number; offsetY: number } {
+  const imgAspect = imgW / imgH;
+  const canvasAspect = canvasW / canvasH;
+  if (imgAspect > canvasAspect) {
+    const scaledW = canvasW;
+    const scaledH = Math.round(canvasW / imgAspect);
+    return { scaledW, scaledH, offsetX: 0, offsetY: Math.round((canvasH - scaledH) / 2) };
+  }
+  const scaledH = canvasH;
+  const scaledW = Math.round(canvasH * imgAspect);
+  return { scaledW, scaledH, offsetX: Math.round((canvasW - scaledW) / 2), offsetY: 0 };
+}
+
+/**
+ * Audio filter shared by all renders:
+ *  - lead-in silence (narration never starts abruptly at frame 0)
+ *  - tail silence (breathing room before the cut)
+ *  - loudness normalization so every step sounds consistent
+ */
+function buildAudioFilter(): string {
+  const delayMs = Math.round(AUDIO_LEAD_IN * 1000);
+  return (
+    `adelay=${delayMs}:all=1,` +
+    `apad=pad_dur=${AUDIO_TAIL},` +
+    `loudnorm=I=-16:TP=-1.5:LRA=11`
   );
 }
 
 /**
  * Render a single step: screenshot + audio → video segment with:
- * 1. Smooth eased zoom animation (smoothstep)
- * 2. Animated cursor gliding to target
- * 3. Click ripple effect at target
- * 4. Optional highlight box
+ * 1. Human-style zoom: hold wide → quick smooth zoom in → hold → zoom out
+ * 2. Jitter-free motion via supersampled zoompan at 30fps
+ * 3. Optional highlight box around the target region
+ * 4. Padded + loudness-normalized narration
  */
 export async function renderStepVideo(opts: {
   screenshotPath: string;
@@ -145,23 +240,27 @@ export async function renderStepVideo(opts: {
   const outputPath = path.join(WORK_DIR, `segment_${nanoid(12)}.mp4`);
   const outputRes = opts.outputRes || "1920x1080";
   const [outW, outH] = outputRes.split("x").map(Number);
-  const fps = 25;
-  const totalFrames = Math.max(Math.ceil(opts.audioDuration * fps), fps);
+
+  // Total clip duration includes silence padding around the narration
+  const paddedDuration = opts.audioDuration + AUDIO_LEAD_IN + AUDIO_TAIL;
+
+  // Supersampled canvas (even dimensions required by most filters)
+  const ssFactor = Math.min(2, MAX_SS_WIDTH / outW);
+  const ssW = 2 * Math.round((outW * ssFactor) / 2);
+  const ssH = 2 * Math.round((outH * ssFactor) / 2);
 
   // Probe the source image dimensions
-  let imgWidth: number;
-  let imgHeight: number;
+  let imgWidth = 1920;
+  let imgHeight = 1080;
   try {
     const dims = await probeImageDimensions(opts.screenshotPath);
     imgWidth = dims.width;
     imgHeight = dims.height;
   } catch {
-    // Fallback: assume 1920x1080 if probe fails
-    imgWidth = 1920;
-    imgHeight = 1080;
+    // keep fallback values
   }
 
-  // Draw highlight box if dimensions are provided
+  // Highlight box (drawn on the ORIGINAL image so it zooms with the content)
   let drawboxFilter = "";
   if (
     opts.zoomRectX !== undefined &&
@@ -169,136 +268,43 @@ export async function renderStepVideo(opts: {
     opts.zoomRectW !== undefined &&
     opts.zoomRectH !== undefined
   ) {
-    // drawbox is applied BEFORE scale+pad, so it sees original image pixels
     const rx = Math.round((opts.zoomRectX / 100) * imgWidth);
     const ry = Math.round((opts.zoomRectY / 100) * imgHeight);
     const rw = Math.round((opts.zoomRectW / 100) * imgWidth);
     const rh = Math.round((opts.zoomRectH / 100) * imgHeight);
-    // Draw a prominent orange box around the target region (color #f97316 in Tailwind)
-    drawboxFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=#f97316@1.0:thickness=6,`;
+    drawboxFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=#f97316@0.95:thickness=5,`;
   }
 
-  // ─── Compute zoom target in padded-frame coordinates ───
-  const imgAspect = imgWidth / imgHeight;
-  const outAspect = outW / outH;
+  // Zoom target in supersampled-canvas pixels
+  const geo = fitGeometry(imgWidth, imgHeight, ssW, ssH);
+  const targetXPx = geo.offsetX + (opts.zoomTargetX / 100) * geo.scaledW;
+  const targetYPx = geo.offsetY + (opts.zoomTargetY / 100) * geo.scaledH;
 
-  let scaledImgW: number, scaledImgH: number, padOffsetX: number, padOffsetY: number;
-  if (imgAspect > outAspect) {
-    // Image is wider → scaled to fill width, padded top/bottom
-    scaledImgW = outW;
-    scaledImgH = Math.round(outW / imgAspect);
-    padOffsetX = 0;
-    padOffsetY = Math.round((outH - scaledImgH) / 2);
-  } else {
-    // Image is taller → scaled to fill height, padded left/right
-    scaledImgH = outH;
-    scaledImgW = Math.round(outH * imgAspect);
-    padOffsetX = Math.round((outW - scaledImgW) / 2);
-    padOffsetY = 0;
-  }
+  const zoomFilter = buildZoomFilter(targetXPx, targetYPx, paddedDuration, outputRes);
 
-  // Convert image-relative percentage to padded-frame pixel coordinate
-  const zoomTargetPxX = padOffsetX + (opts.zoomTargetX / 100) * scaledImgW;
-  const zoomTargetPxY = padOffsetY + (opts.zoomTargetY / 100) * scaledImgH;
+  const filterComplex =
+    `[0:v]${drawboxFilter}` +
+    `scale=${ssW}:${ssH}:force_original_aspect_ratio=decrease:flags=lanczos,` +
+    `pad=${ssW}:${ssH}:(ow-iw)/2:(oh-ih)/2,` +
+    `${zoomFilter},format=yuv420p[v];` +
+    `[1:a]${buildAudioFilter()}[a]`;
 
-  // Convert back to percentage of the full padded frame for buildZoomFilter
-  const adjustedZoomXPct = (zoomTargetPxX / outW) * 100;
-  const adjustedZoomYPct = (zoomTargetPxY / outH) * 100;
-
-  const zoomFilter = buildZoomFilter(
-    adjustedZoomXPct,
-    adjustedZoomYPct,
-    outW,
-    outH,
-    opts.audioDuration,
-    outputRes
-  );
-
-  // ─── Cursor & click ripple setup ───
-  let cursorPngPath: string | null = null;
-  try {
-    cursorPngPath = await getCursorPng(32);
-  } catch (err: any) {
-    console.warn("[FFmpeg] Cursor PNG generation failed, skipping cursor overlay:", err.message);
-  }
-
-  // Cursor animation: starts at an offset position, glides to target
-  const cursorStartX = Math.max(0, zoomTargetPxX - outW * 0.15);
-  const cursorStartY = Math.max(0, zoomTargetPxY - outH * 0.12);
-
-  // Build the filter_complex chain
-  // The cursor and click ripple are composited BEFORE the zoompan
-  // so they move with the image during zoom.
-
-  let filterComplex: string;
-  const inputArgs: string[] = [
+  const args = [
     "-y",
     "-loop", "1",
     "-i", opts.screenshotPath,
     "-i", opts.audioPath,
-  ];
-
-  if (cursorPngPath) {
-    // Add cursor as 3rd input
-    inputArgs.push("-i", cursorPngPath);
-
-    // ─── Cursor overlay expression ───
-    const travelFrames = Math.floor(totalFrames * 0.4);
-    const tExpr = `min(n/${travelFrames},1)`;
-    const easedExpr = `(3*(${tExpr})*(${tExpr})-2*(${tExpr})*(${tExpr})*(${tExpr}))`;
-
-    const cursorDx = zoomTargetPxX - cursorStartX;
-    const cursorDy = zoomTargetPxY - cursorStartY;
-    const cursorXExpr = `${cursorStartX.toFixed(0)}+${cursorDx.toFixed(0)}*${easedExpr}`;
-    const cursorYExpr = `${cursorStartY.toFixed(0)}+${cursorDy.toFixed(0)}*${easedExpr}`;
-
-    // ─── Click ripple: expanding ring drawn with drawbox workaround ───
-    // We'll use drawtext to render a "●" character that scales, as a simple
-    // and reliable click indicator. It appears at 40% of scene duration for 0.6s.
-    const arrivalTime = (opts.audioDuration * 0.4).toFixed(3);
-    const rippleEndTime = (opts.audioDuration * 0.4 + 0.6).toFixed(3);
-
-    // Click ripple: draw a fading circle using drawtext with a Unicode circle character
-    // We use multiple drawtext filters at different sizes for the expanding ring effect
-    const rippleFilters = buildClickRippleDrawtext(
-      zoomTargetPxX,
-      zoomTargetPxY,
-      parseFloat(arrivalTime),
-      parseFloat(rippleEndTime),
-    );
-
-    filterComplex =
-      // Step 1: Scale and pad the screenshot
-      `[0:v]${drawboxFilter}scale=${outW}:${outH}:force_original_aspect_ratio=decrease,` +
-      `pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2[base];` +
-      // Step 2: Overlay cursor on base (cursor moves with smoothstep easing)
-      `[base][2:v]overlay=x='${cursorXExpr}':y='${cursorYExpr}':` +
-      `enable='between(n,0,${totalFrames})'[withcursor];` +
-      // Step 3: Apply click ripple effect
-      `[withcursor]${rippleFilters}[withripple];` +
-      // Step 4: Apply zoompan with smoothstep easing
-      `[withripple]${zoomFilter}[v]`;
-  } else {
-    // No cursor available — just do eased zoom
-    filterComplex =
-      `[0:v]${drawboxFilter}scale=${outW}:${outH}:force_original_aspect_ratio=decrease,` +
-      `pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2,${zoomFilter}[v]`;
-  }
-
-  // Construct the FFmpeg command
-  const args = [
-    ...inputArgs,
-    "-filter_complex",
-    filterComplex,
+    "-filter_complex", filterComplex,
     "-map", "[v]",
-    "-map", "1:a",
+    "-map", "[a]",
     "-c:v", "libx264",
     "-preset", "medium",
-    "-crf", "23",
+    "-crf", "20",
     "-c:a", "aac",
-    "-b:a", "128k",
+    "-b:a", "160k",
+    "-ar", "44100",
     "-pix_fmt", "yuv420p",
-    "-shortest",
+    "-t", paddedDuration.toFixed(3),
     "-movflags", "+faststart",
     outputPath,
   ];
@@ -306,13 +312,12 @@ export async function renderStepVideo(opts: {
   try {
     if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
     await execFileAsync(ffmpegPath, args, {
-      timeout: 180000, // 3 min per step (slightly longer due to cursor overlay)
+      timeout: 300000, // supersampled zoompan is heavier — allow 5 min
       shell: true,
     });
   } catch (err: any) {
-    // If the cursor/ripple filter fails, retry without effects
-    console.warn("[FFmpeg] Render with effects failed, retrying without:", err.message);
-    return renderStepVideoFallback(opts, outputPath);
+    console.warn("[FFmpeg] Primary render failed, retrying simplified:", err.message);
+    return renderStepVideoFallback(opts, outputPath, paddedDuration);
   }
 
   // Verify output
@@ -323,68 +328,33 @@ export async function renderStepVideo(opts: {
 }
 
 /**
- * Fallback render without cursor/ripple effects (just eased zoom).
- * Used when the full effects pipeline fails.
+ * Fallback render: no supersampling, no loudnorm — just the eased zoom.
+ * Used when the full pipeline fails (e.g. low-memory environments).
  */
 async function renderStepVideoFallback(
   opts: Parameters<typeof renderStepVideo>[0],
-  outputPath: string
+  outputPath: string,
+  paddedDuration: number
 ): Promise<string> {
   const outputRes = opts.outputRes || "1920x1080";
   const [outW, outH] = outputRes.split("x").map(Number);
 
-  let imgWidth: number, imgHeight: number;
+  let imgWidth = 1920;
+  let imgHeight = 1080;
   try {
     const dims = await probeImageDimensions(opts.screenshotPath);
     imgWidth = dims.width;
     imgHeight = dims.height;
   } catch {
-    imgWidth = 1920;
-    imgHeight = 1080;
+    // keep fallback values
   }
 
-  let drawboxFilter = "";
-  if (
-    opts.zoomRectX !== undefined &&
-    opts.zoomRectY !== undefined &&
-    opts.zoomRectW !== undefined &&
-    opts.zoomRectH !== undefined
-  ) {
-    const rx = Math.round((opts.zoomRectX / 100) * imgWidth);
-    const ry = Math.round((opts.zoomRectY / 100) * imgHeight);
-    const rw = Math.round((opts.zoomRectW / 100) * imgWidth);
-    const rh = Math.round((opts.zoomRectH / 100) * imgHeight);
-    drawboxFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=#f97316@1.0:thickness=6,`;
-  }
+  const geo = fitGeometry(imgWidth, imgHeight, outW, outH);
+  const targetXPx = geo.offsetX + (opts.zoomTargetX / 100) * geo.scaledW;
+  const targetYPx = geo.offsetY + (opts.zoomTargetY / 100) * geo.scaledH;
 
-  const imgAspect = imgWidth / imgHeight;
-  const outAspect = outW / outH;
-  let scaledImgW: number, scaledImgH: number, padOffsetX: number, padOffsetY: number;
-  if (imgAspect > outAspect) {
-    scaledImgW = outW;
-    scaledImgH = Math.round(outW / imgAspect);
-    padOffsetX = 0;
-    padOffsetY = Math.round((outH - scaledImgH) / 2);
-  } else {
-    scaledImgH = outH;
-    scaledImgW = Math.round(outH * imgAspect);
-    padOffsetX = Math.round((outW - scaledImgW) / 2);
-    padOffsetY = 0;
-  }
-
-  const zoomTargetPxX = padOffsetX + (opts.zoomTargetX / 100) * scaledImgW;
-  const zoomTargetPxY = padOffsetY + (opts.zoomTargetY / 100) * scaledImgH;
-  const adjustedZoomXPct = (zoomTargetPxX / outW) * 100;
-  const adjustedZoomYPct = (zoomTargetPxY / outH) * 100;
-
-  const zoomFilter = buildZoomFilter(
-    adjustedZoomXPct,
-    adjustedZoomYPct,
-    outW,
-    outH,
-    opts.audioDuration,
-    outputRes
-  );
+  const zoomFilter = buildZoomFilter(targetXPx, targetYPx, paddedDuration, outputRes);
+  const delayMs = Math.round(AUDIO_LEAD_IN * 1000);
 
   const args = [
     "-y",
@@ -392,23 +362,26 @@ async function renderStepVideoFallback(
     "-i", opts.screenshotPath,
     "-i", opts.audioPath,
     "-filter_complex",
-    `[0:v]${drawboxFilter}scale=${outW}:${outH}:force_original_aspect_ratio=decrease,pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2,${zoomFilter}[v]`,
+    `[0:v]scale=${outW}:${outH}:force_original_aspect_ratio=decrease,` +
+      `pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2,${zoomFilter},format=yuv420p[v];` +
+      `[1:a]adelay=${delayMs}:all=1,apad=pad_dur=${AUDIO_TAIL}[a]`,
     "-map", "[v]",
-    "-map", "1:a",
+    "-map", "[a]",
     "-c:v", "libx264",
     "-preset", "medium",
     "-crf", "23",
     "-c:a", "aac",
     "-b:a", "128k",
+    "-ar", "44100",
     "-pix_fmt", "yuv420p",
-    "-shortest",
+    "-t", paddedDuration.toFixed(3),
     "-movflags", "+faststart",
     outputPath,
   ];
 
   if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
   await execFileAsync(ffmpegPath, args, {
-    timeout: 120000,
+    timeout: 180000,
     shell: true,
   });
 
@@ -419,62 +392,19 @@ async function renderStepVideoFallback(
 }
 
 /**
- * Build drawtext-based click ripple filter.
- * Uses a large Unicode bullet "●" character rendered as a fading, color-shifting
- * circle at the target point. Three passes create expanding concentric rings.
- */
-function buildClickRippleDrawtext(
-  targetX: number,
-  targetY: number,
-  arrivalTime: number,
-  endTime: number,
-): string {
-  // Three concentric ring pulses using drawtext with "●" at different sizes
-  // Each ring starts slightly staggered and fades out
-  const rings = [
-    { delay: 0.0, size: 20, alpha: 0.7 },
-    { delay: 0.1, size: 32, alpha: 0.5 },
-    { delay: 0.2, size: 48, alpha: 0.3 },
-  ];
-
-  // Build chained drawtext filters
-  let filterChain = "";
-  for (let i = 0; i < rings.length; i++) {
-    const ring = rings[i];
-    const startT = (arrivalTime + ring.delay).toFixed(3);
-    const endT = (endTime + ring.delay).toFixed(3);
-
-    // Alpha fades from ring.alpha to 0 over the duration
-    const duration = parseFloat(endT) - parseFloat(startT);
-    // FFmpeg alpha expression: alpha = baseAlpha * (1 - (t - startT) / duration)
-    const alphaExpr = `${ring.alpha.toFixed(2)}*(1-(t-${startT})/${duration.toFixed(3)})`;
-
-    filterChain +=
-      `drawtext=text='●':fontsize=${ring.size}:fontcolor=white@${ring.alpha.toFixed(1)}:` +
-      `x=${Math.round(targetX - ring.size / 4)}:y=${Math.round(targetY - ring.size / 3)}:` +
-      `enable='between(t,${startT},${endT})'`;
-
-    if (i < rings.length - 1) {
-      filterChain += ",";
-    }
-  }
-
-  return filterChain;
-}
-
-/**
- * Concatenate multiple video segments into a final MP4 with crossfade transitions.
+ * Concatenate multiple video segments into a final MP4 with HARD CUTS.
  *
- * Uses the xfade video filter and acrossfade audio filter to create smooth
- * 0.5-second crossfade transitions between consecutive segments.
+ * Human-edited tutorial videos use clean cuts between steps, not slideshow
+ * crossfades. Since every segment is produced by our own renderer with
+ * identical codec parameters, the concat demuxer with stream copy is both
+ * lossless and near-instant.
  *
  * @param segmentPaths - Array of video segment file paths
- * @param segmentDurations - Array of durations (seconds) for each segment.
- *                           If not provided, durations will be probed.
+ * @param _segmentDurations - kept for call-site compatibility (unused)
  */
 export async function concatenateSegments(
   segmentPaths: string[],
-  segmentDurations?: number[],
+  _segmentDurations?: number[],
 ): Promise<string> {
   await ensureWorkDir();
 
@@ -482,116 +412,8 @@ export async function concatenateSegments(
   if (segmentPaths.length === 1) return segmentPaths[0];
 
   const concatId = nanoid(8);
-  const outputPath = path.join(WORK_DIR, `final_${concatId}.mp4`);
-
-  // For 2+ segments, use xfade crossfade transitions
-  const XFADE_DURATION = 0.5; // seconds
-
-  // Get durations if not provided
-  let durations = segmentDurations;
-  if (!durations || durations.length !== segmentPaths.length) {
-    durations = [];
-    for (const segPath of segmentPaths) {
-      const dur = await probeMediaDuration(segPath);
-      durations.push(dur);
-    }
-  }
-
-  // Build the input arguments
-  const inputArgs: string[] = [];
-  for (const segPath of segmentPaths) {
-    inputArgs.push("-i", segPath);
-  }
-
-  // Build the xfade filter chain
-  // For N segments, we need N-1 xfade filters chained together.
-  //
-  // [0:v][1:v]xfade=transition=fade:duration=0.5:offset=<dur0-0.5>[v01];
-  // [v01][2:v]xfade=transition=fade:duration=0.5:offset=<dur0+dur1-1.0>[v012];
-  // ...
-  //
-  // Audio: similar with acrossfade
-  let videoFilter = "";
-  let audioFilter = "";
-  let cumulativeDuration = 0;
-
-  if (segmentPaths.length === 2) {
-    // Simple case: just one xfade
-    const offset = Math.max(0, durations[0] - XFADE_DURATION);
-    videoFilter = `[0:v][1:v]xfade=transition=fade:duration=${XFADE_DURATION}:offset=${offset.toFixed(3)}[vout]`;
-    audioFilter = `[0:a][1:a]acrossfade=d=${XFADE_DURATION}:c1=tri:c2=tri[aout]`;
-  } else {
-    // Chain multiple xfade filters
-    let prevVideoLabel = "0:v";
-    let prevAudioLabel = "0:a";
-    cumulativeDuration = durations[0];
-
-    for (let i = 1; i < segmentPaths.length; i++) {
-      const offset = Math.max(0, cumulativeDuration - XFADE_DURATION);
-      const isLast = i === segmentPaths.length - 1;
-      const outVideoLabel = isLast ? "vout" : `v${i}`;
-      const outAudioLabel = isLast ? "aout" : `a${i}`;
-
-      videoFilter += `[${prevVideoLabel}][${i}:v]xfade=transition=fade:duration=${XFADE_DURATION}:offset=${offset.toFixed(3)}[${outVideoLabel}]`;
-      audioFilter += `[${prevAudioLabel}][${i}:a]acrossfade=d=${XFADE_DURATION}:c1=tri:c2=tri[${outAudioLabel}]`;
-
-      if (!isLast) {
-        videoFilter += ";";
-        audioFilter += ";";
-      }
-
-      // Each xfade reduces total duration by XFADE_DURATION
-      cumulativeDuration += durations[i] - XFADE_DURATION;
-      prevVideoLabel = outVideoLabel;
-      prevAudioLabel = outAudioLabel;
-    }
-  }
-
-  const filterComplex = `${videoFilter};${audioFilter}`;
-
-  const args = [
-    "-y",
-    ...inputArgs,
-    "-filter_complex", filterComplex,
-    "-map", "[vout]",
-    "-map", "[aout]",
-    "-c:v", "libx264",
-    "-preset", "medium",
-    "-crf", "23",
-    "-c:a", "aac",
-    "-b:a", "128k",
-    "-pix_fmt", "yuv420p",
-    "-movflags", "+faststart",
-    outputPath,
-  ];
-
-  try {
-    if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
-    await execFileAsync(ffmpegPath, args, {
-      timeout: 300000, // 5 min for crossfade concatenation (re-encodes)
-      shell: true,
-    });
-  } catch (err: any) {
-    // Fallback to simple concat if xfade fails
-    console.warn("[FFmpeg] Crossfade concat failed, falling back to hard cut:", err.message);
-    return concatenateSegmentsFallback(segmentPaths);
-  }
-
-  return outputPath;
-}
-
-/**
- * Fallback concatenation without crossfade (simple concat demuxer, hard cut).
- * Used when xfade filter fails.
- */
-async function concatenateSegmentsFallback(
-  segmentPaths: string[]
-): Promise<string> {
-  await ensureWorkDir();
-
-  const concatId = nanoid(8);
   const concatFile = path.join(WORK_DIR, `concat_${concatId}.txt`);
-  const outputPath = path.join(WORK_DIR, `final_fallback_${concatId}.mp4`);
+  const outputPath = path.join(WORK_DIR, `final_${concatId}.mp4`);
 
   const concatContent = segmentPaths
     .map((p) => `file '${p.replace(/\\/g, "/")}'`)
@@ -614,11 +436,60 @@ async function concatenateSegmentsFallback(
       shell: true,
     });
   } catch (err: any) {
-    throw new Error(`FFmpeg concat failed: ${err.stderr || err.message}`);
+    console.warn("[FFmpeg] Stream-copy concat failed, re-encoding:", err.message);
+    return concatenateSegmentsReencode(segmentPaths);
+  } finally {
+    await fs.unlink(concatFile).catch(() => {});
   }
 
-  // Cleanup concat file
-  await fs.unlink(concatFile).catch(() => {});
+  const stat = await fs.stat(outputPath);
+  if (stat.size === 0) throw new Error("FFmpeg produced an empty final video");
+
+  return outputPath;
+}
+
+/**
+ * Fallback concatenation that re-encodes (handles mismatched segment params).
+ */
+async function concatenateSegmentsReencode(
+  segmentPaths: string[]
+): Promise<string> {
+  await ensureWorkDir();
+
+  const concatId = nanoid(8);
+  const outputPath = path.join(WORK_DIR, `final_reenc_${concatId}.mp4`);
+
+  const inputArgs: string[] = [];
+  for (const segPath of segmentPaths) {
+    inputArgs.push("-i", segPath);
+  }
+
+  // concat filter: [0:v][0:a][1:v][1:a]...concat=n=N:v=1:a=1[v][a]
+  const streamRefs = segmentPaths.map((_, i) => `[${i}:v][${i}:a]`).join("");
+  const filterComplex = `${streamRefs}concat=n=${segmentPaths.length}:v=1:a=1[v][a]`;
+
+  if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
+  await execFileAsync(ffmpegPath, [
+    "-y",
+    ...inputArgs,
+    "-filter_complex", filterComplex,
+    "-map", "[v]",
+    "-map", "[a]",
+    "-c:v", "libx264",
+    "-preset", "medium",
+    "-crf", "20",
+    "-c:a", "aac",
+    "-b:a", "160k",
+    "-pix_fmt", "yuv420p",
+    "-movflags", "+faststart",
+    outputPath,
+  ], {
+    timeout: 300000,
+    shell: true,
+  });
+
+  const stat = await fs.stat(outputPath);
+  if (stat.size === 0) throw new Error("FFmpeg produced an empty final video");
 
   return outputPath;
 }
