@@ -114,19 +114,38 @@ export default function StudioMedia() {
                     onClick={() => openSearch(index)}
                   >
                     {scene.mediaUrl ? (
-                      <>
-                        <img
-                          src={scene.mediaUrl}
-                          alt={`Scene ${scene.order}`}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).style.display = "none";
-                          }}
-                        />
-                        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-colors flex items-center justify-center">
-                          <RefreshCw className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                        </div>
-                      </>
+                      scene.mediaType === "video" ? (
+                        <>
+                          <video
+                            src={scene.mediaUrl}
+                            className="w-full h-full object-cover"
+                            autoPlay
+                            loop
+                            muted
+                            playsInline
+                            onError={(e) => {
+                              (e.target as HTMLVideoElement).style.display = "none";
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-colors flex items-center justify-center">
+                            <RefreshCw className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <img
+                            src={scene.mediaUrl}
+                            alt={`Scene ${scene.order}`}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).style.display = "none";
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-colors flex items-center justify-center">
+                            <RefreshCw className="w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </div>
+                        </>
+                      )
                     ) : (
                       <div className="text-center p-4">
                         {scene.mediaType === "video" ? (

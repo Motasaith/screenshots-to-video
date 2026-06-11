@@ -112,6 +112,8 @@ export const projectRouter = createRouter({
         outroTemplate: z.string().optional(),
         introText: z.string().optional(),
         outroText: z.string().optional(),
+        introDuration: z.number().min(0.5).max(10.0).optional(),
+        outroDuration: z.number().min(0.5).max(10.0).optional(),
         transitionDuration: z.number().min(0.1).max(3).optional(),
         finalVideoPath: z.string().optional(),
         status: z.enum(["draft", "processing", "complete", "error"]).optional(),

@@ -289,16 +289,18 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
     }
 
     if (project.introTemplate && project.introText) {
-      const introPath = await renderTextSegment(project.introTemplate, project.introText, outputRes, 3.0);
+      const introDuration = project.introDuration || 3.0;
+      const introPath = await renderTextSegment(project.introTemplate, project.introText, outputRes, introDuration);
       segmentPaths.unshift(introPath);
-      segmentDurations.unshift(3.0);
+      segmentDurations.unshift(introDuration);
       transitions.unshift("fade");
       tempFiles.push(introPath);
     }
     if (project.outroTemplate && project.outroText) {
-      const outroPath = await renderTextSegment(project.outroTemplate, project.outroText, outputRes, 3.0);
+      const outroDuration = project.outroDuration || 3.0;
+      const outroPath = await renderTextSegment(project.outroTemplate, project.outroText, outputRes, outroDuration);
       segmentPaths.push(outroPath);
-      segmentDurations.push(3.0);
+      segmentDurations.push(outroDuration);
       transitions.push("fade");
       tempFiles.push(outroPath);
     }
@@ -645,16 +647,18 @@ async function processStudioRenderJob(jobId: number, projectId: number): Promise
     }
 
     if (project.introTemplate && project.introText) {
-      const introPath = await renderTextSegment(project.introTemplate, project.introText, outputRes, 3.0);
+      const introDuration = project.introDuration || 3.0;
+      const introPath = await renderTextSegment(project.introTemplate, project.introText, outputRes, introDuration);
       segmentPaths.unshift(introPath);
-      segmentDurations.unshift(3.0);
+      segmentDurations.unshift(introDuration);
       transitions.unshift("fade");
       tempFiles.push(introPath);
     }
     if (project.outroTemplate && project.outroText) {
-      const outroPath = await renderTextSegment(project.outroTemplate, project.outroText, outputRes, 3.0);
+      const outroDuration = project.outroDuration || 3.0;
+      const outroPath = await renderTextSegment(project.outroTemplate, project.outroText, outputRes, outroDuration);
       segmentPaths.push(outroPath);
-      segmentDurations.push(3.0);
+      segmentDurations.push(outroDuration);
       transitions.push("fade");
       tempFiles.push(outroPath);
     }

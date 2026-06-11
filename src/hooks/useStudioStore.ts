@@ -73,6 +73,8 @@ interface StudioPreviewData {
   outroTemplate: string;
   introText: string;
   outroText: string;
+  introDuration: number;
+  outroDuration: number;
 }
 
 interface StudioState {
@@ -125,6 +127,8 @@ const initialState = {
     outroTemplate: "",
     introText: "",
     outroText: "",
+    introDuration: 3.0,
+    outroDuration: 3.0,
   },
   isLoading: false,
   error: null as string | null,

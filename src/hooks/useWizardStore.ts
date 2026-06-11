@@ -52,6 +52,8 @@ interface WizardStepData {
     outroTemplate: string;
     introText: string;
     outroText: string;
+    introDuration: number;
+    outroDuration: number;
   };
   voice: {
     voice: string;
@@ -117,6 +119,8 @@ const initialState: Omit<
       outroTemplate: "",
       introText: "",
       outroText: "",
+      introDuration: 3.0,
+      outroDuration: 3.0,
     },
     voice: {
       voice: "en-US-AriaNeural",

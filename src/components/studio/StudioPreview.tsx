@@ -33,8 +33,10 @@ export default function StudioPreview() {
   
   const [introTemplate, setIntroTemplate] = useState(preview.introTemplate || "");
   const [introText, setIntroText] = useState(preview.introText || "");
+  const [introDuration, setIntroDuration] = useState(preview.introDuration || 3.0);
   const [outroTemplate, setOutroTemplate] = useState(preview.outroTemplate || "");
   const [outroText, setOutroText] = useState(preview.outroText || "");
+  const [outroDuration, setOutroDuration] = useState(preview.outroDuration || 3.0);
 
   const updateProject = trpc.studio.update.useMutation();
   const updateScene = trpc.studio.updateScene.useMutation();
@@ -47,8 +49,10 @@ export default function StudioPreview() {
       transitionDuration,
       introTemplate,
       introText,
+      introDuration,
       outroTemplate,
       outroText,
+      outroDuration,
     });
 
     if (scenes) {
@@ -64,8 +68,10 @@ export default function StudioPreview() {
       transitionDuration,
       introTemplate,
       introText,
+      introDuration,
       outroTemplate,
       outroText,
+      outroDuration,
     });
 
     navigate(`/studio/${projectIdNum}/voice`);
@@ -165,6 +171,26 @@ export default function StudioPreview() {
                 className="sketch-input disabled:opacity-50 disabled:bg-gray-100"
               />
             </div>
+            {introTemplate && (
+              <div className="mt-4">
+                <label className="font-body text-sm font-semibold mb-2 block text-[var(--sketch-fg)]">
+                  Intro Duration: {introDuration.toFixed(1)}s
+                </label>
+                <div className="flex items-center gap-4">
+                  <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] w-8">1.0s</span>
+                  <input
+                    type="range"
+                    min={1.0}
+                    max={10.0}
+                    step={0.5}
+                    value={introDuration}
+                    onChange={(e) => setIntroDuration(Number(e.target.value))}
+                    className="flex-1 h-2 bg-[var(--sketch-fg-subtle)] appearance-none cursor-pointer accent-[#FBBF24]"
+                  />
+                  <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] w-8">10.0s</span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Outro Template */}
@@ -193,6 +219,26 @@ export default function StudioPreview() {
                 className="sketch-input disabled:opacity-50 disabled:bg-gray-100"
               />
             </div>
+            {outroTemplate && (
+              <div className="mt-4">
+                <label className="font-body text-sm font-semibold mb-2 block text-[var(--sketch-fg)]">
+                  Outro Duration: {outroDuration.toFixed(1)}s
+                </label>
+                <div className="flex items-center gap-4">
+                  <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] w-8">1.0s</span>
+                  <input
+                    type="range"
+                    min={1.0}
+                    max={10.0}
+                    step={0.5}
+                    value={outroDuration}
+                    onChange={(e) => setOutroDuration(Number(e.target.value))}
+                    className="flex-1 h-2 bg-[var(--sketch-fg-subtle)] appearance-none cursor-pointer accent-[#FBBF24]"
+                  />
+                  <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] w-8">10.0s</span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Copyright Checker Panel */}

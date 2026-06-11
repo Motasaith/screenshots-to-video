@@ -36,8 +36,10 @@ export default function StepPreview() {
   
   const [introTemplate, setIntroTemplate] = useState(previewData.introTemplate || "");
   const [introText, setIntroText] = useState(previewData.introText || "");
+  const [introDuration, setIntroDuration] = useState(previewData.introDuration || 3.0);
   const [outroTemplate, setOutroTemplate] = useState(previewData.outroTemplate || "");
   const [outroText, setOutroText] = useState(previewData.outroText || "");
+  const [outroDuration, setOutroDuration] = useState(previewData.outroDuration || 3.0);
 
   const updateProject = trpc.project.update.useMutation();
   const updateStep = trpc.step.update.useMutation();
@@ -70,8 +72,10 @@ export default function StepPreview() {
       transitionDuration,
       introTemplate,
       introText,
+      introDuration,
       outroTemplate,
       outroText,
+      outroDuration,
     });
 
     // Save step level data (transitions)
@@ -90,8 +94,10 @@ export default function StepPreview() {
       transitionDuration,
       introTemplate,
       introText,
+      introDuration,
       outroTemplate,
       outroText,
+      outroDuration,
     });
 
     navigate(`/create/${projectIdNum}/voice`);
@@ -191,6 +197,26 @@ export default function StepPreview() {
                 className="sketch-input disabled:opacity-50 disabled:bg-gray-100"
               />
             </div>
+            {introTemplate && (
+              <div className="mt-4">
+                <label className="font-body text-sm font-semibold mb-2 block text-[var(--sketch-fg)]">
+                  Intro Duration: {introDuration.toFixed(1)}s
+                </label>
+                <div className="flex items-center gap-4">
+                  <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] w-8">1.0s</span>
+                  <input
+                    type="range"
+                    min={1.0}
+                    max={10.0}
+                    step={0.5}
+                    value={introDuration}
+                    onChange={(e) => setIntroDuration(Number(e.target.value))}
+                    className="flex-1 h-2 bg-[var(--sketch-fg-subtle)] appearance-none cursor-pointer accent-[#FBBF24]"
+                  />
+                  <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] w-8">10.0s</span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Outro Template */}
@@ -219,6 +245,26 @@ export default function StepPreview() {
                 className="sketch-input disabled:opacity-50 disabled:bg-gray-100"
               />
             </div>
+            {outroTemplate && (
+              <div className="mt-4">
+                <label className="font-body text-sm font-semibold mb-2 block text-[var(--sketch-fg)]">
+                  Outro Duration: {outroDuration.toFixed(1)}s
+                </label>
+                <div className="flex items-center gap-4">
+                  <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] w-8">1.0s</span>
+                  <input
+                    type="range"
+                    min={1.0}
+                    max={10.0}
+                    step={0.5}
+                    value={outroDuration}
+                    onChange={(e) => setOutroDuration(Number(e.target.value))}
+                    className="flex-1 h-2 bg-[var(--sketch-fg-subtle)] appearance-none cursor-pointer accent-[#FBBF24]"
+                  />
+                  <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] w-8">10.0s</span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Copyright Checker Panel */}

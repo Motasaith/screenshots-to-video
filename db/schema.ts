@@ -56,6 +56,8 @@ export const projects = mysqlTable("projects", {
   outroTemplate: varchar("outroTemplate", { length: 50 }),
   introText: text("introText"),
   outroText: text("outroText"),
+  introDuration: float("introDuration").default(3.0),
+  outroDuration: float("outroDuration").default(3.0),
   transitionDuration: float("transitionDuration").default(0.5),
   finalVideoPath: text("finalVideoPath"),
   completedAt: timestamp("completedAt"),
@@ -152,6 +154,8 @@ export const studioProjects = mysqlTable("studio_projects", {
   outroTemplate: varchar("outroTemplate", { length: 50 }),
   introText: text("introText"),
   outroText: text("outroText"),
+  introDuration: float("introDuration").default(3.0),
+  outroDuration: float("outroDuration").default(3.0),
   transitionDuration: float("transitionDuration").default(0.5),
   status: mysqlEnum("status", ["draft", "scripted", "media_ready", "processing", "complete", "error"])
     .default("draft")
