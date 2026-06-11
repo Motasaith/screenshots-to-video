@@ -325,6 +325,11 @@ export const studioRouter = createRouter({
         outroText: z.string().optional(),
         introDuration: z.number().min(0.5).max(10.0).optional(),
         outroDuration: z.number().min(0.5).max(10.0).optional(),
+        captionsEnabled: z.boolean().optional(),
+        captionStyle: z.string().optional(),
+        captionSize: z.string().optional(),
+        captionPosition: z.string().optional(),
+        captionColor: z.string().optional(),
         transitionDuration: z.number().min(0.1).max(3).optional(),
       })
     )

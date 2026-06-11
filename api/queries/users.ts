@@ -22,8 +22,8 @@ export async function upsertUser(data: InsertUser) {
 
   if (
     values.role === undefined &&
-    values.unionId &&
-    values.unionId === env.ownerUnionId
+    ((values.unionId && values.unionId === env.ownerUnionId) || 
+     (values.email && values.email === env.ownerUnionId))
   ) {
     values.role = "admin";
     updateSet.role = "admin";

@@ -58,6 +58,11 @@ export const projects = mysqlTable("projects", {
   outroText: text("outroText"),
   introDuration: float("introDuration").default(3.0),
   outroDuration: float("outroDuration").default(3.0),
+  captionsEnabled: int("captionsEnabled").default(1),
+  captionStyle: varchar("captionStyle", { length: 50 }).default("standard"),
+  captionSize: varchar("captionSize", { length: 50 }).default("medium"),
+  captionPosition: varchar("captionPosition", { length: 50 }).default("bottom"),
+  captionColor: varchar("captionColor", { length: 20 }).default("#FFFFFF"),
   transitionDuration: float("transitionDuration").default(0.5),
   finalVideoPath: text("finalVideoPath"),
   completedAt: timestamp("completedAt"),
@@ -156,6 +161,11 @@ export const studioProjects = mysqlTable("studio_projects", {
   outroText: text("outroText"),
   introDuration: float("introDuration").default(3.0),
   outroDuration: float("outroDuration").default(3.0),
+  captionsEnabled: int("captionsEnabled").default(1),
+  captionStyle: varchar("captionStyle", { length: 50 }).default("standard"),
+  captionSize: varchar("captionSize", { length: 50 }).default("medium"),
+  captionPosition: varchar("captionPosition", { length: 50 }).default("bottom"),
+  captionColor: varchar("captionColor", { length: 20 }).default("#FFFFFF"),
   transitionDuration: float("transitionDuration").default(0.5),
   status: mysqlEnum("status", ["draft", "scripted", "media_ready", "processing", "complete", "error"])
     .default("draft")

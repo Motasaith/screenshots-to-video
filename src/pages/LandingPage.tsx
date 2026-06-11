@@ -9,6 +9,7 @@ import PricingTeaserSection from "@/sections/PricingTeaserSection";
 import CTASection from "@/sections/CTASection";
 import FooterSection from "@/sections/FooterSection";
 import { SEO, organizationSchema, softwareApplicationSchema } from "@/components/SEO";
+import { AdSensePlaceholder } from "@/components/shared/AdSensePlaceholder";
 
 export default function LandingPage() {
   return (
@@ -24,10 +25,12 @@ export default function LandingPage() {
       <main>
         <HeroSection />
         <SocialProofSection />
+        <div className="container mx-auto px-4"><AdSensePlaceholder size="leaderboard" /></div>
         <FeaturesSection />
         <HowItWorksSection />
         <StatsSection />
         <TestimonialsSection />
+        <div className="container mx-auto px-4"><AdSensePlaceholder size="leaderboard" /></div>
         <PricingTeaserSection />
         <CTASection />
       </main>

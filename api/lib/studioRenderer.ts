@@ -14,6 +14,7 @@ import {
   RENDER_FPS,
   AUDIO_LEAD_IN,
   AUDIO_TAIL,
+  getFontPath,
 } from "./ffmpeg";
 
 const execFileAsync = promisify(execFile);
@@ -57,6 +58,46 @@ function studioAudioFilter(): string {
   );
 }
 
+/** Helper to generate the drawtext filter for captions */
+function buildCaptionsFilter(
+  text: string,
+  style: string,
+  size: string,
+  position: string,
+  color: string,
+  outW: number,
+  outH: number
+): string {
+  if (!text) return "";
+  
+  // Map size to fontsize
+  let fontsize = Math.round(outH * 0.05); // default medium (~5% of height)
+  if (size === "small") fontsize = Math.round(outH * 0.035);
+  if (size === "large") fontsize = Math.round(outH * 0.07);
+
+  // Map position to y
+  let yPos = "h-h/5"; // default bottom
+  if (position === "top") yPos = "h/5";
+  if (position === "middle") yPos = "(h-text_h)/2";
+
+  // Escape text for ffmpeg
+  const escapedText = text.replace(/'/g, "\\'").replace(/:/g, "\\:");
+  const fontFile = getFontPath();
+
+  let baseFilter = `drawtext=fontfile='${fontFile}':text='${escapedText}':fontcolor=${color}:fontsize=${fontsize}:x=(w-text_w)/2:y=${yPos}`;
+
+  if (style === "outline") {
+    baseFilter += `:borderw=2:bordercolor=black`;
+  } else if (style === "highlight") {
+    baseFilter += `:box=1:boxcolor=black@0.6:boxborderw=10`;
+  } else {
+    // standard - maybe soft shadow
+    baseFilter += `:shadowcolor=black@0.8:shadowx=2:shadowy=2`;
+  }
+
+  return baseFilter;
+}
+
 /**
  * Render a scene from a static image with a documentary-style Ken Burns
  * effect: a gentle eased zoom with a slow drift, rendered on a supersampled
@@ -68,6 +109,7 @@ export async function renderSceneWithImage(opts: {
   audioPath: string;
   audioDuration: number;
   outputRes?: string;
+  captions?: { text: string; style: string; size: string; position: string; color: string; enabled: boolean };
 }): Promise<string> {
   await ensureWorkDir();
 
@@ -119,6 +161,8 @@ export async function renderSceneWithImage(opts: {
     const xExpr = `max(0,min(iw-iw/zoom,iw/2-(iw/zoom/2)+${driftExpr}))`;
     const yExpr = `ih/2-(ih/zoom/2)`;
 
+    const captionsFilter = opts.captions?.enabled ? `,${buildCaptionsFilter(opts.captions.text, opts.captions.style, opts.captions.size, opts.captions.position, opts.captions.color, outW, outH)}` : "";
+
     const zoomFilter =
       `zoompan=z='${zoomExpr}':` +
       `x='${xExpr}':` +
@@ -132,7 +176,7 @@ export async function renderSceneWithImage(opts: {
       "-i", opts.audioPath,
       "-filter_complex",
       `[0:v]scale=${ssW}:${ssH}:force_original_aspect_ratio=increase:flags=lanczos,` +
-        `crop=${ssW}:${ssH},${zoomFilter},format=yuv420p[v];` +
+        `crop=${ssW}:${ssH},${zoomFilter}${captionsFilter},format=yuv420p[v];` +
         `[1:a]${studioAudioFilter()}[a]`,
       "-map", "[v]",
       "-map", "[a]",
@@ -173,6 +217,7 @@ export async function renderSceneWithVideo(opts: {
   audioPath: string;
   audioDuration: number;
   outputRes?: string;
+  captions?: { text: string; style: string; size: string; position: string; color: string; enabled: boolean };
 }): Promise<string> {
   await ensureWorkDir();
 
@@ -200,13 +245,15 @@ export async function renderSceneWithVideo(opts: {
     ];
   }
 
+  const captionsFilter = opts.captions?.enabled ? `,${buildCaptionsFilter(opts.captions.text, opts.captions.style, opts.captions.size, opts.captions.position, opts.captions.color, outW, outH)}` : "";
+
   const args = [
     "-y",
     ...inputArgs,
     "-i", opts.audioPath,
     "-filter_complex",
     `[0:v]scale=${outW}:${outH}:force_original_aspect_ratio=decrease,` +
-      `pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2,fps=${RENDER_FPS},format=yuv420p[v];` +
+      `pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2,fps=${RENDER_FPS}${captionsFilter},format=yuv420p[v];` +
       `[1:a]${studioAudioFilter()}[a]`,
     "-map", "[v]",
     "-map", "[a]",

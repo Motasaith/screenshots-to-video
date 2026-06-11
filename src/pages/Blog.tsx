@@ -5,6 +5,7 @@ import FooterSection from "@/sections/FooterSection";
 import { SEO, createBreadcrumbSchema } from "@/components/SEO";
 import { getAllPosts } from "@/data/blog";
 import { Calendar, Clock, ArrowRight } from "lucide-react";
+import { AdSensePlaceholder } from "@/components/shared/AdSensePlaceholder";
 
 export default function Blog() {
   const posts = getAllPosts();
@@ -69,6 +70,8 @@ export default function Blog() {
               </div>
             </Link>
           ))}
+          
+          <div className="container mx-auto px-4 mt-12"><AdSensePlaceholder size="leaderboard" /></div>
         </div>
       </main>
       <FooterSection />

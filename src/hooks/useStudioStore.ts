@@ -75,6 +75,11 @@ interface StudioPreviewData {
   outroText: string;
   introDuration: number;
   outroDuration: number;
+  captionsEnabled: boolean;
+  captionStyle: string;
+  captionSize: string;
+  captionPosition: string;
+  captionColor: string;
 }
 
 interface StudioState {
@@ -129,6 +134,11 @@ const initialState = {
     outroText: "",
     introDuration: 3.0,
     outroDuration: 3.0,
+    captionsEnabled: true,
+    captionStyle: "standard",
+    captionSize: "medium",
+    captionPosition: "bottom",
+    captionColor: "#FFFFFF",
   },
   isLoading: false,
   error: null as string | null,

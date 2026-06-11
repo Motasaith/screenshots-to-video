@@ -3,6 +3,7 @@ import Navbar from "@/components/Navbar";
 import FooterSection from "@/sections/FooterSection";
 import { Github, ExternalLink } from "lucide-react";
 import { SEO, createBreadcrumbSchema } from "@/components/SEO";
+import { AdSensePlaceholder } from "@/components/shared/AdSensePlaceholder";
 
 export default function About() {
   const breadcrumbJsonLd = createBreadcrumbSchema([
@@ -28,6 +29,9 @@ export default function About() {
           <h1 className="font-body font-bold text-5xl tracking-tight mb-4 text-[var(--sketch-fg)]">
             About AIVideo
           </h1>
+          <div className="container mx-auto px-4 mb-8">
+            <AdSensePlaceholder size="leaderboard" />
+          </div>
           <p className="font-body text-lg text-[var(--sketch-fg-muted)]">
             We are revolutionizing how technical teams share knowledge.
           </p>

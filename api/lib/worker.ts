@@ -251,6 +251,14 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
         zoomRectW: step.zoomRectWidth ?? undefined,
         zoomRectH: step.zoomRectHeight ?? undefined,
         outputRes: outputRes,
+        captions: {
+          enabled: project.captionsEnabled === 1,
+          style: project.captionStyle || "standard",
+          size: project.captionSize || "medium",
+          position: project.captionPosition || "bottom",
+          color: project.captionColor || "#FFFFFF",
+          text: step.narration || "",
+        },
       });
 
       segmentPaths.push(segmentPath);
@@ -596,6 +604,14 @@ async function processStudioRenderJob(jobId: number, projectId: number): Promise
           audioPath: audioLocalPath,
           audioDuration,
           outputRes,
+          captions: {
+            enabled: project.captionsEnabled === 1,
+            style: project.captionStyle || "standard",
+            size: project.captionSize || "medium",
+            position: project.captionPosition || "bottom",
+            color: project.captionColor || "#FFFFFF",
+            text: scene.narration || "",
+          },
         });
       } else if (mediaLocalPath) {
         segmentPath = await renderSceneWithImage({
@@ -603,6 +619,14 @@ async function processStudioRenderJob(jobId: number, projectId: number): Promise
           audioPath: audioLocalPath,
           audioDuration,
           outputRes,
+          captions: {
+            enabled: project.captionsEnabled === 1,
+            style: project.captionStyle || "standard",
+            size: project.captionSize || "medium",
+            position: project.captionPosition || "bottom",
+            color: project.captionColor || "#FFFFFF",
+            text: scene.narration || "",
+          },
         });
       } else {
         // No media — use a black frame with audio
@@ -611,6 +635,14 @@ async function processStudioRenderJob(jobId: number, projectId: number): Promise
           audioPath: audioLocalPath,
           audioDuration,
           outputRes,
+          captions: {
+            enabled: project.captionsEnabled === 1,
+            style: project.captionStyle || "standard",
+            size: project.captionSize || "medium",
+            position: project.captionPosition || "bottom",
+            color: project.captionColor || "#FFFFFF",
+            text: scene.narration || "",
+          },
         });
       }
 

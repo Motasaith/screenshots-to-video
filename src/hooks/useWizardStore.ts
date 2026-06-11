@@ -54,6 +54,11 @@ interface WizardStepData {
     outroText: string;
     introDuration: number;
     outroDuration: number;
+    captionsEnabled: boolean;
+    captionStyle: string;
+    captionSize: string;
+    captionPosition: string;
+    captionColor: string;
   };
   voice: {
     voice: string;
@@ -121,6 +126,11 @@ const initialState: Omit<
       outroText: "",
       introDuration: 3.0,
       outroDuration: 3.0,
+      captionsEnabled: true,
+      captionStyle: "standard",
+      captionSize: "medium",
+      captionPosition: "bottom",
+      captionColor: "#FFFFFF",
     },
     voice: {
       voice: "en-US-AriaNeural",

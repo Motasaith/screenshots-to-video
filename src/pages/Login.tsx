@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Film, Sparkles } from "lucide-react";
+import { Film, Sparkles, ArrowLeft } from "lucide-react";
+import { Link } from "react-router";
 
 function getOAuthUrl() {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -19,7 +20,11 @@ function getOAuthUrl() {
 
 export default function Login() {
   return (
-    <div className="min-h-screen dot-grid flex items-center justify-center px-4">
+    <div className="min-h-screen dot-grid flex items-center justify-center px-4 relative">
+      <Link to="/" className="absolute top-8 left-8 flex items-center gap-2 font-body font-bold text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] transition-colors">
+        <ArrowLeft className="w-5 h-5" />
+        Back to Home
+      </Link>
       <Card className="w-full max-w-sm sketch-card border-2">
         <CardHeader className="text-center pb-2">
           <div className="w-14 h-14 bg-[var(--sketch-accent)] border-2 border-[var(--sketch-border-color)] flex items-center justify-center mx-auto mb-4 sketch-border-sm">

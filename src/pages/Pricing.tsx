@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import Navbar from "@/components/Navbar";
 import FooterSection from "@/sections/FooterSection";
 import { SEO, createBreadcrumbSchema } from "@/components/SEO";
+import { AdSensePlaceholder } from "@/components/shared/AdSensePlaceholder";
 
 const plans = [
   {
@@ -166,6 +167,7 @@ export default function Pricing() {
               </motion.div>
             ))}
           </div>
+          <div className="container mx-auto px-4 mt-12"><AdSensePlaceholder size="leaderboard" /></div>
         </div>
       </main>
       <FooterSection />

@@ -39,6 +39,16 @@ async function ensureWorkDir(): Promise<string> {
 }
 
 /**
+ * Returns the absolute path to the bundled font file, formatted for FFmpeg's drawtext filter.
+ */
+export function getFontPath(): string {
+  const fontPath = path.join(__dirname, "fonts", "Roboto-Bold.ttf");
+  // For FFmpeg drawtext on Windows, we need to escape backslashes and colons,
+  // or convert to forward slashes and escape the colon.
+  return fontPath.replace(/\\/g, "/").replace(/:/g, "\\:");
+}
+
+/**
  * Get image dimensions using ffprobe.
  */
 export async function probeImageDimensions(
@@ -234,6 +244,7 @@ export async function renderStepVideo(opts: {
   zoomRectW?: number; // percentage 0-100
   zoomRectH?: number; // percentage 0-100
   outputRes?: string;
+  captions?: { text: string; style: string; size: string; position: string; color: string; enabled: boolean };
 }): Promise<string> {
   await ensureWorkDir();
 
@@ -282,11 +293,37 @@ export async function renderStepVideo(opts: {
 
   const zoomFilter = buildZoomFilter(targetXPx, targetYPx, paddedDuration, outputRes);
 
+  let captionsFilter = "";
+  if (opts.captions?.enabled) {
+    let fontsize = Math.round(outH * 0.05); // default medium (~5% of height)
+    if (opts.captions.size === "small") fontsize = Math.round(outH * 0.035);
+    if (opts.captions.size === "large") fontsize = Math.round(outH * 0.07);
+
+    let yPos = "h-h/5"; // default bottom
+    if (opts.captions.position === "top") yPos = "h/5";
+    if (opts.captions.position === "middle") yPos = "(h-text_h)/2";
+
+    const escapedText = opts.captions.text.replace(/'/g, "\\'").replace(/:/g, "\\:");
+    const fontFile = getFontPath();
+
+    let baseFilter = `drawtext=fontfile='${fontFile}':text='${escapedText}':fontcolor=${opts.captions.color}:fontsize=${fontsize}:x=(w-text_w)/2:y=${yPos}`;
+
+    if (opts.captions.style === "outline") {
+      baseFilter += `:borderw=2:bordercolor=black`;
+    } else if (opts.captions.style === "highlight") {
+      baseFilter += `:box=1:boxcolor=black@0.6:boxborderw=10`;
+    } else {
+      baseFilter += `:shadowcolor=black@0.8:shadowx=2:shadowy=2`;
+    }
+    captionsFilter = `,${baseFilter}`;
+  }
+
   const filterComplex =
-    `[0:v]${drawboxFilter}` +
-    `scale=${ssW}:${ssH}:force_original_aspect_ratio=decrease:flags=lanczos,` +
-    `pad=${ssW}:${ssH}:(ow-iw)/2:(oh-ih)/2,` +
-    `${zoomFilter},format=yuv420p[v];` +
+    `[0:v]${drawboxFilter}split=2[bg][fg];` +
+    `[bg]scale=${ssW}:${ssH}:force_original_aspect_ratio=increase:flags=lanczos,crop=${ssW}:${ssH},boxblur=40:40[bg_blurred];` +
+    `[fg]scale=${ssW}:${ssH}:force_original_aspect_ratio=decrease:flags=lanczos[fg_scaled];` +
+    `[bg_blurred][fg_scaled]overlay=(W-w)/2:(H-h)/2,` +
+    `${zoomFilter}${captionsFilter},format=yuv420p[v];` +
     `[1:a]${buildAudioFilter()}[a]`;
 
   const args = [
@@ -537,25 +574,14 @@ export async function renderTextSegment(
     color2 = "#f97316"; // orange-500
   }
 
-  // A very simple ffmpeg filter to create a gradient and draw text
-  // Since drawtext needs font files which might not be reliable across OS, 
-  // we can use a simpler approach or default font.
-  // Windows: fontfile=C\\\\:/Windows/Fonts/arial.ttf
-  // Linux: fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf
-  // Or just rely on default if available, but drawtext often fails without fontfile.
-  // Instead, let's just use subtitles or simple drawtext without fontfile if possible.
-  // ffmpeg often supports 'font=Arial' or default if fontfile isn't specified, but it's risky.
-  // A safer cross-platform way is to skip text if we can't ensure font, but user wants text.
-  // Let's use drawtext without fontfile, which uses default builtin font on some builds, or fail.
-  // Actually, we can just use a simple color background to be safe if drawtext is too complex to setup cross-platform.
-  
-  // Let's try drawtext with a generic font name. If it fails, fallback to just gradient.
+  // Use the downloaded Roboto font to ensure cross-platform consistency
+  const fontFile = getFontPath();
   const escapedText = text.replace(/'/g, "\\'").replace(/:/g, "\\:");
   
   // Create a silent audio track of the same duration
   const filterComplex = 
     `color=c=${color1}:s=${outputRes}:d=${durationSec}[bg];` + 
-    `[bg]drawtext=text='${escapedText}':fontcolor=white:fontsize=${Math.round(outH * 0.08)}:x=(w-text_w)/2:y=(h-text_h)/2[v];` +
+    `[bg]drawtext=fontfile='${fontFile}':text='${escapedText}':fontcolor=white:fontsize=${Math.round(outH * 0.08)}:x=(w-text_w)/2:y=(h-text_h)/2[v];` +
     `anullsrc=r=44100:cl=stereo[a]`;
 
   const args = [

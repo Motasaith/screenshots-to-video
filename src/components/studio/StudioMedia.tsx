@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router";
 import { useStudioStore } from "@/hooks/useStudioStore";
 import { trpc } from "@/providers/trpc";
@@ -11,6 +11,7 @@ import {
   RefreshCw,
   User,
   Loader2,
+  Upload,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +21,28 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 
+async function uploadFile(
+  file: File,
+  folder = "studio_media"
+): Promise<{ key: string; url: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("folder", folder);
+
+  const response = await fetch("/api/upload", {
+    method: "POST",
+    body: formData,
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: "Upload failed" }));
+    throw new Error(error.error || `Upload failed (${response.status})`);
+  }
+
+  return response.json();
+}
+
 export default function StudioMedia() {
   const navigate = useNavigate();
   const { projectId, scenes, setScenes } = useStudioStore();
@@ -27,6 +50,8 @@ export default function StudioMedia() {
   const [activeSceneIdx, setActiveSceneIdx] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchType, setSearchType] = useState<"image" | "video" | "both">("both");
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const searchMedia = trpc.studio.searchMedia.useQuery(
     { query: searchQuery, mediaType: searchType, perPage: 6 },
@@ -40,6 +65,29 @@ export default function StudioMedia() {
     setSearchQuery(scenes[index]?.searchQuery || "");
     setSearchType(scenes[index]?.mediaType === "video" ? "video" : "both");
     setSearchOpen(true);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || activeSceneIdx === null) return;
+    
+    setIsUploading(true);
+    try {
+      const result = await uploadFile(file, `projects/${projectId}/studio_media`);
+      const type = file.type.startsWith("video/") ? "video" : "image";
+      
+      await selectMedia({
+        src: result.url,
+        photographer: "Custom Upload",
+        type
+      });
+    } catch (err) {
+      console.error(err);
+      alert("Failed to upload file");
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   const selectMedia = async (media: { src: string; photographer: string; type: "image" | "video" }) => {
@@ -234,6 +282,15 @@ export default function StudioMedia() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div className="flex justify-between items-center bg-[var(--sketch-fg-subtle)]/10 p-3 border border-dashed border-[var(--sketch-border-color)]" style={{ borderRadius: "8px" }}>
+              <span className="font-body text-sm font-semibold text-[var(--sketch-fg)]">Have your own media?</span>
+              <Button onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="sketch-btn-secondary h-8 text-xs flex items-center gap-2">
+                {isUploading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                Upload File
+              </Button>
+              <input type="file" ref={fileInputRef} className="hidden" accept="image/*,video/*" onChange={handleFileUpload} />
             </div>
 
             {searchMedia.isLoading && (

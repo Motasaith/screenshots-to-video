@@ -38,6 +38,12 @@ export default function StudioPreview() {
   const [outroText, setOutroText] = useState(preview.outroText || "");
   const [outroDuration, setOutroDuration] = useState(preview.outroDuration || 3.0);
 
+  const [captionsEnabled, setCaptionsEnabled] = useState(preview.captionsEnabled ?? true);
+  const [captionStyle, setCaptionStyle] = useState(preview.captionStyle || "standard");
+  const [captionSize, setCaptionSize] = useState(preview.captionSize || "medium");
+  const [captionPosition, setCaptionPosition] = useState(preview.captionPosition || "bottom");
+  const [captionColor, setCaptionColor] = useState(preview.captionColor || "#FFFFFF");
+
   const updateProject = trpc.studio.update.useMutation();
   const updateScene = trpc.studio.updateScene.useMutation();
   const { data: projectData } = trpc.studio.getById.useQuery({ id: projectIdNum });
@@ -53,6 +59,11 @@ export default function StudioPreview() {
       outroTemplate,
       outroText,
       outroDuration,
+      captionsEnabled,
+      captionStyle,
+      captionSize,
+      captionPosition,
+      captionColor,
     });
 
     if (scenes) {
@@ -72,6 +83,11 @@ export default function StudioPreview() {
       outroTemplate,
       outroText,
       outroDuration,
+      captionsEnabled,
+      captionStyle,
+      captionSize,
+      captionPosition,
+      captionColor,
     });
 
     navigate(`/studio/${projectIdNum}/voice`);
@@ -125,7 +141,96 @@ export default function StudioPreview() {
               ))}
             </div>
 
-            <div>
+            {/* Captions Options */}
+            <div className="mt-8 border-t border-[var(--sketch-fg-subtle)] pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-body font-semibold text-lg flex items-center gap-2 text-[var(--sketch-fg)]">
+                  <Film className="w-5 h-5 text-[#FBBF24]" />
+                  Captions
+                </h3>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <span className="font-body text-sm font-semibold text-[var(--sketch-fg-muted)]">Enable Captions</span>
+                  <input
+                    type="checkbox"
+                    checked={captionsEnabled}
+                    onChange={(e) => setCaptionsEnabled(e.target.checked)}
+                    className="w-4 h-4 text-[#FBBF24] rounded border-[var(--sketch-fg-subtle)] focus:ring-[#FBBF24]"
+                  />
+                </label>
+              </div>
+
+              {captionsEnabled && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="font-body text-sm font-semibold mb-1 block text-[var(--sketch-fg)]">Style</label>
+                      <select value={captionStyle} onChange={(e) => setCaptionStyle(e.target.value)} className="sketch-input w-full">
+                        <option value="standard">Standard</option>
+                        <option value="outline">Outline</option>
+                        <option value="highlight">Highlight</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="font-body text-sm font-semibold mb-1 block text-[var(--sketch-fg)]">Size</label>
+                      <select value={captionSize} onChange={(e) => setCaptionSize(e.target.value)} className="sketch-input w-full">
+                        <option value="small">Small</option>
+                        <option value="medium">Medium</option>
+                        <option value="large">Large</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="font-body text-sm font-semibold mb-1 block text-[var(--sketch-fg)]">Position</label>
+                      <select value={captionPosition} onChange={(e) => setCaptionPosition(e.target.value)} className="sketch-input w-full">
+                        <option value="top">Top</option>
+                        <option value="middle">Middle</option>
+                        <option value="bottom">Bottom</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="font-body text-sm font-semibold mb-1 block text-[var(--sketch-fg)]">Color</label>
+                      <div className="flex gap-2">
+                        {["#FFFFFF", "#FBBF24", "#10B981", "#EF4444", "#3B82F6"].map(c => (
+                          <button
+                            key={c}
+                            onClick={() => setCaptionColor(c)}
+                            className={`w-8 h-8 rounded-full border-2 ${captionColor === c ? 'border-[var(--sketch-fg)]' : 'border-transparent'}`}
+                            style={{ backgroundColor: c }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Live Mock Preview */}
+                  <div className="flex flex-col">
+                    <label className="font-body text-sm font-semibold mb-1 block text-[var(--sketch-fg)]">Preview</label>
+                    <div className="relative w-full aspect-video bg-gray-900 overflow-hidden border-2 border-[var(--sketch-border-color)] rounded-md flex justify-center">
+                      <img src="https://images.pexels.com/photos/3183150/pexels-photo-3183150.jpeg?auto=compress&cs=tinysrgb&w=800" alt="Preview background" className="w-full h-full object-cover opacity-50" />
+                      <div className={`absolute w-full px-4 text-center ${
+                        captionPosition === 'top' ? 'top-4' : captionPosition === 'middle' ? 'top-1/2 -translate-y-1/2' : 'bottom-4'
+                      }`}>
+                        <span 
+                          className={`font-body font-bold inline-block px-2 py-1 ${
+                            captionSize === 'small' ? 'text-sm' : captionSize === 'large' ? 'text-2xl' : 'text-lg'
+                          } ${
+                            captionStyle === 'highlight' ? 'bg-black/60' : ''
+                          }`}
+                          style={{
+                            color: captionColor,
+                            textShadow: captionStyle === 'standard' ? '2px 2px 4px rgba(0,0,0,0.8)' : undefined,
+                            WebkitTextStroke: captionStyle === 'outline' ? '1px black' : undefined,
+                          }}
+                        >
+                          This is how your caption will look!
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-8 border-t border-[var(--sketch-fg-subtle)] pt-6">
               <label className="font-body text-sm font-semibold mb-2 block text-[var(--sketch-fg)]">
                 Transition Duration: {transitionDuration.toFixed(1)}s
               </label>

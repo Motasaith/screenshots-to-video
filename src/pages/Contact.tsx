@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+
 import { SEO, createBreadcrumbSchema } from "@/components/SEO";
+import { AdSensePlaceholder } from "@/components/shared/AdSensePlaceholder";
 
 export default function Contact() {
   const breadcrumbJsonLd = createBreadcrumbSchema([
@@ -72,6 +74,7 @@ export default function Contact() {
           </motion.div>
         </div>
       </main>
+      <div className="container mx-auto px-4 mb-12"><AdSensePlaceholder size="leaderboard" /></div>
       <FooterSection />
     </div>
   );
