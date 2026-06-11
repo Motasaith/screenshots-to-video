@@ -72,7 +72,7 @@ export default function StudioMedia() {
 
   const handleContinue = () => {
     if (projectId) {
-      navigate(`/studio/${projectId}/voice`);
+      navigate(`/studio/${projectId}/preview`);
     }
   };
 
@@ -190,7 +190,7 @@ export default function StudioMedia() {
             className="sketch-btn-primary w-full"
           >
             <span className="flex items-center gap-2">
-              Continue — Choose Voice
+              Continue — Adjust & Preview
               <ChevronRight className="w-4 h-4" />
             </span>
           </Button>
