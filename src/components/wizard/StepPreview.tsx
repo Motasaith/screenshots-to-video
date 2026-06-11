@@ -231,7 +231,14 @@ export default function StepPreview() {
                   <div className="flex flex-col">
                     <label className="font-body text-sm font-semibold mb-1 block text-[var(--sketch-fg)]">Preview</label>
                     <div className="relative w-full aspect-video bg-gray-900 overflow-hidden border-2 border-[var(--sketch-border-color)] rounded-md flex justify-center">
-                      <img src="https://images.pexels.com/photos/3183150/pexels-photo-3183150.jpeg?auto=compress&cs=tinysrgb&w=800" alt="Preview background" className="w-full h-full object-cover opacity-50" />
+                      {(() => {
+                        const firstScreenshot = steps?.find((s: any) => s.screenshotPath)?.screenshotPath;
+                        return firstScreenshot ? (
+                          <img src={firstScreenshot} alt="Your screenshot" className="w-full h-full object-cover opacity-70" />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-b from-gray-800 to-gray-900" />
+                        );
+                      })()}
                       <div className={`absolute w-full px-4 text-center ${
                         captionPosition === 'top' ? 'top-4' : captionPosition === 'middle' ? 'top-1/2 -translate-y-1/2' : 'bottom-4'
                       }`}>

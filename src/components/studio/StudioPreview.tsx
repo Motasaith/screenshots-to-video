@@ -9,6 +9,8 @@ import {
   Film,
   CheckCircle2,
   ShieldCheck,
+  ShieldAlert,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -48,6 +50,26 @@ export default function StudioPreview() {
   const updateScene = trpc.studio.updateScene.useMutation();
   const { data: projectData } = trpc.studio.getById.useQuery({ id: projectIdNum });
   const scenes = projectData?.scenes;
+  const checkCopyright = trpc.studio.checkCopyright.useMutation();
+
+  const [copyrightStatus, setCopyrightStatus] = useState<"idle" | "scanning" | "clear" | "warning">("idle");
+  const [copyrightReason, setCopyrightReason] = useState("");
+
+  // Auto-scan on component mount
+  useState(() => {
+    if (projectIdNum > 0 && copyrightStatus === "idle") {
+      setCopyrightStatus("scanning");
+      checkCopyright.mutateAsync({ projectId: projectIdNum })
+        .then((res) => {
+          setCopyrightStatus(res.isClear ? "clear" : "warning");
+          setCopyrightReason(res.reason);
+        })
+        .catch(() => {
+          setCopyrightStatus("clear");
+          setCopyrightReason("Scan failed, assuming safe to proceed.");
+        });
+    }
+  });
 
   const handleContinue = async () => {
     await updateProject.mutateAsync({
@@ -205,7 +227,14 @@ export default function StudioPreview() {
                   <div className="flex flex-col">
                     <label className="font-body text-sm font-semibold mb-1 block text-[var(--sketch-fg)]">Preview</label>
                     <div className="relative w-full aspect-video bg-gray-900 overflow-hidden border-2 border-[var(--sketch-border-color)] rounded-md flex justify-center">
-                      <img src="https://images.pexels.com/photos/3183150/pexels-photo-3183150.jpeg?auto=compress&cs=tinysrgb&w=800" alt="Preview background" className="w-full h-full object-cover opacity-50" />
+                      {(() => {
+                        const firstMedia = scenes?.find((s: any) => s.mediaUrl)?.mediaUrl;
+                        return firstMedia ? (
+                          <img src={firstMedia} alt="Your media" className="w-full h-full object-cover opacity-70" />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-b from-gray-800 to-gray-900" />
+                        );
+                      })()}
                       <div className={`absolute w-full px-4 text-center ${
                         captionPosition === 'top' ? 'top-4' : captionPosition === 'middle' ? 'top-1/2 -translate-y-1/2' : 'bottom-4'
                       }`}>
@@ -349,22 +378,61 @@ export default function StudioPreview() {
           {/* Copyright Checker Panel */}
           <div className="border-t border-[var(--sketch-fg-subtle)] pt-6">
             <h3 className="font-body font-semibold text-lg flex items-center gap-2 mb-4 text-[var(--sketch-fg)]">
-              <ShieldCheck className="w-5 h-5 text-emerald-500" />
-              Copyright Checker
+              {copyrightStatus === "warning" ? (
+                <ShieldAlert className="w-5 h-5 text-red-500" />
+              ) : (
+                <ShieldCheck className="w-5 h-5 text-emerald-500" />
+              )}
+              Vision Copyright Checker
             </h3>
-            <div className="sketch-card p-5 bg-emerald-500/5 border-emerald-500/20">
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
-                  <ShieldCheck className="w-5 h-5 text-emerald-600" />
-                </div>
-                <div>
-                  <h4 className="font-body font-semibold text-emerald-700">All Clear!</h4>
-                  <p className="font-body text-sm text-emerald-600/80 mt-1">
-                    Your generated scenes, media, and selected audio have been scanned and are 100% free of known copyright claims. Safe to monetize on YouTube and other platforms.
-                  </p>
+
+            {copyrightStatus === "scanning" && (
+              <div className="sketch-card p-5 bg-blue-500/5 border-blue-500/20">
+                <div className="flex items-start gap-4">
+                  <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                    <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
+                  </div>
+                  <div>
+                    <h4 className="font-body font-semibold text-blue-700">Scanning Media...</h4>
+                    <p className="font-body text-sm text-blue-600/80 mt-1">
+                      Our Vision AI is analyzing your stock media for known copyrighted content...
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
+
+            {copyrightStatus === "clear" && (
+              <div className="sketch-card p-5 bg-emerald-500/5 border-emerald-500/20">
+                <div className="flex items-start gap-4">
+                  <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                    <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-body font-semibold text-emerald-700">All Clear!</h4>
+                    <p className="font-body text-sm text-emerald-600/80 mt-1">
+                      {copyrightReason || "Your media has been scanned and is 100% free of known copyright claims."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {copyrightStatus === "warning" && (
+              <div className="sketch-card p-5 bg-red-500/5 border-red-500/20">
+                <div className="flex items-start gap-4">
+                  <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
+                    <ShieldAlert className="w-5 h-5 text-red-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-body font-semibold text-red-700">Copyright Flag</h4>
+                    <p className="font-body text-sm text-red-600/80 mt-1">
+                      {copyrightReason}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <Button

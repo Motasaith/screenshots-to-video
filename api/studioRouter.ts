@@ -2,9 +2,9 @@ import { z } from "zod";
 import { createRouter, authedQuery, rateLimitByUser } from "./middleware";
 import { getDb } from "./queries/connection";
 import { studioProjects, studioScenes, studioRenderJobs, users } from "@db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, max } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { isLLMConfigured } from "./lib/llm";
+import { isLLMConfigured, checkCopyrightImages } from "./lib/llm";
 import { generateVideoScript } from "./lib/studioLlm";
 import { searchMedia, isPexelsConfigured } from "./lib/pexels";
 import { generateTTSAudio, speedToRate } from "./lib/tts";
@@ -114,6 +114,7 @@ export const studioRouter = createRouter({
     .use(rateLimitByUser(300_000, 3))
     .input(z.object({ projectId: z.number() }))
     .mutation(async ({ ctx, input }) => {
+      // 1. Fetch project and existing scenes
       const [project] = await getDb()
         .select()
         .from(studioProjects)
@@ -125,9 +126,17 @@ export const studioRouter = createRouter({
         )
         .limit(1);
 
-      if (!project) throw new Error("Project not found");
+      if (!project) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
 
-      // Generate script via LLM
+      const existingScenes = await getDb()
+        .select()
+        .from(studioScenes)
+        .where(eq(studioScenes.projectId, input.projectId))
+        .orderBy(studioScenes.order);
+
+      // 2. Generate script with LLM
       let script;
       if (isLLMConfigured()) {
         script = await generateVideoScript({
@@ -137,6 +146,14 @@ export const studioRouter = createRouter({
           audience: project.audience || "general",
           tone: project.tone,
           platform: project.platform,
+          existingScenes: existingScenes.length > 0 ? existingScenes.map(s => ({
+            order: s.order,
+            narration: s.narration,
+            sceneDescription: s.sceneDescription || "",
+            searchQuery: s.searchQuery || "",
+            mediaType: s.mediaType as "image" | "video",
+            estimatedDuration: 8
+          })) : undefined
         });
       } else {
         // Fallback script
@@ -193,8 +210,18 @@ export const studioRouter = createRouter({
         let photographerName = "";
         let mediaType = scene.mediaType;
 
-        // Search Pexels for media
-        if (isPexelsConfigured()) {
+        // Check if we can reuse media from an existing scene
+        const reusedScene = existingScenes.find(
+          (s) => s.order === scene.order || s.narration === scene.narration || s.searchQuery === scene.searchQuery
+        );
+
+        if (reusedScene && reusedScene.mediaUrl) {
+          // Reuse existing media to prevent resetting user's work
+          mediaUrl = reusedScene.mediaUrl;
+          photographerName = reusedScene.photographerName || "";
+          mediaType = reusedScene.mediaType;
+        } else if (isPexelsConfigured()) {
+          // Search Pexels for media
           try {
             const results = await searchMedia(scene.searchQuery, scene.mediaType, 1);
             if (results.length > 0) {
@@ -334,10 +361,11 @@ export const studioRouter = createRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { id, randomize, ...data } = input;
+      const { id, randomize, captionsEnabled, ...data } = input;
       const updateData = {
         ...data,
         ...(randomize !== undefined ? { randomize: randomize ? 1 : 0 } : {}),
+        ...(captionsEnabled !== undefined ? { captionsEnabled: captionsEnabled ? 1 : 0 } : {}),
       };
 
       // Free tier enforcement
@@ -536,5 +564,113 @@ export const studioRouter = createRouter({
       await fs.unlink(filePath).catch(() => {});
 
       return { audioData: `data:audio/mp3;base64,${base64}` };
+    }),
+
+  // ── Copyright check for studio projects ──
+  checkCopyright: authedQuery
+    .use(rateLimitByUser(60_000, 3))
+    .input(z.object({ projectId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const scenes = await getDb()
+        .select()
+        .from(studioScenes)
+        .where(eq(studioScenes.projectId, input.projectId))
+        .orderBy(studioScenes.order);
+
+      const imagePaths = scenes
+        .map((s) => s.mediaUrl)
+        .filter((p): p is string => Boolean(p))
+        .slice(0, 3);
+
+      if (imagePaths.length === 0) {
+        return { isClear: true, reason: "No media to check. Safe to proceed." };
+      }
+
+      return await checkCopyrightImages(imagePaths);
+    }),
+
+  // ── Add a new scene ──
+  createScene: authedQuery
+    .use(rateLimitByUser(60_000, 30))
+    .input(z.object({ projectId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      // Verify ownership
+      const [project] = await getDb()
+        .select()
+        .from(studioProjects)
+        .where(
+          and(
+            eq(studioProjects.id, input.projectId),
+            eq(studioProjects.userId, ctx.user!.id)
+          )
+        )
+        .limit(1);
+      if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+
+      // Get the current max order
+      const [maxRow] = await getDb()
+        .select({ maxOrder: max(studioScenes.order) })
+        .from(studioScenes)
+        .where(eq(studioScenes.projectId, input.projectId));
+      const nextOrder = (maxRow?.maxOrder ?? 0) + 1;
+
+      const [inserted] = await getDb().insert(studioScenes).values({
+        projectId: input.projectId,
+        order: nextOrder,
+        narration: "",
+        sceneDescription: "New scene",
+        mediaType: "image",
+        searchQuery: "",
+      }).$returningId();
+
+      return {
+        id: inserted.id,
+        order: nextOrder,
+        narration: "",
+        sceneDescription: "New scene",
+        mediaType: "image" as const,
+        mediaUrl: "",
+        searchQuery: "",
+        photographerName: "",
+      };
+    }),
+
+  // ── Delete a scene ──
+  deleteScene: authedQuery
+    .use(rateLimitByUser(60_000, 30))
+    .input(z.object({ id: z.number(), projectId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      // Verify ownership
+      const [project] = await getDb()
+        .select()
+        .from(studioProjects)
+        .where(
+          and(
+            eq(studioProjects.id, input.projectId),
+            eq(studioProjects.userId, ctx.user!.id)
+          )
+        )
+        .limit(1);
+      if (!project) throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+
+      await getDb()
+        .delete(studioScenes)
+        .where(eq(studioScenes.id, input.id));
+
+      // Re-order remaining scenes
+      const remaining = await getDb()
+        .select()
+        .from(studioScenes)
+        .where(eq(studioScenes.projectId, input.projectId))
+        .orderBy(studioScenes.order);
+
+      for (let i = 0; i < remaining.length; i++) {
+        await getDb()
+          .update(studioScenes)
+          .set({ order: i + 1 })
+          .where(eq(studioScenes.id, remaining[i].id));
+      }
+
+      return { success: true };
     }),
 });

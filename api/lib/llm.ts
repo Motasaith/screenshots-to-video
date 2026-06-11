@@ -289,6 +289,7 @@ Return ONLY the message text or "OK".`;
 
 /**
  * Check screenshots for copyright violations using a Vision LLM.
+ * Supports both local file paths and remote URLs (e.g. UploadThing).
  */
 export async function checkCopyrightImages(imagePaths: string[]): Promise<{ isClear: boolean; reason: string }> {
   if (!isLLMConfigured() || imagePaths.length === 0) {
@@ -296,7 +297,6 @@ export async function checkCopyrightImages(imagePaths: string[]): Promise<{ isCl
   }
 
   try {
-
     const fs = await import("fs/promises");
     const path = await import("path");
 
@@ -311,22 +311,42 @@ export async function checkCopyrightImages(imagePaths: string[]): Promise<{ isCl
 
     for (const imgPath of pathsToCheck) {
       try {
-        const fullPath = path.resolve(imgPath);
-        const buffer = await fs.readFile(fullPath);
+        let buffer: Buffer;
+        let mime = "image/jpeg";
+
+        if (imgPath.startsWith("http://") || imgPath.startsWith("https://")) {
+          // Fetch remote image (UploadThing, Pexels, etc.)
+          console.log(`[Copyright] Fetching remote image: ${imgPath.substring(0, 80)}...`);
+          const resp = await fetch(imgPath);
+          if (!resp.ok) {
+            console.warn(`[Copyright] Failed to fetch image (${resp.status}): ${imgPath}`);
+            continue;
+          }
+          const contentType = resp.headers.get("content-type") || "";
+          if (contentType.includes("png")) mime = "image/png";
+          else if (contentType.includes("webp")) mime = "image/webp";
+          const arrayBuf = await resp.arrayBuffer();
+          buffer = Buffer.from(arrayBuf);
+        } else {
+          // Local file path
+          const fullPath = path.resolve(imgPath);
+          buffer = await fs.readFile(fullPath);
+          if (fullPath.toLowerCase().endsWith(".png")) mime = "image/png";
+          else if (fullPath.toLowerCase().endsWith(".webp")) mime = "image/webp";
+        }
+
         const base64 = buffer.toString("base64");
-        // Simple MIME type inference
-        const mime = fullPath.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg";
         contentParts.push({
           type: "image_url",
           image_url: { url: `data:${mime};base64,${base64}` },
         });
       } catch (e) {
-        console.warn(`Could not read image for copyright check: ${imgPath}`, e);
+        console.warn(`[Copyright] Could not load image: ${imgPath}`, e);
       }
     }
 
     if (contentParts.length === 1) {
-      // No valid images were read
+      // No valid images were loaded
       return { isClear: true, reason: "No readable images found." };
     }
 

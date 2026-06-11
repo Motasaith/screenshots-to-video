@@ -42,7 +42,7 @@ async function ensureWorkDir(): Promise<string> {
  * Returns the absolute path to the bundled font file, formatted for FFmpeg's drawtext filter.
  */
 export function getFontPath(): string {
-  const fontPath = path.join(__dirname, "fonts", "Roboto-Bold.ttf");
+  const fontPath = path.join(process.cwd(), "api", "lib", "fonts", "Roboto-Bold.ttf");
   // For FFmpeg drawtext on Windows, we need to escape backslashes and colons,
   // or convert to forward slashes and escape the colon.
   return fontPath.replace(/\\/g, "/").replace(/:/g, "\\:");
@@ -552,6 +552,7 @@ export function resolutionToSize(res: string, aspectRatio: string = "16:9"): str
 
 /**
  * Generate a gradient background video segment with text overlay for Intro/Outro.
+ * Uses Windows-compatible FFmpeg filter syntax (0x hex colors, no single-quote wrapping).
  */
 export async function renderTextSegment(
   template: string,
@@ -563,58 +564,62 @@ export async function renderTextSegment(
   const outputPath = path.join(WORK_DIR, `text_${nanoid(12)}.mp4`);
   const [outW, outH] = outputRes.split("x").map(Number);
 
-  // Simple gradient backgrounds based on template name
-  let color1 = "#1e3a8a"; // blue-900
-  let color2 = "#3b82f6"; // blue-500
+  // Windows FFmpeg needs 0xRRGGBB instead of #RRGGBB
+  let color1 = "0x1e3a8a"; // blue-900
   if (template.includes("dark") || template.includes("fade")) {
-    color1 = "#000000";
-    color2 = "#1f2937"; // gray-800
+    color1 = "0x000000";
   } else if (template.includes("warm") || template.includes("title")) {
-    color1 = "#7c2d12"; // orange-900
-    color2 = "#f97316"; // orange-500
+    color1 = "0x7c2d12"; // orange-900
   }
 
-  // Use the downloaded Roboto font to ensure cross-platform consistency
+  // Use the downloaded Roboto font
   const fontFile = getFontPath();
-  const escapedText = text.replace(/'/g, "\\'").replace(/:/g, "\\:");
-  
-  // Create a silent audio track of the same duration
-  const filterComplex = 
-    `color=c=${color1}:s=${outputRes}:d=${durationSec}[bg];` + 
-    `[bg]drawtext=fontfile='${fontFile}':text='${escapedText}':fontcolor=white:fontsize=${Math.round(outH * 0.08)}:x=(w-text_w)/2:y=(h-text_h)/2[v];` +
-    `anullsrc=r=44100:cl=stereo[a]`;
+  // Escape text for FFmpeg drawtext: colons, single-quotes, backslashes
+  const escapedText = text
+    .replace(/\\/g, "\\\\\\\\")
+    .replace(/:/g, "\\:")
+    .replace(/'/g, "'\\\\''");
+
+  const fontSize = Math.round(outH * 0.07);
+
+  // Build filter_complex: color source -> drawtext -> fps normalize, plus silent audio
+  const filterComplex = [
+    `color=c=${color1}:s=${outputRes}:d=${durationSec}:r=30[bg]`,
+    `[bg]drawtext=fontfile=${fontFile}:text='${escapedText}':fontcolor=white:fontsize=${fontSize}:x=(w-text_w)/2:y=(h-text_h)/2:shadowcolor=0x000000:shadowx=2:shadowy=2[v]`,
+    `anullsrc=r=44100:cl=stereo[a]`,
+  ].join(";");
 
   const args = [
     "-y",
-    "-f", "lavfi",
-    "-i", "nullsrc", // dummy input
-    "-filter_complex", filterComplex,
-    "-map", "[v]",
-    "-map", "[a]",
+    "-f", "lavfi", "-i", `color=c=${color1}:s=${outputRes}:d=${durationSec}:r=30`,
+    "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+    "-vf", `drawtext=fontfile=${fontFile}:text='${escapedText}':fontcolor=white:fontsize=${fontSize}:x=(w-text_w)/2:y=(h-text_h)/2:shadowcolor=0x000000:shadowx=2:shadowy=2`,
     "-c:v", "libx264",
     "-preset", "medium",
     "-crf", "23",
     "-c:a", "aac",
     "-t", durationSec.toString(),
     "-pix_fmt", "yuv420p",
+    "-shortest",
     outputPath,
   ];
 
   if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
   try {
-    await execFileAsync(ffmpegPath, args, { timeout: 60000, shell: true });
+    console.log("[FFmpeg] Rendering text segment:", text.substring(0, 50));
+    await execFileAsync(ffmpegPath, args, { timeout: 60000 });
   } catch (err: any) {
-    console.warn("Failed to render text segment with drawtext. Rendering without text.");
-    // Fallback: just colored background
-    const fbFilter = `color=c=${color1}:s=${outputRes}:d=${durationSec}[v];anullsrc=r=44100:cl=stereo[a]`;
+    console.warn("[FFmpeg] drawtext failed, trying plain color fallback:", err.message);
+    // Fallback: just colored background without text
     const fbArgs = [
-      "-y", "-f", "lavfi", "-i", "nullsrc",
-      "-filter_complex", fbFilter,
-      "-map", "[v]", "-map", "[a]",
-      "-c:v", "libx264", "-c:a", "aac", "-t", durationSec.toString(), "-pix_fmt", "yuv420p",
-      outputPath
+      "-y",
+      "-f", "lavfi", "-i", `color=c=${color1}:s=${outputRes}:d=${durationSec}:r=30`,
+      "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+      "-c:v", "libx264", "-c:a", "aac",
+      "-t", durationSec.toString(), "-pix_fmt", "yuv420p", "-shortest",
+      outputPath,
     ];
-    await execFileAsync(ffmpegPath, fbArgs, { timeout: 60000, shell: true });
+    await execFileAsync(ffmpegPath, fbArgs, { timeout: 60000 });
   }
 
   return outputPath;
@@ -642,6 +647,12 @@ export async function concatenateSegmentsWithTransitions(
   }
 
   let filterComplex = "";
+  
+  // Normalize all video inputs for xfade (timebase and framerate must match exactly)
+  for (let i = 0; i < segmentPaths.length; i++) {
+    filterComplex += `[${i}:v]settb=1/AVTB,fps=30[normV${i}];`;
+  }
+
   let currentOffset = durations[0] - transitionDuration;
   
   // Input arguments
@@ -652,11 +663,11 @@ export async function concatenateSegmentsWithTransitions(
 
   // Build the xfade filter chain
   // Audio crossfade is also needed
-  let lastV = "[0:v]";
+  let lastV = "[normV0]";
   let lastA = "[0:a]";
   
   for (let i = 1; i < segmentPaths.length; i++) {
-    const nextV = `[${i}:v]`;
+    const nextV = `[normV${i}]`;
     const nextA = `[${i}:a]`;
     const outV = `[v_xfade${i}]`;
     const outA = `[a_xfade${i}]`;

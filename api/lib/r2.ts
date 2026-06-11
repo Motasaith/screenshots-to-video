@@ -54,7 +54,7 @@ export async function uploadToR2(
     throw new Error(response.error.message);
   }
 
-  return response.data.url;
+  return response.data.ufsUrl || response.data.url;
 }
 
 /**

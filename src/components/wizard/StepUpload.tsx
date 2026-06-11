@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { useWizardStore } from "@/hooks/useWizardStore";
@@ -12,6 +12,7 @@ import {
   Loader2,
   Upload,
   CheckCircle,
+  Camera,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { nanoid } from "nanoid";
@@ -236,6 +237,9 @@ export default function StepUpload() {
   const [initialized, setInitialized] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   // Track which DB step IDs we started with, so we can detect removals
   const [originalDbIds, setOriginalDbIds] = useState<number[]>([]);
@@ -308,6 +312,53 @@ export default function StepUpload() {
   const addStep = () => {
     if (steps.length >= 20) return;
     setSteps([...steps, { localId: nanoid(8), order: steps.length + 1, description: "" }]);
+  };
+
+  const openCamera = async () => {
+    setShowCamera(true);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      console.error("Camera access denied:", err);
+      setShowCamera(false);
+    }
+  };
+
+  const closeCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
+    setShowCamera(false);
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current) return;
+    const video = videoRef.current;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const file = new File([blob], `capture_${Date.now()}.png`, { type: "image/png" });
+      const newLocalId = nanoid(8);
+      const newStep: WizardStep = {
+        localId: newLocalId,
+        order: steps.length + 1,
+        description: "",
+      };
+      setSteps(prev => [...prev, newStep]);
+      // Trigger upload after state update
+      setTimeout(() => handleFileUpload(newLocalId, file), 100);
+      closeCamera();
+    }, "image/png");
   };
 
   const removeStep = (localId: string) => {
@@ -506,16 +557,49 @@ export default function StepUpload() {
           </DndContext>
 
           {steps.length < 20 && (
-            <button
-              onClick={addStep}
-              className="w-full py-4 border-2 border-dashed border-[var(--sketch-fg-subtle)] hover:border-[var(--sketch-border-color)] hover:bg-[#FBBF24]/5 transition-all flex items-center justify-center gap-2"
-              style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
-            >
-              <Plus className="w-4 h-4 text-[var(--sketch-fg-subtle)]" />
-              <span className="font-hand text-lg text-[var(--sketch-fg-muted)]">
-                Add Another Step
-              </span>
-            </button>
+            <div className="flex gap-3">
+              <button
+                onClick={addStep}
+                className="flex-1 py-4 border-2 border-dashed border-[var(--sketch-fg-subtle)] hover:border-[var(--sketch-border-color)] hover:bg-[#FBBF24]/5 transition-all flex items-center justify-center gap-2"
+                style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
+              >
+                <Plus className="w-4 h-4 text-[var(--sketch-fg-subtle)]" />
+                <span className="font-hand text-lg text-[var(--sketch-fg-muted)]">
+                  Add Another Step
+                </span>
+              </button>
+              <button
+                onClick={openCamera}
+                className="py-4 px-6 border-2 border-dashed border-[var(--sketch-fg-subtle)] hover:border-blue-500 hover:bg-blue-500/5 transition-all flex items-center justify-center gap-2"
+                style={{ borderRadius: "15px 255px 15px 225px/225px 15px 255px 15px" }}
+              >
+                <Camera className="w-4 h-4 text-blue-500" />
+                <span className="font-hand text-lg text-blue-500">
+                  Camera
+                </span>
+              </button>
+            </div>
+          )}
+
+          {/* Camera Modal */}
+          {showCamera && (
+            <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+              <div className="bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-border-color)] p-6 max-w-lg w-full space-y-4" style={{ borderRadius: "12px" }}>
+                <h3 className="font-body font-bold text-xl text-[var(--sketch-fg)]">📸 Take a Photo</h3>
+                <div className="relative aspect-video bg-black rounded-md overflow-hidden">
+                  <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                </div>
+                <div className="flex gap-3">
+                  <Button onClick={capturePhoto} className="sketch-btn-primary flex-1">
+                    <Camera className="w-4 h-4 mr-2" />
+                    Capture
+                  </Button>
+                  <Button onClick={closeCamera} variant="ghost" className="sketch-btn-ghost">
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </div>
           )}
 
           {errors.submit && (

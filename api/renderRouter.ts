@@ -62,7 +62,7 @@ export const renderRouter = createRouter({
     }),
 
   start: authedQuery
-    .use(rateLimitByUser(600_000, 2))
+    .use(rateLimitByUser(600_000, 10))
     .input(z.object({ projectId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const [project] = await getDb()

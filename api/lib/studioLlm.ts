@@ -25,8 +25,24 @@ export async function generateVideoScript(opts: {
   audience: string;
   tone: string;
   platform: string;
+  existingScenes?: SceneScript[];
 }): Promise<VideoScript> {
   const approxSceneCount = Math.max(3, Math.min(20, Math.ceil(opts.targetDuration / 15)));
+
+  let existingContext = "";
+  if (opts.existingScenes && opts.existingScenes.length > 0) {
+    existingContext = `
+IMPORTANT: The user has already started working on some scenes. You MUST preserve the order and manually edited narration of these scenes, but you can fill in any missing narration or search queries. If you need to add more scenes to make the video complete, you can append them or insert them logically.
+Existing Scenes:
+${JSON.stringify(opts.existingScenes.map(s => ({
+  order: s.order,
+  narration: s.narration,
+  sceneDescription: s.sceneDescription,
+  searchQuery: s.searchQuery,
+  mediaType: s.mediaType
+})), null, 2)}
+`;
+  }
 
   const prompt = `You are a professional video script writer. Create a complete video script for the following:
 
@@ -38,7 +54,7 @@ Tone: ${opts.tone}
 Platform: ${opts.platform}
 
 Create approximately ${approxSceneCount} scenes. The total narration time across all scenes should add up to roughly ${opts.targetDuration} seconds (estimate ~2.5 words per second of speech).
-
+${existingContext}
 For each scene:
 - "narration": The exact text spoken by a text-to-speech engine — write it the way a real person TALKS, not the way an article reads. Always use contractions (it's, you'll, don't). Vary sentence length; mix short punchy lines with longer ones. Occasionally (not every scene) open with a natural spoken transition like "Now,", "So,", "Here's the interesting part —", "Okay,". Once or twice in the whole video, add a small human touch like "hmm", "you know", or a brief aside. Use commas and "..." to create natural pauses. The first scene should hook the viewer conversationally; the last should wrap up warmly. No markdown, no emoji, no special characters.
 - "sceneDescription": A brief description of what the viewer should see during this scene.

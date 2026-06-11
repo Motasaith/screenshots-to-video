@@ -12,6 +12,8 @@ import {
   Film,
   Clock,
   RotateCcw,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -21,6 +23,8 @@ export default function StudioScript() {
 
   const generateScript = trpc.studio.generateScript.useMutation();
   const updateScene = trpc.studio.updateScene.useMutation();
+  const createScene = trpc.studio.createScene.useMutation();
+  const deleteScene = trpc.studio.deleteScene.useMutation();
   const projectQuery = trpc.studio.getById.useQuery(
     { id: projectId! },
     { enabled: !!projectId }
@@ -81,6 +85,28 @@ export default function StudioScript() {
       await updateScene.mutateAsync({ id: scene.id, narration });
     } catch {
       // Silently fail — local state is already updated
+    }
+  };
+
+  const handleAddScene = async () => {
+    if (!projectId) return;
+    try {
+      const result = await createScene.mutateAsync({ projectId });
+      setScenes([...scenes, result]);
+    } catch (err) {
+      console.error("Failed to add scene:", err);
+    }
+  };
+
+  const handleRemoveScene = async (sceneId: number) => {
+    if (!projectId) return;
+    try {
+      // Optimistic update
+      setScenes(scenes.filter(s => s.id !== sceneId).map((s, i) => ({ ...s, order: i + 1 })));
+      await deleteScene.mutateAsync({ projectId, id: sceneId });
+    } catch (err) {
+      console.error("Failed to remove scene:", err);
+      projectQuery.refetch(); // revert on fail
     }
   };
 
@@ -203,17 +229,40 @@ export default function StudioScript() {
                         rows={3}
                         className="sketch-input resize-none text-sm w-full"
                       />
-                      {scene.sceneDescription && (
-                        <p className="font-body text-xs text-[var(--sketch-fg-subtle)] mt-2 flex items-center gap-1">
-                          <Edit3 className="w-3 h-3" />
-                          {scene.sceneDescription}
-                        </p>
-                      )}
+                        {scene.sceneDescription && (
+                          <p className="font-body text-xs text-[var(--sketch-fg-subtle)] mt-2 flex items-center gap-1">
+                            <Edit3 className="w-3 h-3" />
+                            {scene.sceneDescription}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => scene.id && handleRemoveScene(scene.id)}
+                        className="p-2 text-[var(--sketch-fg-subtle)] hover:text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                        title="Remove scene"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
-                  </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+
+              <button
+                onClick={handleAddScene}
+                disabled={createScene.isPending}
+                className="w-full py-4 border-2 border-dashed border-[var(--sketch-fg-subtle)] hover:border-[var(--sketch-border-color)] hover:bg-[#FBBF24]/5 transition-all flex items-center justify-center gap-2"
+                style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
+              >
+                {createScene.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-[var(--sketch-fg-subtle)]" />
+                ) : (
+                  <Plus className="w-4 h-4 text-[var(--sketch-fg-subtle)]" />
+                )}
+                <span className="font-hand text-lg text-[var(--sketch-fg-muted)]">
+                  Add Scene
+                </span>
+              </button>
 
             <Button
               onClick={handleContinue}
