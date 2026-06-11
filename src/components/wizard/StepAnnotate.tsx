@@ -225,7 +225,7 @@ export default function StepAnnotate() {
         ...cleanAnn(ann),
       });
     }
-    navigate(`/create/${projectIdNum}/voice`);
+    navigate(`/create/${projectIdNum}/preview`);
   };
 
   const currentAnn = currentStep ? annotations[currentStep.id] : null;
