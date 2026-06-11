@@ -27,6 +27,8 @@ export async function upsertUser(data: InsertUser) {
   ) {
     values.role = "admin";
     updateSet.role = "admin";
+    values.plan = "pro";
+    updateSet.plan = "pro";
   }
 
   await getDb()
