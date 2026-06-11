@@ -14,31 +14,31 @@ export default function Feedback() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <h1 className="font-syne font-bold text-5xl tracking-tight mb-4 text-center">
+          <h1 className="font-body font-bold text-5xl tracking-tight mb-4 text-center text-[var(--sketch-fg)]">
             Send Feedback
           </h1>
-          <p className="font-dm text-muted-foreground text-center mb-12">
+          <p className="font-body text-[var(--sketch-fg-muted)] text-center mb-12">
             Your ideas help shape the future of AIVideo. Let us know what we can improve.
           </p>
 
-          <form className="neo-card p-8 bg-card border-2 space-y-6">
+          <form className="sketch-card p-8 bg-[var(--sketch-card-bg)] border-2 space-y-6">
             <div className="space-y-4">
-              <Label className="font-syne font-bold text-lg">What kind of feedback is this?</Label>
+              <Label className="font-body font-bold text-lg text-[var(--sketch-fg)]">What kind of feedback is this?</Label>
               <div className="grid grid-cols-2 gap-4">
-                <Button type="button" variant="outline" className="h-12 border-2 hover:border-primary focus:border-primary focus:ring-1 focus:ring-primary">Bug Report</Button>
-                <Button type="button" variant="outline" className="h-12 border-2 hover:border-primary focus:border-primary focus:ring-1 focus:ring-primary">Feature Request</Button>
+                <Button type="button" variant="outline" className="h-12 border-2 hover:border-[var(--sketch-accent)] focus:border-[var(--sketch-accent)] focus:ring-1 focus:ring-[var(--sketch-accent)] font-body text-[var(--sketch-fg)]">Bug Report</Button>
+                <Button type="button" variant="outline" className="h-12 border-2 hover:border-[var(--sketch-accent)] focus:border-[var(--sketch-accent)] focus:ring-1 focus:ring-[var(--sketch-accent)] font-body text-[var(--sketch-fg)]">Feature Request</Button>
               </div>
             </div>
 
             <div className="space-y-2 pt-4">
-              <Label className="font-syne font-bold">Details</Label>
+              <Label className="font-body font-bold text-[var(--sketch-fg)]">Details</Label>
               <Textarea 
                 placeholder="Please provide as much detail as possible..." 
-                className="min-h-[200px] border-2"
+                className="min-h-[200px] border-2 sketch-input font-body"
               />
             </div>
 
-            <Button className="w-full font-syne font-bold text-lg py-6 shadow-offset">
+            <Button className="w-full font-body font-bold text-lg py-6 sketch-btn-primary">
               Submit Feedback
             </Button>
           </form>

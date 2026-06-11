@@ -6,9 +6,9 @@ import { Input } from "@/components/ui/input";
 
 const CATEGORIES = [
   { icon: PlayCircle, title: "Getting Started", desc: "Learn the basics of creating your first video." },
-  { icon: Settings, title: "Account & Billing", desc: "Manage your subscription, team, and settings." },
-  { icon: Book, title: "Project Setup", desc: "Tips for writing scripts and uploading screenshots." },
-  { icon: MessageCircle, title: "Voice & Narration", desc: "Choosing AI voices and fixing pronunciation." },
+  { icon: MessageCircle, title: "Proactive AI Guide", desc: "How to use the chat assistant to refine your scripts." },
+  { icon: Book, title: "Copyright Checker", desc: "Understanding how the Vision LLM scans your project." },
+  { icon: Settings, title: "Studio Mode vs Wizard", desc: "Choosing the right mode for your video." },
   { icon: HelpCircle, title: "Troubleshooting", desc: "Fixing render errors and common issues." },
 ];
 

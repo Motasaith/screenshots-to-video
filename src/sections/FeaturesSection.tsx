@@ -5,36 +5,54 @@ import {
   FileText,
   Mic,
   Wand2,
+  Layout,
+  ShieldCheck,
+  MessageSquare,
+  Smartphone,
 } from "lucide-react";
 
 const features = [
   {
-    icon: Target,
-    title: "Cinematic Zoom",
+    icon: Layout,
+    title: "Two Creation Modes",
     description:
-      "The only tool that animates zoom into specific UI elements within static screenshots. Click or drag to mark what matters — our FFmpeg pipeline handles the rest.",
-    detail: "Competitors record your screen. We make screenshots move. The zoom algorithm smoothly transitions from full image to your target region, creating a professional tutorial feel without any screen recording software.",
+      "Build videos your way. Use the Screenshot Tutorial wizard for software guides, or switch to the AI Video Studio for text-to-video creative control.",
+    detail: "Our platform adapts to your workflow. The traditional wizard is perfect for 'how-to' technical guides, while the new Studio mode offers a canvas for storytelling and creative video generation.",
   },
   {
-    icon: FileText,
-    title: "AI Script Generation",
+    icon: Target,
+    title: "Zoom & Transitions",
     description:
-      "Describe your steps in plain English. Our AI writes clear, natural narration scripts tailored to your audience and platform.",
-    detail: "The AI analyzes your topic, target platform, and audience skill level to generate concise narration. Every script is editable — you maintain full control over the final output.",
+      "Automated cinematic zoom combined with customizable slide, fade, and flip transitions between your scenes.",
+    detail: "We don't just concatenate images. The FFmpeg pipeline applies smooth pan-and-zoom animations to highlight specific UI elements, seamlessly tied together with professional video transitions and custom Intro/Outro templates.",
+  },
+  {
+    icon: MessageSquare,
+    title: "Proactive AI Guide",
+    description:
+      "A contextual AI assistant sits right next to your canvas, offering real-time tips, script feedback, and preventing gibberish.",
+    detail: "Stuck on a title? Typed something random? The AI Guide actively watches your inputs and proactively suggests improvements. It knows exactly which step you are on and what project you are building.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Vision Copyright Checker",
+    description:
+      "Safe to monetize. Our Vision AI scans your uploaded screenshots to ensure they are free of known copyrighted material.",
+    detail: "Before you render, our dedicated Vision LLM analyzes your visual assets. It flags major movie characters, famous video game assets, and non-fair-use logos so you can confidently upload to YouTube and AdSense.",
   },
   {
     icon: Mic,
-    title: "Voice Synthesis",
+    title: "Ultra-Real Voiceovers",
     description:
-      "Choose from 6 premium voices. Each script is converted to natural-sounding speech with precise timing that matches your video segments.",
-    detail: "Edge-TTS voices for the free tier, ElevenLabs premium voices for Pro. Speaking speed control from 0.8x to 1.3x. The audio duration drives every downstream timing decision.",
+      "Native Edge-TTS for free users, and seamless integration with ElevenLabs Ultra-Real Voices for PRO accounts.",
+    detail: "Generate natural-sounding narration with precise timing. Choose your speaker, adjust the pacing (0.8x to 1.3x), and toggle randomization to ensure your YouTube videos remain completely unique.",
   },
   {
-    icon: Wand2,
-    title: "One-Click Render",
+    icon: Smartphone,
+    title: "Multi-Platform Export",
     description:
-      "Upload, annotate, and render. The entire pipeline runs automatically — audio generation, zoom calculation, segment rendering, and final concatenation.",
-    detail: "No manual editing, no timeline scrubbing. The render queue processes each step in sequence and delivers a finished MP4 file. Background music overlay and custom intros available on Pro.",
+      "Export your videos in 16:9, 9:16, 1:1, or 4:5 aspect ratios. Perfect for YouTube, TikTok, LinkedIn, or Instagram Reels.",
+    detail: "Don't get locked into a single format. Our FFmpeg renderer dynamically adjusts padding, cropping, and zooming algorithms to perfectly fit your chosen aspect ratio without stretching your media.",
   },
 ];
 

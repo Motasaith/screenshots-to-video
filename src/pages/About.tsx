@@ -37,13 +37,13 @@ export default function About() {
           <div className="sketch-card p-8">
             <h2 className="font-body font-bold text-2xl mb-4 text-[var(--sketch-fg)]">Our Mission</h2>
             <p className="font-body text-[var(--sketch-fg)] leading-relaxed">
-              We believe that creating high-quality, professional video documentation shouldn't require a film degree. Our mission is to empower developers, support agents, and technical writers to turn simple screenshots into cinematic masterpieces in minutes.
+              We believe that creating high-quality, professional video content shouldn't require a film degree. Our mission is to empower developers, creators, and teams to turn simple ideas—whether that's a handful of screenshots or just a text prompt—into cinematic video masterpieces in minutes.
             </p>
           </div>
           <div className="sketch-card p-8">
             <h2 className="font-body font-bold text-2xl mb-4 text-[var(--sketch-fg)]">The Platform</h2>
             <p className="font-body text-[var(--sketch-fg)] leading-relaxed">
-              AIVideo combines cutting-edge edge-tts technology with robust FFmpeg rendering. By automating the zoom-panning and narration, we ensure your videos always look crisp, engaging, and professional.
+              AIVideo combines cutting-edge AI (Vision LLMs, Proactive Chat Guides) with robust FFmpeg rendering. By automating zoom-panning, dynamic transitions, and copyright safety checks, we ensure your videos always look crisp, engaging, and ready for monetization.
             </p>
           </div>
         </div>
@@ -73,7 +73,7 @@ export default function About() {
                   href="https://github.com/Motasaith" 
                   target="_blank" 
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 font-syne font-bold hover:text-primary transition-colors"
+                  className="inline-flex items-center gap-2 font-body font-bold hover:text-[var(--sketch-accent)] transition-colors"
                 >
                   <Github className="w-5 h-5" />
                   View my GitHub Profile

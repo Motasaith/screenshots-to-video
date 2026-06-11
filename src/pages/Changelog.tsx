@@ -4,6 +4,17 @@ import FooterSection from "@/sections/FooterSection";
 
 const UPDATES = [
   {
+    version: "v2.0.0",
+    date: "June 11, 2026",
+    changes: [
+      { type: "added", text: "Studio Mode: Generate creative video scenes completely from text prompts." },
+      { type: "added", text: "Proactive AI Guide: Context-aware chat assistant that monitors input and suggests improvements." },
+      { type: "added", text: "Vision Copyright Checker: Dedicated Vision LLM pipeline to scan images for monetization safety." },
+      { type: "added", text: "Multi-Platform Export: Native support for 16:9, 9:16, 1:1, and 4:5 aspect ratios." },
+      { type: "improved", text: "Cinematic Transitions: Added slide, fade, and flip animations to the FFmpeg engine." },
+    ],
+  },
+  {
     version: "v1.2.0",
     date: "May 9, 2026",
     changes: [

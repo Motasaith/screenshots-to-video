@@ -13,10 +13,10 @@ export default function HeroSection() {
             transition={{ duration: 0.7, ease: "easeOut" }}
           >
             <span className="font-hand text-xl text-[var(--sketch-fg-muted)] rotate-[-2deg] inline-block animate-float mb-2">
-              Turn screenshots into stories ✏️
+              Turn screenshots & text into stories ✏️
             </span>
             <h1 className="font-body font-extrabold text-4xl sm:text-5xl lg:text-6xl xl:text-7xl leading-[1.05] tracking-tight text-[var(--sketch-fg)]">
-              Screenshots in.
+              Ideas in.
               <br />
               <span className="text-[var(--sketch-fg)] relative">
                 <span className="relative z-10">Professional</span>
@@ -27,9 +27,7 @@ export default function HeroSection() {
             </h1>
 
             <p className="mt-6 text-base lg:text-lg text-[var(--sketch-fg-muted)] max-w-lg font-body leading-relaxed">
-              Upload screenshots, add descriptions, and let AI generate
-              cinematic tutorial videos with intelligent zoom animations on the
-              exact elements that matter.
+              Upload screenshots for software guides, or use the Studio Mode to generate stories from text. Let AI generate cinematic videos with intelligent zoom animations, automated voiceovers, and transitions.
             </p>
 
             <div className="mt-8 flex flex-wrap gap-4">

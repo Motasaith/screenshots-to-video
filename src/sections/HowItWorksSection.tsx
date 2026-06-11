@@ -5,30 +5,30 @@ import { Upload, FileText, Target, Mic } from "lucide-react";
 const steps = [
   {
     number: "01",
-    title: "Upload Screenshots",
+    title: "Choose Your Canvas",
     description:
-      "Drag and drop screenshots for each step of your tutorial. Add a short description for each one.",
+      "Upload screenshots for a tutorial guide, or open the Studio Mode to generate video scenes from text prompts.",
     icon: Upload,
   },
   {
     number: "02",
     title: "AI Generates Script",
     description:
-      "Our AI writes a professional narration script based on your descriptions. Edit it to match your voice.",
+      "Our AI writes a professional narration script while the Proactive Chat Guide helps refine your ideas in real-time.",
     icon: FileText,
   },
   {
     number: "03",
-    title: "Mark Zoom Targets",
+    title: "Style & Animate",
     description:
-      "Click or drag on each screenshot to mark where the video should zoom. The AI can suggest targets too.",
+      "Mark zoom targets, select slide transitions, and add custom Intro/Outro templates to make it cinematic.",
     icon: Target,
   },
   {
     number: "04",
-    title: "Choose Voice & Render",
+    title: "Scan & Render",
     description:
-      "Pick a voice, set the speed, and hit render. Your cinematic tutorial video is ready in minutes.",
+      "Our Vision AI scans for copyright safety, then FFmpeg renders your final video in your chosen aspect ratio.",
     icon: Mic,
   },
 ];

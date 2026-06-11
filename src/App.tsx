@@ -69,8 +69,8 @@ export default function App() {
       <Route path="/changelog" element={<Changelog />} />
       
       {/* Footer Pages */}
-      <Route path="/api" element={<GenericContent title="API Reference" description="Integrate AIVideo rendering directly into your CI/CD pipeline." />} />
-      <Route path="/tutorials" element={<GenericContent title="Tutorials" description="Advanced guides on mastering cinematic zoom." />} />
+      <Route path="/api" element={<GenericContent title="API Reference" description="Integrate the AIVideo FFmpeg rendering pipeline and Vision LLM directly into your CI/CD." />} />
+      <Route path="/tutorials" element={<GenericContent title="Tutorials" description="Advanced guides on mastering cinematic zoom, Studio Mode storytelling, and custom transitions." />} />
       <Route path="/careers" element={<Careers />} />
       <Route path="/legal" element={<Legal />} />
       <Route path="/privacy" element={<Privacy />} />

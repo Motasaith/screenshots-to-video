@@ -14,6 +14,18 @@ export interface BlogPost {
 
 export const BLOG_POSTS: BlogPost[] = [
   {
+    id: "3",
+    slug: "v2-studio-mode-vision-llm",
+    title: "AIVideo v2.0: Introducing Studio Mode, Vision Copyright Scanner, and Proactive AI",
+    excerpt: "Today we're launching the biggest update to AIVideo yet. Generate entire scenes from text prompts, chat with our new AI Guide, and ensure AdSense safety with our Vision LLM.",
+    date: "June 11, 2026",
+    category: "Product",
+    author: "Abdul Rauf Azhar",
+    readTime: "5 min read",
+    tags: ["product update", "AI", "vision", "studio"],
+    content: "## AIVideo v2.0 is Here\n\nToday we're launching the biggest update to AIVideo yet. Generate entire scenes from text prompts, chat with our new AI Guide, and ensure AdSense safety with our Vision LLM."
+  },
+  {
     id: "1",
     slug: "future-of-technical-documentation",
     title: "The Future of Technical Documentation: Why Static Screenshots Are Dead",
