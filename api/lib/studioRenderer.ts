@@ -15,6 +15,7 @@ import {
   AUDIO_LEAD_IN,
   AUDIO_TAIL,
   getFontPath,
+  buildCaptionsFilter,
 } from "./ffmpeg";
 
 const execFileAsync = promisify(execFile);
@@ -58,45 +59,7 @@ function studioAudioFilter(): string {
   );
 }
 
-/** Helper to generate the drawtext filter for captions */
-function buildCaptionsFilter(
-  text: string,
-  style: string,
-  size: string,
-  position: string,
-  color: string,
-  outW: number,
-  outH: number
-): string {
-  if (!text) return "";
-  
-  // Map size to fontsize
-  let fontsize = Math.round(outH * 0.05); // default medium (~5% of height)
-  if (size === "small") fontsize = Math.round(outH * 0.035);
-  if (size === "large") fontsize = Math.round(outH * 0.07);
-
-  // Map position to y
-  let yPos = "h-h/5"; // default bottom
-  if (position === "top") yPos = "h/5";
-  if (position === "middle") yPos = "(h-text_h)/2";
-
-  // Escape text for ffmpeg
-  const escapedText = text.replace(/'/g, "’").replace(/:/g, "\\:").replace(/%/g, "\\%");
-  const fontFile = getFontPath();
-
-  let baseFilter = `drawtext=fontfile='${fontFile}':text='${escapedText}':fontcolor=${color}:fontsize=${fontsize}:x=(w-text_w)/2:y=${yPos}`;
-
-  if (style === "outline") {
-    baseFilter += `:borderw=2:bordercolor=black`;
-  } else if (style === "highlight") {
-    baseFilter += `:box=1:boxcolor=black@0.6:boxborderw=10`;
-  } else {
-    // standard - maybe soft shadow
-    baseFilter += `:shadowcolor=black@0.8:shadowx=2:shadowy=2`;
-  }
-
-  return baseFilter;
-}
+// Captions filter helper is now imported from ./ffmpeg
 
 /**
  * Render a scene from a static image with a documentary-style Ken Burns
@@ -161,7 +124,7 @@ export async function renderSceneWithImage(opts: {
     const xExpr = `max(0,min(iw-iw/zoom,iw/2-(iw/zoom/2)+${driftExpr}))`;
     const yExpr = `ih/2-(ih/zoom/2)`;
 
-    const captionsFilter = opts.captions?.enabled ? `,${buildCaptionsFilter(opts.captions.text, opts.captions.style, opts.captions.size, opts.captions.position, opts.captions.color, outW, outH)}` : "";
+    const captionsFilter = opts.captions?.enabled ? `,${buildCaptionsFilter(opts.captions.text, opts.captions.style, opts.captions.size, opts.captions.position, opts.captions.color, outW, outH, opts.audioDuration)}` : "";
 
     const zoomFilter =
       `zoompan=z='${zoomExpr}':` +
@@ -244,7 +207,7 @@ export async function renderSceneWithVideo(opts: {
     ];
   }
 
-  const captionsFilter = opts.captions?.enabled ? `,${buildCaptionsFilter(opts.captions.text, opts.captions.style, opts.captions.size, opts.captions.position, opts.captions.color, outW, outH)}` : "";
+  const captionsFilter = opts.captions?.enabled ? `,${buildCaptionsFilter(opts.captions.text, opts.captions.style, opts.captions.size, opts.captions.position, opts.captions.color, outW, outH, opts.audioDuration)}` : "";
 
   const args = [
     "-y",

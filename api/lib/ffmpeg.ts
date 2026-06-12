@@ -295,27 +295,19 @@ export async function renderStepVideo(opts: {
 
   let captionsFilter = "";
   if (opts.captions?.enabled) {
-    let fontsize = Math.round(outH * 0.05); // default medium (~5% of height)
-    if (opts.captions.size === "small") fontsize = Math.round(outH * 0.035);
-    if (opts.captions.size === "large") fontsize = Math.round(outH * 0.07);
-
-    let yPos = "h-h/5"; // default bottom
-    if (opts.captions.position === "top") yPos = "h/5";
-    if (opts.captions.position === "middle") yPos = "(h-text_h)/2";
-
-    const escapedText = opts.captions.text.replace(/'/g, "’").replace(/:/g, "\\:").replace(/%/g, "\\%");
-    const fontFile = getFontPath();
-
-    let baseFilter = `drawtext=fontfile='${fontFile}':text='${escapedText}':fontcolor=${opts.captions.color}:fontsize=${fontsize}:x=(w-text_w)/2:y=${yPos}`;
-
-    if (opts.captions.style === "outline") {
-      baseFilter += `:borderw=2:bordercolor=black`;
-    } else if (opts.captions.style === "highlight") {
-      baseFilter += `:box=1:boxcolor=black@0.6:boxborderw=10`;
-    } else {
-      baseFilter += `:shadowcolor=black@0.8:shadowx=2:shadowy=2`;
+    const caps = buildCaptionsFilter(
+      opts.captions.text,
+      opts.captions.style,
+      opts.captions.size,
+      opts.captions.position,
+      opts.captions.color,
+      outW,
+      outH,
+      opts.audioDuration
+    );
+    if (caps) {
+      captionsFilter = `,${caps}`;
     }
-    captionsFilter = `,${baseFilter}`;
   }
 
   const filterComplex =
@@ -795,4 +787,93 @@ export async function mixBackgroundMusic(
   });
 
   return outputPath;
+}
+
+/**
+ * Splits a text into lines of approximately maxChars length without breaking words.
+ */
+export function splitTextIntoLines(text: string, maxChars: number): string[] {
+  const words = text.split(/\s+/);
+  const lines: string[] = [];
+  let currentLine = "";
+
+  for (const word of words) {
+    if (!word) continue;
+    if (currentLine.length + word.length + (currentLine.length > 0 ? 1 : 0) <= maxChars) {
+      currentLine += (currentLine.length > 0 ? " " : "") + word;
+    } else {
+      if (currentLine) {
+        lines.push(currentLine);
+      }
+      currentLine = word;
+    }
+  }
+  if (currentLine) {
+    lines.push(currentLine);
+  }
+  return lines;
+}
+
+/**
+ * Builds a chain of drawtext filters for captions, split by timing to match narration.
+ */
+export function buildCaptionsFilter(
+  text: string,
+  style: string,
+  size: string,
+  position: string,
+  color: string,
+  outW: number,
+  outH: number,
+  audioDuration: number
+): string {
+  if (!text) return "";
+
+  const fontFile = getFontPath();
+  const baseDim = Math.min(outW, outH);
+  
+  let fontsize = Math.round(baseDim * 0.07); // medium default
+  if (size === "small") fontsize = Math.round(baseDim * 0.05);
+  if (size === "large") fontsize = Math.round(baseDim * 0.09);
+
+  let yPos = "h-h/5"; // default bottom
+  if (position === "top") yPos = "h/5";
+  if (position === "middle") yPos = "(h-text_h)/2";
+
+  const isVertical = outW < outH;
+  const maxChars = isVertical ? 20 : 40;
+  
+  const lines = splitTextIntoLines(text, maxChars);
+  const totalChars = lines.reduce((sum, l) => sum + l.length, 0);
+  
+  if (totalChars === 0) return "";
+
+  const drawtextFilters: string[] = [];
+  let elapsedDuration = 0;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lineDuration = (line.length / totalChars) * audioDuration;
+    
+    const start = AUDIO_LEAD_IN + elapsedDuration;
+    const end = start + lineDuration;
+    elapsedDuration += lineDuration;
+
+    const escapedLine = line.replace(/'/g, "’").replace(/:/g, "\\:").replace(/%/g, "\\%");
+
+    let styleOptions = "";
+    if (style === "outline") {
+      styleOptions = ":borderw=3:bordercolor=black";
+    } else if (style === "highlight") {
+      styleOptions = ":box=1:boxcolor=black@0.6:boxborderw=10";
+    } else {
+      styleOptions = ":shadowcolor=black@0.8:shadowx=2:shadowy=2";
+    }
+
+    drawtextFilters.push(
+      `drawtext=fontfile='${fontFile}':text='${escapedLine}':fontcolor=${color}:fontsize=${fontsize}:x=(w-text_w)/2:y=${yPos}:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'${styleOptions}`
+    );
+  }
+
+  return drawtextFilters.join(",");
 }
