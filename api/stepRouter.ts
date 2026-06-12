@@ -13,6 +13,8 @@ export const stepRouter = createRouter({
         order: z.number(),
         description: z.string().min(1).max(500),
         screenshotPath: z.string().optional(),
+        isSafe: z.boolean().optional(),
+        safetyReason: z.string().optional(),
       })
     )
     .mutation(async ({ ctx, input }) => {
@@ -36,6 +38,8 @@ export const stepRouter = createRouter({
           order: input.order,
           description: input.description,
           screenshotPath: input.screenshotPath || null,
+          isSafe: input.isSafe === undefined ? 1 : (input.isSafe ? 1 : 0),
+          safetyReason: input.safetyReason || null,
           status: "pending",
         })
         .$returningId();
@@ -92,6 +96,8 @@ export const stepRouter = createRouter({
         audioDuration: z.number().optional(),
         transition: z.string().optional(),
         videoSegmentPath: z.string().optional(),
+        isSafe: z.boolean().optional(),
+        safetyReason: z.string().optional(),
         status: z.enum(["pending", "generating", "done", "error"]).optional(),
       })
     )
@@ -116,9 +122,14 @@ export const stepRouter = createRouter({
 
       if (!project) throw new Error("Not authorized");
 
+      const updateData: any = { ...data };
+      if (data.isSafe !== undefined) {
+        updateData.isSafe = data.isSafe ? 1 : 0;
+      }
+
       await getDb()
         .update(steps)
-        .set(data)
+        .set(updateData)
         .where(eq(steps.id, id));
 
       const [updated] = await getDb()

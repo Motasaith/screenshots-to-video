@@ -10,7 +10,7 @@ import {
   getGuideMessage,
   getChatMessageResponse,
   getProactiveFeedback,
-  checkCopyrightImages,
+  checkMediaSafety,
 } from "./lib/llm";
 import { generateTTSAudio, speedToRate } from "./lib/tts";
 import fs from "fs/promises";
@@ -286,32 +286,25 @@ export const aiRouter = createRouter({
       return { suggestions };
     }),
 
-  checkCopyright: authedQuery
-    .use(rateLimitByUser(60_000, 3))
-    .input(z.object({ projectId: z.number() }))
+  checkMediaSafety: authedQuery
+    .use(rateLimitByUser(60_000, 10))
+    .input(z.object({ stepId: z.number().optional(), mediaUrl: z.string() }))
     .mutation(async ({ input }) => {
-      // Find the project steps
-      const projectSteps = await getDb()
-        .select()
-        .from(steps)
-        .where(eq(steps.projectId, input.projectId))
-        .orderBy(steps.order);
+      // Send to Vision LLM for check
+      const result = await checkMediaSafety(input.mediaUrl);
 
-      // Extract up to 3 screenshot paths
-      const imagePaths = projectSteps
-        .map((s) => s.screenshotPath)
-        .filter((p): p is string => Boolean(p))
-        .slice(0, 3);
-
-      if (imagePaths.length === 0) {
-        return {
-          isClear: true,
-          reason: "No screenshots to check. Safe to proceed.",
-        };
+      // Save the result to the step in the database if stepId is provided
+      if (input.stepId) {
+        await getDb()
+          .update(steps)
+          .set({
+            isSafe: result.isSafe && result.isClear ? 1 : 0,
+            safetyReason: result.reason,
+          })
+          .where(eq(steps.id, input.stepId));
       }
 
-      // Send to Vision LLM
-      return await checkCopyrightImages(imagePaths);
+      return result;
     }),
 
   guide: authedQuery

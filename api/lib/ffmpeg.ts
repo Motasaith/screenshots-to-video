@@ -303,7 +303,7 @@ export async function renderStepVideo(opts: {
     if (opts.captions.position === "top") yPos = "h/5";
     if (opts.captions.position === "middle") yPos = "(h-text_h)/2";
 
-    const escapedText = opts.captions.text.replace(/'/g, "\\'").replace(/:/g, "\\:");
+    const escapedText = opts.captions.text.replace(/'/g, "’").replace(/:/g, "\\:").replace(/%/g, "\\%");
     const fontFile = getFontPath();
 
     let baseFilter = `drawtext=fontfile='${fontFile}':text='${escapedText}':fontcolor=${opts.captions.color}:fontsize=${fontsize}:x=(w-text_w)/2:y=${yPos}`;
@@ -575,10 +575,7 @@ export async function renderTextSegment(
   // Use the downloaded Roboto font
   const fontFile = getFontPath();
   // Escape text for FFmpeg drawtext: colons, single-quotes, backslashes
-  const escapedText = text
-    .replace(/\\/g, "\\\\\\\\")
-    .replace(/:/g, "\\:")
-    .replace(/'/g, "'\\\\''");
+  const escapedText = text.replace(/'/g, "’").replace(/:/g, "\\:").replace(/%/g, "\\%");
 
   const fontSize = Math.round(outH * 0.07);
 
@@ -650,7 +647,7 @@ export async function concatenateSegmentsWithTransitions(
   
   // Normalize all video inputs for xfade (timebase and framerate must match exactly)
   for (let i = 0; i < segmentPaths.length; i++) {
-    filterComplex += `[${i}:v]settb=1/AVTB,fps=30[normV${i}];`;
+    filterComplex += `[${i}:v]settb=AVTB,fps=30[normV${i}];`;
   }
 
   let currentOffset = durations[0] - transitionDuration;
@@ -765,7 +762,8 @@ async function getMusicTrackPath(trackId: string): Promise<string> {
  */
 export async function mixBackgroundMusic(
   videoPath: string,
-  trackId: string
+  trackId: string,
+  totalDurationSec?: number
 ): Promise<string> {
   const musicPath = await getMusicTrackPath(trackId);
   const outputPath = path.join(WORK_DIR, `mixed_${nanoid(12)}.mp4`);
@@ -781,9 +779,14 @@ export async function mixBackgroundMusic(
     "-c:v", "copy",
     "-c:a", "aac",
     "-b:a", "160k",
-    "-shortest",
-    outputPath,
   ];
+
+  if (totalDurationSec && totalDurationSec > 0) {
+    args.push("-t", totalDurationSec.toFixed(3));
+  } else {
+    args.push("-shortest");
+  }
+  args.push(outputPath);
 
   if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
   await execFileAsync(ffmpegPath, args, {

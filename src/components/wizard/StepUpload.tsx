@@ -45,6 +45,9 @@ interface WizardStep {
   previewUrl?: string;
   isUploading?: boolean;
   uploadError?: string;
+  isCheckingSafety?: boolean;
+  isSafe?: boolean;
+  safetyReason?: string;
 }
 
 async function uploadFile(
@@ -214,6 +217,28 @@ function SortableStep({
                 Remove
               </button>
             </div>
+            
+            {/* Safety Check Status */}
+            {step.isCheckingSafety && (
+              <div className="mt-2 text-xs flex items-center gap-1 text-blue-600">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                Scanning for safety & copyright...
+              </div>
+            )}
+            {step.isSafe === false && (
+              <div className="mt-2 text-xs flex items-start gap-1 text-red-600 bg-red-500/10 p-2 rounded-md">
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+                <span>
+                  <strong>Flagged:</strong> {step.safetyReason}
+                </span>
+              </div>
+            )}
+            {step.isSafe === true && (
+              <div className="mt-2 text-xs flex items-center gap-1 text-emerald-600">
+                <CheckCircle className="w-3 h-3" />
+                Safe & Clear
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -247,6 +272,7 @@ export default function StepUpload() {
   const createStep = trpc.step.create.useMutation();
   const updateStep = trpc.step.update.useMutation();
   const deleteStep = trpc.step.delete.useMutation();
+  const checkMediaSafety = trpc.ai.checkMediaSafety.useMutation();
 
   // Initialize steps from DB data or wizard store
   useState(() => {});
@@ -261,6 +287,8 @@ export default function StepUpload() {
         screenshotPath: s.screenshotPath || undefined,
         screenshotKey: s.screenshotPath || undefined,
         previewUrl: s.screenshotPath || undefined,
+        isSafe: s.isSafe === 1,
+        safetyReason: s.safetyReason || undefined,
       }));
       setSteps(dbSteps);
       setOriginalDbIds(project.steps.map((s) => s.id));
@@ -413,6 +441,33 @@ export default function StepUpload() {
         }
         return s;
       }));
+      // Start safety check
+      setSteps(currentSteps => currentSteps.map(s => {
+        if (s.localId === localId) return { ...s, isCheckingSafety: true };
+        return s;
+      }));
+
+      checkMediaSafety.mutateAsync({ mediaUrl: result.url, stepId: undefined })
+        .then((safetyRes) => {
+          setSteps(currentSteps => currentSteps.map(s => {
+            if (s.localId === localId) {
+              return {
+                ...s,
+                isCheckingSafety: false,
+                isSafe: safetyRes.isSafe && safetyRes.isClear,
+                safetyReason: safetyRes.reason,
+              };
+            }
+            return s;
+          }));
+        })
+        .catch((err) => {
+          setSteps(currentSteps => currentSteps.map(s => {
+            if (s.localId === localId) return { ...s, isCheckingSafety: false };
+            return s;
+          }));
+        });
+
     } catch (err: any) {
       setSteps(currentSteps => currentSteps.map(s => {
         if (s.localId === localId) {
@@ -467,6 +522,8 @@ export default function StepUpload() {
             id: step.id,
             description: step.description,
             screenshotPath: step.screenshotKey || step.screenshotPath || step.previewUrl || undefined,
+            isSafe: step.isSafe,
+            safetyReason: step.safetyReason,
           });
         } else {
           // Create a new step
@@ -475,6 +532,8 @@ export default function StepUpload() {
             order: step.order,
             description: step.description,
             screenshotPath: step.screenshotKey || step.screenshotPath || step.previewUrl || undefined,
+            isSafe: step.isSafe,
+            safetyReason: step.safetyReason,
           });
         }
       }

@@ -120,7 +120,7 @@ export default function StudioWizard() {
               </span>
             </div>
             <span className="font-mono text-xs text-[var(--sketch-fg-muted)] bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm">
-              Step {currentStepIdx + 1} of 6
+              Step {currentStepIdx + 1} of 7
             </span>
           </div>
         </div>
@@ -219,7 +219,7 @@ export default function StudioWizard() {
 
           <div className="flex items-center gap-2">
             <span className="font-mono text-xs text-muted-foreground">
-              {currentStepIdx + 1} / 6
+              {currentStepIdx + 1} / 7
             </span>
           </div>
         </div>

@@ -95,6 +95,8 @@ export const steps = mysqlTable("steps", {
   audioDuration: float("audioDuration"),
   transition: varchar("transition", { length: 30 }).default("fade"),
   videoSegmentPath: text("videoSegmentPath"),
+  isSafe: int("isSafe").default(1),
+  safetyReason: text("safetyReason"),
   status: mysqlEnum("status", ["pending", "generating", "done", "error"])
     .default("pending")
     .notNull(),
@@ -199,6 +201,8 @@ export const studioScenes = mysqlTable("studio_scenes", {
   audioDuration: float("audioDuration"),
   transition: varchar("transition", { length: 30 }).default("fade"),
   videoSegmentPath: text("videoSegmentPath"),
+  isSafe: int("isSafe").default(1),
+  safetyReason: text("safetyReason"),
   status: mysqlEnum("status", ["pending", "generating", "done", "error"])
     .default("pending")
     .notNull(),

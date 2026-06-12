@@ -44,7 +44,7 @@ export default function StudioExport() {
       >
         <div className="relative">
           <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
-            Step 6 of 6
+            Step 7 of 7
           </span>
           <span className="font-hand text-lg text-[var(--sketch-fg-muted)] absolute -top-6 left-32 rotate-[-5deg] animate-float hidden sm:block">
             Your video is ready! 🎉

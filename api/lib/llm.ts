@@ -288,39 +288,100 @@ Return ONLY the message text or "OK".`;
 }
 
 /**
- * Check screenshots for copyright violations using a Vision LLM.
- * Supports both local file paths and remote URLs (e.g. UploadThing).
+ * Extract frames from a video URL using FFmpeg.
  */
-export async function checkCopyrightImages(imagePaths: string[]): Promise<{ isClear: boolean; reason: string }> {
-  if (!isLLMConfigured() || imagePaths.length === 0) {
-    return { isClear: true, reason: "No images provided or LLM not configured." };
+async function extractVideoFrames(videoUrl: string, maxFrames = 3): Promise<Buffer[]> {
+  const { execFile } = await import("child_process");
+  const { promisify } = await import("util");
+  const os = await import("os");
+  const crypto = await import("crypto");
+  const fs = await import("fs/promises");
+  const path = await import("path");
+
+  const execFileAsync = promisify(execFile);
+  const tmpDir = os.tmpdir();
+  const sessionId = crypto.randomBytes(6).toString("hex");
+  const outPattern = path.join(tmpDir, `frame_${sessionId}_%03d.jpg`);
+
+  try {
+    // Extract up to maxFrames at 1 frame per second
+    await execFileAsync("ffmpeg", [
+      "-y",
+      "-i", videoUrl,
+      "-vf", "fps=1",
+      "-vframes", maxFrames.toString(),
+      outPattern
+    ]);
+  } catch (err) {
+    console.warn("[extractVideoFrames] ffmpeg extraction failed:", err);
+    throw err;
   }
+
+  const buffers: Buffer[] = [];
+  for (let i = 1; i <= maxFrames; i++) {
+    const framePath = path.join(tmpDir, `frame_${sessionId}_${i.toString().padStart(3, "0")}.jpg`);
+    try {
+      const buf = await fs.readFile(framePath);
+      buffers.push(buf);
+      await fs.unlink(framePath).catch(() => {});
+    } catch (e) {
+      break; // Video might be shorter than maxFrames
+    }
+  }
+
+  return buffers;
+}
+
+/**
+ * Check a single media item (screenshot or stock image/video) for safety and copyright using a Vision LLM.
+ * Supports both local file paths and remote URLs.
+ */
+export async function checkMediaSafety(mediaPath: string): Promise<{ isSafe: boolean; isClear: boolean; reason: string }> {
+  if (!isLLMConfigured() || !mediaPath) {
+    return { isSafe: true, isClear: true, reason: "No image provided or LLM not configured." };
+  }
+
+  const isVideo = mediaPath.toLowerCase().endsWith(".mp4") || mediaPath.toLowerCase().endsWith(".webm") || mediaPath.toLowerCase().endsWith(".mov");
+
+
 
   try {
     const fs = await import("fs/promises");
     const path = await import("path");
 
-    // Only check up to 3 images to save tokens
-    const pathsToCheck = imagePaths.slice(0, 3);
-    const contentParts: any[] = [
-      {
-        type: "text",
-        text: "You are a copyright checker. Analyze these screenshots. Are there any obvious copyrighted materials prominently featured, such as major movie characters, well-known video game assets (unless it's a generic UI), or registered logos that are the main subject? Reply in JSON format: { \"isClear\": true/false, \"reason\": \"Short explanation\" }. If it's just generic desktop UI, websites, or basic apps, it is clear.",
-      },
-    ];
+    const promptText = `You are a strict trust, safety, and copyright reviewer for a video creation platform. Analyze this image.
+1. Safety: Does this image contain any prohibited content? This includes NSFW content (nudity, sexual content), graphic violence, gore, weapons, illegal acts, or anything that violates standard YouTube community guidelines.
+2. Copyright: Are there any obvious copyrighted materials prominently featured, such as major movie characters, well-known video game assets (unless it's a generic UI), or registered logos that are the main subject? (Generic desktop UI, basic websites, and stock photos are clear).
 
-    for (const imgPath of pathsToCheck) {
-      try {
+Reply ONLY in JSON format: { "isSafe": true/false, "isClear": true/false, "reason": "Short explanation of the decision" }.
+If there is ANY safety violation, set isSafe to false. If there is a copyright violation, set isClear to false.`;
+
+    const contentParts: any[] = [{ type: "text", text: promptText }];
+
+    try {
+      if (isVideo) {
+        console.log(`[SafetyCheck] Extracting frames from video: ${mediaPath.substring(0, 80)}...`);
+        const buffers = await extractVideoFrames(mediaPath);
+        if (buffers.length === 0) {
+           return { isSafe: true, isClear: true, reason: "Could not extract frames from video for checking." };
+        }
+        for (const buf of buffers) {
+          const base64 = buf.toString("base64");
+          contentParts.push({
+            type: "image_url",
+            image_url: { url: `data:image/jpeg;base64,${base64}` },
+          });
+        }
+      } else {
         let buffer: Buffer;
         let mime = "image/jpeg";
 
-        if (imgPath.startsWith("http://") || imgPath.startsWith("https://")) {
-          // Fetch remote image (UploadThing, Pexels, etc.)
-          console.log(`[Copyright] Fetching remote image: ${imgPath.substring(0, 80)}...`);
-          const resp = await fetch(imgPath);
+        if (mediaPath.startsWith("http://") || mediaPath.startsWith("https://")) {
+          console.log(`[SafetyCheck] Fetching remote image: ${mediaPath.substring(0, 80)}...`);
+          const resp = await fetch(mediaPath);
           if (!resp.ok) {
-            console.warn(`[Copyright] Failed to fetch image (${resp.status}): ${imgPath}`);
-            continue;
+            console.warn(`[SafetyCheck] Failed to fetch image (${resp.status}): ${mediaPath}`);
+            return { isSafe: true, isClear: true, reason: "Could not fetch image for checking." };
           }
           const contentType = resp.headers.get("content-type") || "";
           if (contentType.includes("png")) mime = "image/png";
@@ -328,8 +389,7 @@ export async function checkCopyrightImages(imagePaths: string[]): Promise<{ isCl
           const arrayBuf = await resp.arrayBuffer();
           buffer = Buffer.from(arrayBuf);
         } else {
-          // Local file path
-          const fullPath = path.resolve(imgPath);
+          const fullPath = path.resolve(mediaPath);
           buffer = await fs.readFile(fullPath);
           if (fullPath.toLowerCase().endsWith(".png")) mime = "image/png";
           else if (fullPath.toLowerCase().endsWith(".webp")) mime = "image/webp";
@@ -340,16 +400,11 @@ export async function checkCopyrightImages(imagePaths: string[]): Promise<{ isCl
           type: "image_url",
           image_url: { url: `data:${mime};base64,${base64}` },
         });
-      } catch (e) {
-        console.warn(`[Copyright] Could not load image: ${imgPath}`, e);
       }
+    } catch (e) {
+      console.warn(`[SafetyCheck] Could not load image: ${mediaPath}`, e);
+      return { isSafe: true, isClear: true, reason: "Could not load image." };
     }
-
-    if (contentParts.length === 1) {
-      // No valid images were loaded
-      return { isClear: true, reason: "No readable images found." };
-    }
-
     const response = await chatCompletion(
       [{ role: "user", content: contentParts }],
       {
@@ -363,16 +418,17 @@ export async function checkCopyrightImages(imagePaths: string[]): Promise<{ isCl
     try {
       const result = JSON.parse(response);
       return {
+        isSafe: result.isSafe ?? true,
         isClear: result.isClear ?? true,
-        reason: result.reason ?? "Passed inspection.",
+        reason: result.reason || (result.isClear && result.isSafe ? "Media appears safe and clear." : "Flagged by AI review."),
       };
-    } catch {
-      // Fallback if parsing fails
-      return { isClear: true, reason: "Passed inspection." };
+    } catch (parseError) {
+      console.warn("[SafetyCheck] Failed to parse JSON response:", response);
+      return { isSafe: true, isClear: true, reason: "Check bypassed due to unparseable response." };
     }
-  } catch (error) {
-    console.error("Vision API Error during copyright check:", error);
-    return { isClear: true, reason: "Vision API failed, proceeding gracefully." };
+  } catch (error: any) {
+    console.error("Vision API Error during safety check:", error);
+    return { isSafe: true, isClear: true, reason: "Check bypassed due to API error." };
   }
 }
 

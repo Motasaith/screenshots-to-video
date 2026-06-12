@@ -12,6 +12,8 @@ import {
   User,
   Loader2,
   Upload,
+  AlertTriangle,
+  CheckCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -59,6 +61,7 @@ export default function StudioMedia() {
   );
 
   const updateScene = trpc.studio.updateScene.useMutation();
+  const checkMediaSafety = trpc.studio.checkMediaSafety.useMutation();
 
   const openSearch = (index: number) => {
     setActiveSceneIdx(index);
@@ -101,8 +104,10 @@ export default function StudioMedia() {
       mediaUrl: media.src,
       photographerName: media.photographer,
       mediaType: media.type,
+      isCheckingSafety: true,
     };
     setScenes(newScenes);
+    setSearchOpen(false);
 
     try {
       await updateScene.mutateAsync({
@@ -111,11 +116,31 @@ export default function StudioMedia() {
         photographerName: media.photographer,
         mediaType: media.type,
       });
-    } catch {
-      // Already updated locally
-    }
 
-    setSearchOpen(false);
+      // Run safety check
+      const safetyRes = await checkMediaSafety.mutateAsync({ sceneId: scene.id, mediaUrl: media.src });
+      
+      const updatedScenes = [...scenes];
+      updatedScenes[activeSceneIdx] = {
+        ...updatedScenes[activeSceneIdx],
+        mediaUrl: media.src,
+        photographerName: media.photographer,
+        mediaType: media.type,
+        isCheckingSafety: false,
+        isSafe: safetyRes.isSafe && safetyRes.isClear,
+        safetyReason: safetyRes.reason,
+      };
+      setScenes(updatedScenes);
+
+    } catch {
+      // Local state update fallback if it fails
+      const updatedScenes = [...scenes];
+      updatedScenes[activeSceneIdx] = {
+        ...updatedScenes[activeSceneIdx],
+        isCheckingSafety: false,
+      };
+      setScenes(updatedScenes);
+    }
   };
 
   const handleContinue = () => {
@@ -132,7 +157,7 @@ export default function StudioMedia() {
       >
         <div className="relative">
           <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
-            Step 3 of 6
+            Step 3 of 7
           </span>
           <span className="font-hand text-lg text-[var(--sketch-fg-muted)] absolute -top-6 left-32 rotate-[-5deg] animate-float hidden sm:block">
             Pick your visuals 📸
@@ -224,6 +249,28 @@ export default function StudioMedia() {
                         <User className="w-3 h-3" />
                         Photo by {scene.photographerName} on Pexels
                       </p>
+                    )}
+
+                    {/* Safety Check Status */}
+                    {scene.isCheckingSafety && (
+                      <div className="mt-2 text-xs flex items-center gap-1 text-blue-600">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Scanning for safety & copyright...
+                      </div>
+                    )}
+                    {scene.isSafe === false && (
+                      <div className="mt-2 text-xs flex items-start gap-1 text-red-600 bg-red-500/10 p-2 rounded-md">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        <span>
+                          <strong>Flagged:</strong> {scene.safetyReason}
+                        </span>
+                      </div>
+                    )}
+                    {scene.isSafe === true && (
+                      <div className="mt-2 text-xs flex items-center gap-1 text-emerald-600">
+                        <CheckCircle className="w-3 h-3" />
+                        Safe & Clear
+                      </div>
                     )}
                   </div>
                 </div>

@@ -8,9 +8,6 @@ import {
   MonitorPlay,
   Film,
   CheckCircle2,
-  ShieldCheck,
-  ShieldAlert,
-  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -50,26 +47,7 @@ export default function StudioPreview() {
   const updateScene = trpc.studio.updateScene.useMutation();
   const { data: projectData } = trpc.studio.getById.useQuery({ id: projectIdNum });
   const scenes = projectData?.scenes;
-  const checkCopyright = trpc.studio.checkCopyright.useMutation();
-
-  const [copyrightStatus, setCopyrightStatus] = useState<"idle" | "scanning" | "clear" | "warning">("idle");
-  const [copyrightReason, setCopyrightReason] = useState("");
-
-  // Auto-scan on component mount
-  useState(() => {
-    if (projectIdNum > 0 && copyrightStatus === "idle") {
-      setCopyrightStatus("scanning");
-      checkCopyright.mutateAsync({ projectId: projectIdNum })
-        .then((res) => {
-          setCopyrightStatus(res.isClear ? "clear" : "warning");
-          setCopyrightReason(res.reason);
-        })
-        .catch(() => {
-          setCopyrightStatus("clear");
-          setCopyrightReason("Scan failed, assuming safe to proceed.");
-        });
-    }
-  });
+  // State setup removed as copyright checking moved to individual media selection
 
   const handleContinue = async () => {
     await updateProject.mutateAsync({
@@ -120,7 +98,7 @@ export default function StudioPreview() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <div className="relative">
           <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
-            Step 4 of 6
+            Step 4 of 7
           </span>
           <span className="font-hand text-lg text-[var(--sketch-fg-muted)] absolute -top-6 left-32 rotate-[-5deg] animate-float hidden sm:block">
             Add some flair ✨
@@ -375,65 +353,7 @@ export default function StudioPreview() {
             )}
           </div>
 
-          {/* Copyright Checker Panel */}
-          <div className="border-t border-[var(--sketch-fg-subtle)] pt-6">
-            <h3 className="font-body font-semibold text-lg flex items-center gap-2 mb-4 text-[var(--sketch-fg)]">
-              {copyrightStatus === "warning" ? (
-                <ShieldAlert className="w-5 h-5 text-red-500" />
-              ) : (
-                <ShieldCheck className="w-5 h-5 text-emerald-500" />
-              )}
-              Vision Copyright Checker
-            </h3>
-
-            {copyrightStatus === "scanning" && (
-              <div className="sketch-card p-5 bg-blue-500/5 border-blue-500/20">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                    <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
-                  </div>
-                  <div>
-                    <h4 className="font-body font-semibold text-blue-700">Scanning Media...</h4>
-                    <p className="font-body text-sm text-blue-600/80 mt-1">
-                      Our Vision AI is analyzing your stock media for known copyrighted content...
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {copyrightStatus === "clear" && (
-              <div className="sketch-card p-5 bg-emerald-500/5 border-emerald-500/20">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
-                    <ShieldCheck className="w-5 h-5 text-emerald-600" />
-                  </div>
-                  <div>
-                    <h4 className="font-body font-semibold text-emerald-700">All Clear!</h4>
-                    <p className="font-body text-sm text-emerald-600/80 mt-1">
-                      {copyrightReason || "Your media has been scanned and is 100% free of known copyright claims."}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {copyrightStatus === "warning" && (
-              <div className="sketch-card p-5 bg-red-500/5 border-red-500/20">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
-                    <ShieldAlert className="w-5 h-5 text-red-600" />
-                  </div>
-                  <div>
-                    <h4 className="font-body font-semibold text-red-700">Copyright Flag</h4>
-                    <p className="font-body text-sm text-red-600/80 mt-1">
-                      {copyrightReason}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          {/* Safety/Copyright is now checked per-scene during media selection */}
 
           <Button
             onClick={handleContinue}

@@ -81,7 +81,7 @@ function buildCaptionsFilter(
   if (position === "middle") yPos = "(h-text_h)/2";
 
   // Escape text for ffmpeg
-  const escapedText = text.replace(/'/g, "\\'").replace(/:/g, "\\:");
+  const escapedText = text.replace(/'/g, "’").replace(/:/g, "\\:").replace(/%/g, "\\%");
   const fontFile = getFontPath();
 
   let baseFilter = `drawtext=fontfile='${fontFile}':text='${escapedText}':fontcolor=${color}:fontsize=${fontsize}:x=(w-text_w)/2:y=${yPos}`;
@@ -197,7 +197,6 @@ export async function renderSceneWithImage(opts: {
     if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
     await execFileAsync(ffmpegPath, args, {
       timeout: 300000,
-      shell: true,
     });
   } catch (err: any) {
     throw new Error(`Studio image render failed: ${err.stderr || err.message}`);
@@ -273,7 +272,6 @@ export async function renderSceneWithVideo(opts: {
     if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
     await execFileAsync(ffmpegPath, args, {
       timeout: 300000,
-      shell: true,
     });
   } catch (err: any) {
     throw new Error(`Studio video render failed: ${err.stderr || err.message}`);

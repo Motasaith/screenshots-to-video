@@ -43,6 +43,8 @@ export default function StudioScript() {
           mediaUrl: s.mediaUrl || "",
           searchQuery: s.searchQuery || "",
           photographerName: s.photographerName || "",
+          isSafe: s.isSafe === 1,
+          safetyReason: s.safetyReason || undefined,
         }))
       );
     }
@@ -63,6 +65,8 @@ export default function StudioScript() {
             mediaUrl: s.mediaUrl || "",
             searchQuery: s.searchQuery || "",
             photographerName: s.photographerName || "",
+            isSafe: s.isSafe === 1,
+            safetyReason: s.safetyReason || undefined,
           }))
         );
       }
@@ -126,7 +130,7 @@ export default function StudioScript() {
       >
         <div className="relative">
           <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
-            Step 2 of 6
+            Step 2 of 7
           </span>
           <span className="font-hand text-lg text-[var(--sketch-fg-muted)] absolute -top-6 left-32 rotate-[-5deg] animate-float hidden sm:block">
             AI writes the script ✍️

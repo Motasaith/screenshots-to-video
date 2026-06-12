@@ -45,6 +45,9 @@ export interface StudioScene {
   photographerName: string;
   audioDuration?: number;
   status?: string;
+  isCheckingSafety?: boolean;
+  isSafe?: boolean;
+  safetyReason?: string;
 }
 
 interface StudioDescribeData {

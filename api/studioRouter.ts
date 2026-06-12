@@ -4,7 +4,7 @@ import { getDb } from "./queries/connection";
 import { studioProjects, studioScenes, studioRenderJobs, users } from "@db/schema";
 import { eq, and, desc, max } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
-import { isLLMConfigured, checkCopyrightImages } from "./lib/llm";
+import { isLLMConfigured, checkMediaSafety } from "./lib/llm";
 import { generateVideoScript } from "./lib/studioLlm";
 import { searchMedia, isPexelsConfigured } from "./lib/pexels";
 import { generateTTSAudio, speedToRate } from "./lib/tts";
@@ -566,27 +566,24 @@ export const studioRouter = createRouter({
       return { audioData: `data:audio/mp3;base64,${base64}` };
     }),
 
-  // ── Copyright check for studio projects ──
-  checkCopyright: authedQuery
-    .use(rateLimitByUser(60_000, 3))
-    .input(z.object({ projectId: z.number() }))
+  // ── Media safety check for studio scenes ──
+  checkMediaSafety: authedQuery
+    .use(rateLimitByUser(60_000, 10))
+    .input(z.object({ sceneId: z.number(), mediaUrl: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const scenes = await getDb()
-        .select()
-        .from(studioScenes)
-        .where(eq(studioScenes.projectId, input.projectId))
-        .orderBy(studioScenes.order);
+      // Send to Vision LLM for check
+      const result = await checkMediaSafety(input.mediaUrl);
 
-      const imagePaths = scenes
-        .map((s) => s.mediaUrl)
-        .filter((p): p is string => Boolean(p))
-        .slice(0, 3);
+      // Save the result to the scene in the database
+      await getDb()
+        .update(studioScenes)
+        .set({
+          isSafe: result.isSafe && result.isClear ? 1 : 0,
+          safetyReason: result.reason,
+        })
+        .where(eq(studioScenes.id, input.sceneId));
 
-      if (imagePaths.length === 0) {
-        return { isClear: true, reason: "No media to check. Safe to proceed." };
-      }
-
-      return await checkCopyrightImages(imagePaths);
+      return result;
     }),
 
   // ── Add a new scene ──

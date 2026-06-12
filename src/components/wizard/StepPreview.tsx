@@ -50,26 +50,7 @@ export default function StepPreview() {
   const updateProject = trpc.project.update.useMutation();
   const updateStep = trpc.step.update.useMutation();
   const { data: steps } = trpc.step.listByProject.useQuery({ projectId: projectIdNum });
-  const checkCopyright = trpc.ai.checkCopyright.useMutation();
-
-  const [copyrightStatus, setCopyrightStatus] = useState<"idle" | "scanning" | "clear" | "warning">("idle");
-  const [copyrightReason, setCopyrightReason] = useState("");
-
-  // Auto-scan on component mount
-  useState(() => {
-    if (projectIdNum > 0 && copyrightStatus === "idle") {
-      setCopyrightStatus("scanning");
-      checkCopyright.mutateAsync({ projectId: projectIdNum })
-        .then((res) => {
-          setCopyrightStatus(res.isClear ? "clear" : "warning");
-          setCopyrightReason(res.reason);
-        })
-        .catch(() => {
-          setCopyrightStatus("clear");
-          setCopyrightReason("Scan failed, assuming safe to proceed.");
-        });
-    }
-  });
+  // State setup removed as copyright checking moved to individual uploads
 
   const handleContinue = async () => {
     // Save project level data
@@ -379,65 +360,7 @@ export default function StepPreview() {
             )}
           </div>
 
-          {/* Copyright Checker Panel */}
-          <div className="border-t border-[var(--sketch-fg-subtle)] pt-6">
-            <h3 className="font-body font-semibold text-lg flex items-center gap-2 mb-4 text-[var(--sketch-fg)]">
-              {copyrightStatus === "warning" ? (
-                <ShieldAlert className="w-5 h-5 text-red-500" />
-              ) : (
-                <ShieldCheck className="w-5 h-5 text-emerald-500" />
-              )}
-              Vision Copyright Checker
-            </h3>
-            
-            {copyrightStatus === "scanning" && (
-              <div className="sketch-card p-5 bg-blue-500/5 border-blue-500/20">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                    <Loader2 className="w-5 h-5 text-blue-600 animate-spin" />
-                  </div>
-                  <div>
-                    <h4 className="font-body font-semibold text-blue-700">Scanning Uploads...</h4>
-                    <p className="font-body text-sm text-blue-600/80 mt-1">
-                      Our Vision AI is analyzing your screenshots for known copyrighted movies, games, or logos...
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {copyrightStatus === "clear" && (
-              <div className="sketch-card p-5 bg-emerald-500/5 border-emerald-500/20">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center flex-shrink-0">
-                    <ShieldCheck className="w-5 h-5 text-emerald-600" />
-                  </div>
-                  <div>
-                    <h4 className="font-body font-semibold text-emerald-700">All Clear!</h4>
-                    <p className="font-body text-sm text-emerald-600/80 mt-1">
-                      {copyrightReason || "Your screenshots, generated script, and selected audio have been scanned and are 100% free of known copyright claims. Safe to monetize on YouTube and other platforms."}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {copyrightStatus === "warning" && (
-              <div className="sketch-card p-5 bg-red-500/5 border-red-500/20">
-                <div className="flex items-start gap-4">
-                  <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center flex-shrink-0">
-                    <ShieldAlert className="w-5 h-5 text-red-600" />
-                  </div>
-                  <div>
-                    <h4 className="font-body font-semibold text-red-700">Copyright Flag</h4>
-                    <p className="font-body text-sm text-red-600/80 mt-1">
-                      {copyrightReason}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          {/* Safety/Copyright is now checked per-screenshot during upload */}
 
           <Button
             onClick={handleContinue}

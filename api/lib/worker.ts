@@ -315,16 +315,23 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
 
     // We only need N-1 transitions for N segments
     let finalLocalPath;
-    if (transitions.length > 1) {
+    const actualTransitions = transitions.slice(0, segmentPaths.length - 1);
+    if (actualTransitions.length > 0) {
       finalLocalPath = await concatenateSegmentsWithTransitions(
         segmentPaths, 
-        transitions.slice(0, segmentPaths.length - 1), 
+        actualTransitions, 
         project.transitionDuration || 0.5
       );
     } else {
       finalLocalPath = await concatenateSegments(segmentPaths, segmentDurations);
     }
     tempFiles.push(finalLocalPath);
+
+    let expectedDuration = segmentDurations.reduce((a, b) => a + b, 0);
+    expectedDuration += projectSteps.length * 1.0; // AUDIO_LEAD_IN + AUDIO_TAIL for each step
+    if (actualTransitions.length > 0) {
+      expectedDuration -= actualTransitions.length * (project.transitionDuration || 0.5);
+    }
 
     let finalVideoPathToUpload = finalLocalPath;
     if (project.musicEnabled && project.musicTrack) {
@@ -333,7 +340,7 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
           stage: "mixing_audio",
           message: "Adding background music...",
         });
-        const mixedPath = await mixBackgroundMusic(finalLocalPath, project.musicTrack);
+        const mixedPath = await mixBackgroundMusic(finalLocalPath, project.musicTrack, expectedDuration);
         tempFiles.push(mixedPath);
         finalVideoPathToUpload = mixedPath;
       } catch (err: any) {
@@ -696,16 +703,23 @@ async function processStudioRenderJob(jobId: number, projectId: number): Promise
     }
 
     let finalLocalPath;
-    if (transitions.length > 1) {
+    const actualTransitions = transitions.slice(0, segmentPaths.length - 1);
+    if (actualTransitions.length > 0) {
       finalLocalPath = await concatenateSegmentsWithTransitions(
         segmentPaths, 
-        transitions.slice(0, segmentPaths.length - 1), 
+        actualTransitions, 
         project.transitionDuration || 0.5
       );
     } else {
       finalLocalPath = await concatenateSegments(segmentPaths, segmentDurations);
     }
     tempFiles.push(finalLocalPath);
+
+    let expectedDuration = segmentDurations.reduce((a, b) => a + b, 0);
+    expectedDuration += scenes.length * 1.0; // AUDIO_LEAD_IN + AUDIO_TAIL for each scene
+    if (actualTransitions.length > 0) {
+      expectedDuration -= actualTransitions.length * (project.transitionDuration || 0.5);
+    }
 
     let finalVideoPathToUpload = finalLocalPath;
     if (project.musicEnabled && project.musicTrack) {
@@ -714,7 +728,7 @@ async function processStudioRenderJob(jobId: number, projectId: number): Promise
           stage: "mixing_audio",
           message: "Adding background music...",
         });
-        const mixedPath = await mixBackgroundMusic(finalLocalPath, project.musicTrack);
+        const mixedPath = await mixBackgroundMusic(finalLocalPath, project.musicTrack, expectedDuration);
         tempFiles.push(mixedPath);
         finalVideoPathToUpload = mixedPath;
       } catch (err: any) {
