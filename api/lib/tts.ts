@@ -211,12 +211,15 @@ export async function probeAudioDuration(filePath: string): Promise<number> {
     }
     return duration;
   } catch (err: any) {
-    // Fallback: estimate duration from file size
-    // Average MP3 bitrate ~128kbps = ~16KB/sec
+    // Fallback: estimate duration from file size based on file type
     try {
       const stat = await fs.stat(filePath);
-      const estimatedDuration = stat.size / 16000;
-      console.warn(`ffprobe not available, estimating duration: ${estimatedDuration}s`);
+      const isWav = filePath.toLowerCase().endsWith(".wav");
+      // WAV: 44100 Hz stereo 16-bit = ~176400 bytes/sec
+      // MP3: ~128kbps = ~16000 bytes/sec
+      const bytesPerSec = isWav ? 176400 : 16000;
+      const estimatedDuration = stat.size / bytesPerSec;
+      console.warn(`ffprobe not available, estimating duration: ${estimatedDuration.toFixed(2)}s (${isWav ? "WAV" : "MP3"})`);
       return Math.max(estimatedDuration, 1);
     } catch {
       return 3; // default fallback

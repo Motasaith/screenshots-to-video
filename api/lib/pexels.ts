@@ -181,25 +181,32 @@ export async function downloadMedia(
   const filename = `media_${nanoid(12)}${extension}`;
   const outputPath = path.join(outDir, filename);
 
-  const response = await fetch(mediaUrl, {
-    signal: AbortSignal.timeout(60000),
-  });
+  console.log(`[Pexels] Downloading media from: ${mediaUrl.substring(0, 120)}...`);
 
-  if (!response.ok) {
-    throw new Error(`Failed to download media (${response.status}): ${mediaUrl}`);
+  try {
+    const response = await fetch(mediaUrl, {
+      signal: AbortSignal.timeout(60000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to download media (${response.status}): ${mediaUrl}`);
+    }
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    await fs.writeFile(outputPath, buffer);
+
+    // Verify file was written
+    const stat = await fs.stat(outputPath);
+    if (stat.size === 0) {
+      throw new Error("Downloaded media file is empty");
+    }
+
+    console.log(`[Pexels] Downloaded media: ${outputPath} (${stat.size} bytes)`);
+    return outputPath;
+  } catch (err: any) {
+    console.error(`[Pexels] Download failed:`, err.message);
+    throw new Error(`Media download failed: ${err.message}`);
   }
-
-  const buffer = Buffer.from(await response.arrayBuffer());
-  await fs.writeFile(outputPath, buffer);
-
-  // Verify file was written
-  const stat = await fs.stat(outputPath);
-  if (stat.size === 0) {
-    throw new Error("Downloaded media file is empty");
-  }
-
-  console.log(`[Pexels] Downloaded media: ${outputPath} (${stat.size} bytes)`);
-  return outputPath;
 }
 
 /**

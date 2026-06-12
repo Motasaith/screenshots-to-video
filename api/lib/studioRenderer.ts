@@ -124,7 +124,7 @@ export async function renderSceneWithImage(opts: {
     const xExpr = `max(0,min(iw-iw/zoom,iw/2-(iw/zoom/2)+${driftExpr}))`;
     const yExpr = `ih/2-(ih/zoom/2)`;
 
-    const captionsFilter = opts.captions?.enabled ? `,${buildCaptionsFilter(opts.captions.text, opts.captions.style, opts.captions.size, opts.captions.position, opts.captions.color, outW, outH, opts.audioDuration)}` : "";
+    const captionsFilter = opts.captions?.enabled ? `,${await buildCaptionsFilter(opts.captions.text, opts.captions.style, opts.captions.size, opts.captions.position, opts.captions.color, outW, outH, opts.audioDuration)}` : "";
 
     const zoomFilter =
       `zoompan=z='${zoomExpr}':` +
@@ -207,7 +207,7 @@ export async function renderSceneWithVideo(opts: {
     ];
   }
 
-  const captionsFilter = opts.captions?.enabled ? `,${buildCaptionsFilter(opts.captions.text, opts.captions.style, opts.captions.size, opts.captions.position, opts.captions.color, outW, outH, opts.audioDuration)}` : "";
+  const captionsFilter = opts.captions?.enabled ? `,${await buildCaptionsFilter(opts.captions.text, opts.captions.style, opts.captions.size, opts.captions.position, opts.captions.color, outW, outH, opts.audioDuration)}` : "";
 
   const args = [
     "-y",

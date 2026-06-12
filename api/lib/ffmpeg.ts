@@ -295,7 +295,7 @@ export async function renderStepVideo(opts: {
 
   let captionsFilter = "";
   if (opts.captions?.enabled) {
-    const caps = buildCaptionsFilter(
+    const caps = await buildCaptionsFilter(
       opts.captions.text,
       opts.captions.style,
       opts.captions.size,
@@ -817,7 +817,7 @@ export function splitTextIntoLines(text: string, maxChars: number): string[] {
 /**
  * Builds a chain of drawtext filters for captions, split by timing to match narration.
  */
-export function buildCaptionsFilter(
+export async function buildCaptionsFilter(
   text: string,
   style: string,
   size: string,
@@ -826,12 +826,12 @@ export function buildCaptionsFilter(
   outW: number,
   outH: number,
   audioDuration: number
-): string {
+): Promise<string> {
   if (!text) return "";
 
   const fontFile = getFontPath();
   const baseDim = Math.min(outW, outH);
-  
+
   let fontsize = Math.round(baseDim * 0.07); // medium default
   if (size === "small") fontsize = Math.round(baseDim * 0.05);
   if (size === "large") fontsize = Math.round(baseDim * 0.09);
@@ -842,10 +842,10 @@ export function buildCaptionsFilter(
 
   const isVertical = outW < outH;
   const maxChars = isVertical ? 20 : 40;
-  
+
   const lines = splitTextIntoLines(text, maxChars);
   const totalChars = lines.reduce((sum, l) => sum + l.length, 0);
-  
+
   if (totalChars === 0) return "";
 
   const drawtextFilters: string[] = [];
@@ -854,12 +854,14 @@ export function buildCaptionsFilter(
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineDuration = (line.length / totalChars) * audioDuration;
-    
+
     const start = AUDIO_LEAD_IN + elapsedDuration;
     const end = start + lineDuration;
     elapsedDuration += lineDuration;
 
-    const escapedLine = line.replace(/'/g, "’").replace(/:/g, "\\:").replace(/%/g, "\\%");
+    // Write text to a temp file to avoid FFmpeg escaping hell
+    const textFile = path.join(WORK_DIR, `caption_${nanoid(8)}.txt`);
+    await fs.writeFile(textFile, line, "utf-8");
 
     let styleOptions = "";
     if (style === "outline") {
@@ -871,7 +873,7 @@ export function buildCaptionsFilter(
     }
 
     drawtextFilters.push(
-      `drawtext=fontfile='${fontFile}':text='${escapedLine}':fontcolor=${color}:fontsize=${fontsize}:x=(w-text_w)/2:y=${yPos}:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'${styleOptions}`
+      `drawtext=fontfile='${fontFile}':textfile='${textFile.replace(/\\/g, "/").replace(/:/g, "\\:")}':fontcolor=${color}:fontsize=${fontsize}:x=(w-text_w)/2:y=${yPos}:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'${styleOptions}`
     );
   }
 

@@ -3,6 +3,16 @@ import { env } from "./env";
 import path from "path";
 import { nanoid } from "nanoid";
 
+// Suppress UploadThing SDK deprecation warnings — we already use ufsUrl
+const originalWarn = console.warn;
+console.warn = (...args: any[]) => {
+  const msg = args.join(" ");
+  if (msg.includes("[uploadthing][deprecated]") && (msg.includes("file.url") || msg.includes("file.appUrl"))) {
+    return;
+  }
+  originalWarn.apply(console, args);
+};
+
 let utapi: UTApi | null = null;
 
 function getUtapi() {
@@ -104,14 +114,31 @@ export async function existsInR2(key: string): Promise<boolean> {
  */
 export async function downloadFromR2(key: string): Promise<Buffer> {
   const url = await getSignedDownloadUrl(key);
-  const response = await fetch(url);
-  
-  if (!response.ok) {
-    throw new Error(`Failed to download file: ${response.statusText}`);
+  console.log(`[R2] Downloading from: ${url.substring(0, 120)}...`);
+
+  const maxRetries = 2;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(60000) });
+
+      if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.status} ${response.statusText}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      console.log(`[R2] Downloaded ${buffer.length} bytes`);
+      return buffer;
+    } catch (err: any) {
+      console.error(`[R2] Download attempt ${attempt}/${maxRetries} failed for key: ${key.substring(0, 80)}...`, err.message);
+      if (attempt === maxRetries) {
+        throw new Error(`Download failed after ${maxRetries} attempts: ${err.message}`);
+      }
+      // Wait 2 seconds before retry
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
   }
-  
-  const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  throw new Error("Download failed: all retries exhausted");
 }
 
 /**

@@ -257,7 +257,7 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
           size: project.captionSize || "medium",
           position: project.captionPosition || "bottom",
           color: project.captionColor || "#FFFFFF",
-          text: step.narration || "",
+          text: step.userEditedScript || step.aiScript || step.description || "",
         },
       });
 

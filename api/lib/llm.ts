@@ -416,7 +416,12 @@ If there is ANY safety violation, set isSafe to false. If there is a copyright v
     );
 
     try {
-      const result = JSON.parse(response);
+      let cleanResponse = response.trim();
+      // Strip markdown code blocks if present (gemma4:31b wraps JSON in ```json ... ```)
+      if (cleanResponse.startsWith("```")) {
+        cleanResponse = cleanResponse.replace(/^```json\s*/, "").replace(/\s*```$/, "").trim();
+      }
+      const result = JSON.parse(cleanResponse);
       return {
         isSafe: result.isSafe ?? true,
         isClear: result.isClear ?? true,
