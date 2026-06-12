@@ -245,6 +245,59 @@ export async function renderStepVideo(opts: {
   zoomRectH?: number; // percentage 0-100
   outputRes?: string;
   captions?: { text: string; style: string; size: string; position: string; color: string; enabled: boolean };
+  // ── Canvas editor fields ──
+  editorCropX?: number;
+  editorCropY?: number;
+  editorCropW?: number;
+  editorCropH?: number;
+  editorBlurX?: number;
+  editorBlurY?: number;
+  editorBlurW?: number;
+  editorBlurH?: number;
+  editorBlurIntensity?: number;
+  editorZoomScale?: number;
+  editorOverlayText?: string;
+  editorOverlayX?: number;
+  editorOverlayY?: number;
+  editorOverlayColor?: string;
+  editorOverlaySize?: string;
+  editorCaptionText?: string;
+  editorCaptionPosition?: string;
+  editorCaptionStyle?: string;
+  editorCaptionColor?: string;
+  editorCaptionSize?: string;
+  // ── Redaction ──
+  editorRedactX?: number;
+  editorRedactY?: number;
+  editorRedactW?: number;
+  editorRedactH?: number;
+  editorRedactColor?: string;
+  // ── Watermark ──
+  editorWatermarkText?: string;
+  editorWatermarkPosition?: string;
+  editorWatermarkSize?: string;
+  editorWatermarkColor?: string;
+  editorWatermarkOpacity?: number;
+  // ── Spotlight ──
+  editorSpotlightX?: number;
+  editorSpotlightY?: number;
+  editorSpotlightW?: number;
+  editorSpotlightH?: number;
+  editorSpotlightIntensity?: number;
+  // ── Badge ──
+  editorBadgeNumber?: number;
+  editorBadgeX?: number;
+  editorBadgeY?: number;
+  editorBadgeColor?: string;
+  // ── Magnify ──
+  editorMagnifyX?: number;
+  editorMagnifyY?: number;
+  editorMagnifyW?: number;
+  editorMagnifyH?: number;
+  editorMagnifyScale?: number;
+  editorMagnifyCorner?: string;
+  // ── Color Filter ──
+  editorColorFilter?: string;
 }): Promise<string> {
   await ensureWorkDir();
 
@@ -286,21 +339,220 @@ export async function renderStepVideo(opts: {
     drawboxFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=#f97316@0.95:thickness=5,`;
   }
 
+  // ── Canvas editor: crop ──
+  let cropFilter = "";
+  if (
+    opts.editorCropX !== undefined &&
+    opts.editorCropY !== undefined &&
+    opts.editorCropW !== undefined &&
+    opts.editorCropH !== undefined &&
+    opts.editorCropW > 0 &&
+    opts.editorCropH > 0
+  ) {
+    const cx = Math.round((opts.editorCropX / 100) * imgWidth);
+    const cy = Math.round((opts.editorCropY / 100) * imgHeight);
+    const cw = Math.round((opts.editorCropW / 100) * imgWidth);
+    const ch = Math.round((opts.editorCropH / 100) * imgHeight);
+    cropFilter = `crop=${cw}:${ch}:${cx}:${cy},`;
+  }
+
+  // ── Canvas editor: blur ──
+  let blurFilter = "";
+  if (
+    opts.editorBlurX !== undefined &&
+    opts.editorBlurY !== undefined &&
+    opts.editorBlurW !== undefined &&
+    opts.editorBlurH !== undefined &&
+    opts.editorBlurW > 0 &&
+    opts.editorBlurH > 0
+  ) {
+    const bx = Math.round((opts.editorBlurX / 100) * imgWidth);
+    const by = Math.round((opts.editorBlurY / 100) * imgHeight);
+    const bw = Math.round((opts.editorBlurW / 100) * imgWidth);
+    const bh = Math.round((opts.editorBlurH / 100) * imgHeight);
+    const intensity = Math.max(2, Math.min(60, Math.round(opts.editorBlurIntensity ?? 20)));
+    // Apply boxblur on the full image, then overlay the original unblurred portion using a mask
+    blurFilter = `split[orig][blurbase];[blurbase]boxblur=${intensity}:${intensity}[blurred];[orig]crop=${bw}:${bh}:${bx}:${by}[orig_crop];[blurred][orig_crop]overlay=${bx}:${by},`;
+  }
+
+  // ── Canvas editor: redaction ──
+  let redactFilter = "";
+  if (
+    opts.editorRedactX !== undefined &&
+    opts.editorRedactY !== undefined &&
+    opts.editorRedactW !== undefined &&
+    opts.editorRedactH !== undefined &&
+    opts.editorRedactW > 0 &&
+    opts.editorRedactH > 0
+  ) {
+    const rx = Math.round((opts.editorRedactX / 100) * imgWidth);
+    const ry = Math.round((opts.editorRedactY / 100) * imgHeight);
+    const rw = Math.round((opts.editorRedactW / 100) * imgWidth);
+    const rh = Math.round((opts.editorRedactH / 100) * imgHeight);
+    const rColor = (opts.editorRedactColor || "#000000").replace("#", "0x");
+    redactFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=${rColor}:t=fill,`;
+  }
+
+  // ── Canvas editor: watermark ──
+  let watermarkFilter = "";
+  if (opts.editorWatermarkText) {
+    const fontFile = getFontPath();
+    const wmSize = opts.editorWatermarkSize === "small" ? Math.round(outH * 0.03)
+      : opts.editorWatermarkSize === "large" ? Math.round(outH * 0.06)
+      : Math.round(outH * 0.045);
+    const wmColor = (opts.editorWatermarkColor || "#FFFFFF").replace("#", "0x");
+    const wmOpacity = Math.max(0.1, Math.min(1, opts.editorWatermarkOpacity ?? 0.5));
+    const escapedWmText = opts.editorWatermarkText.replace(/'/g, "’").replace(/:/g, "\\:").replace(/%/g, "\\%");
+
+    let wmX = "w-text_w-20";
+    let wmY = "h-text_h-20";
+    if (opts.editorWatermarkPosition?.includes("left")) wmX = "20";
+    if (opts.editorWatermarkPosition?.includes("top")) wmY = "20";
+    if (opts.editorWatermarkPosition === "center") {
+      wmX = "(w-text_w)/2";
+      wmY = "(h-text_h)/2";
+    }
+
+    watermarkFilter = `,drawtext=fontfile='${fontFile}':text='${escapedWmText}':fontcolor=${wmColor}@${wmOpacity.toFixed(2)}:fontsize=${wmSize}:x=${wmX}:y=${wmY}:shadowcolor=0x000000:shadowx=1:shadowy=1`;
+  }
+
+  // ── Canvas editor: pixelate ──
+  let pixelateFilter = "";
+  if (
+    opts.editorPixelateX !== undefined &&
+    opts.editorPixelateY !== undefined &&
+    opts.editorPixelateW !== undefined &&
+    opts.editorPixelateH !== undefined &&
+    opts.editorPixelateW > 0 &&
+    opts.editorPixelateH > 0
+  ) {
+    const px = Math.round((opts.editorPixelateX / 100) * imgWidth);
+    const py = Math.round((opts.editorPixelateY / 100) * imgHeight);
+    const pw = Math.round((opts.editorPixelateW / 100) * imgWidth);
+    const ph = Math.round((opts.editorPixelateH / 100) * imgHeight);
+    const blockSize = Math.max(2, Math.min(60, Math.round(opts.editorPixelateBlockSize ?? 20)));
+    // Scale down then back up to create pixelation effect
+    pixelateFilter = `split[orig][pixbase];[pixbase]crop=${pw}:${ph}:${px}:${py},scale=iw/${blockSize}:ih/${blockSize}:flags=neighbor,scale=${pw}:${ph}:flags=neighbor[pixed];[orig][pixed]overlay=${px}:${py},`;
+  }
+
+  // ── Canvas editor: spotlight ──
+  let spotlightFilter = "";
+  if (
+    opts.editorSpotlightX !== undefined &&
+    opts.editorSpotlightY !== undefined &&
+    opts.editorSpotlightW !== undefined &&
+    opts.editorSpotlightH !== undefined &&
+    opts.editorSpotlightW > 0 &&
+    opts.editorSpotlightH > 0
+  ) {
+    const sx = Math.round((opts.editorSpotlightX / 100) * imgWidth);
+    const sy = Math.round((opts.editorSpotlightY / 100) * imgHeight);
+    const sw = Math.round((opts.editorSpotlightW / 100) * imgWidth);
+    const sh = Math.round((opts.editorSpotlightH / 100) * imgHeight);
+    const intensity = Math.max(0.1, Math.min(0.9, opts.editorSpotlightIntensity ?? 0.6));
+    // Create a dark overlay with a transparent cutout
+    spotlightFilter = `split[orig][dark];[dark]color=c=black@${intensity.toFixed(2)}:s=${imgWidth}x${imgHeight}[mask];[mask]drawbox=x=${sx}:y=${sy}:w=${sw}:h=${sh}:color=black@0:t=fill[cutout];[orig][cutout]overlay=0:0:format=auto,`;
+  }
+
+  // ── Canvas editor: badge ──
+  let badgeFilter = "";
+  if (
+    opts.editorBadgeNumber !== undefined &&
+    opts.editorBadgeX !== undefined &&
+    opts.editorBadgeY !== undefined
+  ) {
+    const bx = Math.round((opts.editorBadgeX / 100) * imgWidth);
+    const by = Math.round((opts.editorBadgeY / 100) * imgHeight);
+    const bColor = (opts.editorBadgeColor || "#FBBF24").replace("#", "0x");
+    const fontFile = getFontPath();
+    const badgeSize = Math.round(Math.min(imgWidth, imgHeight) * 0.04);
+    badgeFilter = `,drawbox=x=${bx - badgeSize/2}:y=${by - badgeSize/2}:w=${badgeSize}:h=${badgeSize}:color=${bColor}:t=fill:radius=${Math.round(badgeSize/2)},drawtext=fontfile='${fontFile}':text='${opts.editorBadgeNumber}':fontcolor=0x000000:fontsize=${Math.round(badgeSize * 0.6)}:x=${bx}-text_w/2:y=${by}-text_h/2`;
+  }
+
+  // ── Canvas editor: magnify ──
+  let magnifyFilter = "";
+  if (
+    opts.editorMagnifyX !== undefined &&
+    opts.editorMagnifyY !== undefined &&
+    opts.editorMagnifyW !== undefined &&
+    opts.editorMagnifyH !== undefined &&
+    opts.editorMagnifyW > 0 &&
+    opts.editorMagnifyH > 0
+  ) {
+    const mx = Math.round((opts.editorMagnifyX / 100) * imgWidth);
+    const my = Math.round((opts.editorMagnifyY / 100) * imgHeight);
+    const mw = Math.round((opts.editorMagnifyW / 100) * imgWidth);
+    const mh = Math.round((opts.editorMagnifyH / 100) * imgHeight);
+    const scale = Math.max(1.5, Math.min(5, opts.editorMagnifyScale ?? 2));
+    const corner = opts.editorMagnifyCorner || "bottom-right";
+    const insetW = Math.round(Math.min(imgWidth, imgHeight) * 0.15);
+    const insetH = insetW;
+    let insetX = imgWidth - insetW - 20;
+    let insetY = imgHeight - insetH - 20;
+    if (corner.includes("left")) insetX = 20;
+    if (corner.includes("top")) insetY = 20;
+    magnifyFilter = `split[orig][magbase];[magbase]crop=${mw}:${mh}:${mx}:${my},scale=${insetW}:${insetH}:flags=lanczos[mag];[orig][mag]overlay=${insetX}:${insetY}:format=auto,drawbox=x=${insetX}:y=${insetY}:w=${insetW}:h=${insetH}:color=white@0.8:t=3,`;
+  }
+
+  // ── Canvas editor: color filter ──
+  let colorFilter = "";
+  if (opts.editorColorFilter && opts.editorColorFilter !== "none") {
+    switch (opts.editorColorFilter) {
+      case "grayscale":
+        colorFilter = "hue=s=0,";
+        break;
+      case "sepia":
+        colorFilter = "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131,";
+        break;
+      case "warm":
+        colorFilter = "colorbalance=rs=0.1:gs=-0.05:bs=-0.1,";
+        break;
+      case "cool":
+        colorFilter = "colorbalance=rs=-0.1:gs=0.05:bs=0.1,";
+        break;
+      case "contrast":
+        colorFilter = "eq=contrast=1.5:saturation=1.2,";
+        break;
+    }
+  }
+
   // Zoom target in supersampled-canvas pixels
   const geo = fitGeometry(imgWidth, imgHeight, ssW, ssH);
   const targetXPx = geo.offsetX + (opts.zoomTargetX / 100) * geo.scaledW;
   const targetYPx = geo.offsetY + (opts.zoomTargetY / 100) * geo.scaledH;
 
-  const zoomFilter = buildZoomFilter(targetXPx, targetYPx, paddedDuration, outputRes);
+  const maxZoom = opts.editorZoomScale ?? 1.6;
+  const zoomFilter = buildZoomFilter(targetXPx, targetYPx, paddedDuration, outputRes, maxZoom);
 
+  // ── Canvas editor: text overlay ──
+  let overlayFilter = "";
+  if (opts.editorOverlayText && opts.editorOverlayX !== undefined && opts.editorOverlayY !== undefined) {
+    const fontFile = getFontPath();
+    const ovSize = opts.editorOverlaySize === "small" ? Math.round(outH * 0.04)
+      : opts.editorOverlaySize === "large" ? Math.round(outH * 0.07)
+      : Math.round(outH * 0.055);
+    const ovColor = (opts.editorOverlayColor || "#FFFFFF").replace("#", "0x");
+    const ovX = Math.round((opts.editorOverlayX / 100) * outW);
+    const ovY = Math.round((opts.editorOverlayY / 100) * outH);
+    const escapedOvText = opts.editorOverlayText.replace(/'/g, "’").replace(/:/g, "\\:").replace(/%/g, "\\%");
+    overlayFilter = `,drawtext=fontfile='${fontFile}':text='${escapedOvText}':fontcolor=${ovColor}:fontsize=${ovSize}:x=${ovX}-text_w/2:y=${ovY}-text_h/2:shadowcolor=0x000000:shadowx=2:shadowy=2`;
+  }
+
+  // ── Captions: prefer canvas editor caption if set ──
   let captionsFilter = "";
-  if (opts.captions?.enabled) {
+  const captionText = opts.editorCaptionText || opts.captions?.text || "";
+  const captionStyle = opts.editorCaptionStyle || opts.captions?.style || "standard";
+  const captionSize = opts.editorCaptionSize || opts.captions?.size || "medium";
+  const captionPosition = opts.editorCaptionPosition || opts.captions?.position || "bottom";
+  const captionColor = opts.editorCaptionColor || opts.captions?.color || "#FFFFFF";
+
+  if (captionText && opts.captions?.enabled) {
     const caps = await buildCaptionsFilter(
-      opts.captions.text,
-      opts.captions.style,
-      opts.captions.size,
-      opts.captions.position,
-      opts.captions.color,
+      captionText,
+      captionStyle,
+      captionSize,
+      captionPosition,
+      captionColor,
       outW,
       outH,
       opts.audioDuration
@@ -311,11 +563,11 @@ export async function renderStepVideo(opts: {
   }
 
   const filterComplex =
-    `[0:v]${drawboxFilter}split=2[bg][fg];` +
+    `[0:v]${drawboxFilter}${cropFilter}${blurFilter}${redactFilter}${pixelateFilter}${spotlightFilter}${colorFilter}split=2[bg][fg];` +
     `[bg]scale=${ssW}:${ssH}:force_original_aspect_ratio=increase:flags=lanczos,crop=${ssW}:${ssH},boxblur=40:40[bg_blurred];` +
     `[fg]scale=${ssW}:${ssH}:force_original_aspect_ratio=decrease:flags=lanczos[fg_scaled];` +
     `[bg_blurred][fg_scaled]overlay=(W-w)/2:(H-h)/2,` +
-    `${zoomFilter}${captionsFilter},format=yuv420p[v];` +
+    `${zoomFilter}${overlayFilter}${watermarkFilter}${badgeFilter}${magnifyFilter}${captionsFilter},format=yuv420p[v];` +
     `[1:a]${buildAudioFilter()}[a]`;
 
   const args = [
@@ -378,12 +630,240 @@ async function renderStepVideoFallback(
     // keep fallback values
   }
 
+  // Highlight box on the original image
+  let drawboxFilter = "";
+  if (
+    opts.zoomRectX !== undefined &&
+    opts.zoomRectY !== undefined &&
+    opts.zoomRectW !== undefined &&
+    opts.zoomRectH !== undefined
+  ) {
+    const rx = Math.round((opts.zoomRectX / 100) * imgWidth);
+    const ry = Math.round((opts.zoomRectY / 100) * imgHeight);
+    const rw = Math.round((opts.zoomRectW / 100) * imgWidth);
+    const rh = Math.round((opts.zoomRectH / 100) * imgHeight);
+    drawboxFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=#f97316@0.95:thickness=5,`;
+  }
+
+  // ── Canvas editor: crop ──
+  let cropFilter = "";
+  if (
+    opts.editorCropX !== undefined &&
+    opts.editorCropY !== undefined &&
+    opts.editorCropW !== undefined &&
+    opts.editorCropH !== undefined &&
+    opts.editorCropW > 0 &&
+    opts.editorCropH > 0
+  ) {
+    const cx = Math.round((opts.editorCropX / 100) * imgWidth);
+    const cy = Math.round((opts.editorCropY / 100) * imgHeight);
+    const cw = Math.round((opts.editorCropW / 100) * imgWidth);
+    const ch = Math.round((opts.editorCropH / 100) * imgHeight);
+    cropFilter = `crop=${cw}:${ch}:${cx}:${cy},`;
+  }
+
+  // ── Canvas editor: blur (fallback) ──
+  let blurFilter = "";
+  if (
+    opts.editorBlurX !== undefined &&
+    opts.editorBlurY !== undefined &&
+    opts.editorBlurW !== undefined &&
+    opts.editorBlurH !== undefined &&
+    opts.editorBlurW > 0 &&
+    opts.editorBlurH > 0
+  ) {
+    const bx = Math.round((opts.editorBlurX / 100) * imgWidth);
+    const by = Math.round((opts.editorBlurY / 100) * imgHeight);
+    const bw = Math.round((opts.editorBlurW / 100) * imgWidth);
+    const bh = Math.round((opts.editorBlurH / 100) * imgHeight);
+    const intensity = Math.max(2, Math.min(60, Math.round(opts.editorBlurIntensity ?? 20)));
+    blurFilter = `split[orig][blurbase];[blurbase]boxblur=${intensity}:${intensity}[blurred];[orig]crop=${bw}:${bh}:${bx}:${by}[orig_crop];[blurred][orig_crop]overlay=${bx}:${by},`;
+  }
+
+  // ── Canvas editor: redaction (fallback) ──
+  let redactFilter = "";
+  if (
+    opts.editorRedactX !== undefined &&
+    opts.editorRedactY !== undefined &&
+    opts.editorRedactW !== undefined &&
+    opts.editorRedactH !== undefined &&
+    opts.editorRedactW > 0 &&
+    opts.editorRedactH > 0
+  ) {
+    const rx = Math.round((opts.editorRedactX / 100) * imgWidth);
+    const ry = Math.round((opts.editorRedactY / 100) * imgHeight);
+    const rw = Math.round((opts.editorRedactW / 100) * imgWidth);
+    const rh = Math.round((opts.editorRedactH / 100) * imgHeight);
+    const rColor = (opts.editorRedactColor || "#000000").replace("#", "0x");
+    redactFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=${rColor}:t=fill,`;
+  }
+
+  // ── Canvas editor: watermark (fallback) ──
+  let watermarkFilter = "";
+  if (opts.editorWatermarkText) {
+    const fontFile = getFontPath();
+    const wmSize = opts.editorWatermarkSize === "small" ? Math.round(outH * 0.03)
+      : opts.editorWatermarkSize === "large" ? Math.round(outH * 0.06)
+      : Math.round(outH * 0.045);
+    const wmColor = (opts.editorWatermarkColor || "#FFFFFF").replace("#", "0x");
+    const wmOpacity = Math.max(0.1, Math.min(1, opts.editorWatermarkOpacity ?? 0.5));
+    const escapedWmText = opts.editorWatermarkText.replace(/'/g, "’").replace(/:/g, "\\:").replace(/%/g, "\\%");
+
+    let wmX = "w-text_w-20";
+    let wmY = "h-text_h-20";
+    if (opts.editorWatermarkPosition?.includes("left")) wmX = "20";
+    if (opts.editorWatermarkPosition?.includes("top")) wmY = "20";
+    if (opts.editorWatermarkPosition === "center") {
+      wmX = "(w-text_w)/2";
+      wmY = "(h-text_h)/2";
+    }
+
+    watermarkFilter = `,drawtext=fontfile='${fontFile}':text='${escapedWmText}':fontcolor=${wmColor}@${wmOpacity.toFixed(2)}:fontsize=${wmSize}:x=${wmX}:y=${wmY}:shadowcolor=0x000000:shadowx=1:shadowy=1`;
+  }
+
+  // ── Canvas editor: pixelate (fallback) ──
+  let pixelateFilter = "";
+  if (
+    opts.editorPixelateX !== undefined &&
+    opts.editorPixelateY !== undefined &&
+    opts.editorPixelateW !== undefined &&
+    opts.editorPixelateH !== undefined &&
+    opts.editorPixelateW > 0 &&
+    opts.editorPixelateH > 0
+  ) {
+    const px = Math.round((opts.editorPixelateX / 100) * imgWidth);
+    const py = Math.round((opts.editorPixelateY / 100) * imgHeight);
+    const pw = Math.round((opts.editorPixelateW / 100) * imgWidth);
+    const ph = Math.round((opts.editorPixelateH / 100) * imgHeight);
+    const blockSize = Math.max(2, Math.min(60, Math.round(opts.editorPixelateBlockSize ?? 20)));
+    pixelateFilter = `split[orig][pixbase];[pixbase]crop=${pw}:${ph}:${px}:${py},scale=iw/${blockSize}:ih/${blockSize}:flags=neighbor,scale=${pw}:${ph}:flags=neighbor[pixed];[orig][pixed]overlay=${px}:${py},`;
+  }
+
+  // ── Canvas editor: spotlight (fallback) ──
+  let spotlightFilter = "";
+  if (
+    opts.editorSpotlightX !== undefined &&
+    opts.editorSpotlightY !== undefined &&
+    opts.editorSpotlightW !== undefined &&
+    opts.editorSpotlightH !== undefined &&
+    opts.editorSpotlightW > 0 &&
+    opts.editorSpotlightH > 0
+  ) {
+    const sx = Math.round((opts.editorSpotlightX / 100) * imgWidth);
+    const sy = Math.round((opts.editorSpotlightY / 100) * imgHeight);
+    const sw = Math.round((opts.editorSpotlightW / 100) * imgWidth);
+    const sh = Math.round((opts.editorSpotlightH / 100) * imgHeight);
+    const intensity = Math.max(0.1, Math.min(0.9, opts.editorSpotlightIntensity ?? 0.6));
+    spotlightFilter = `split[orig][dark];[dark]color=c=black@${intensity.toFixed(2)}:s=${imgWidth}x${imgHeight}[mask];[mask]drawbox=x=${sx}:y=${sy}:w=${sw}:h=${sh}:color=black@0:t=fill[cutout];[orig][cutout]overlay=0:0:format=auto,`;
+  }
+
+  // ── Canvas editor: badge (fallback) ──
+  let badgeFilter = "";
+  if (
+    opts.editorBadgeNumber !== undefined &&
+    opts.editorBadgeX !== undefined &&
+    opts.editorBadgeY !== undefined
+  ) {
+    const bx = Math.round((opts.editorBadgeX / 100) * imgWidth);
+    const by = Math.round((opts.editorBadgeY / 100) * imgHeight);
+    const bColor = (opts.editorBadgeColor || "#FBBF24").replace("#", "0x");
+    const fontFile = getFontPath();
+    const badgeSize = Math.round(Math.min(imgWidth, imgHeight) * 0.04);
+    badgeFilter = `,drawbox=x=${bx - badgeSize/2}:y=${by - badgeSize/2}:w=${badgeSize}:h=${badgeSize}:color=${bColor}:t=fill:radius=${Math.round(badgeSize/2)},drawtext=fontfile='${fontFile}':text='${opts.editorBadgeNumber}':fontcolor=0x000000:fontsize=${Math.round(badgeSize * 0.6)}:x=${bx}-text_w/2:y=${by}-text_h/2`;
+  }
+
+  // ── Canvas editor: magnify (fallback) ──
+  let magnifyFilter = "";
+  if (
+    opts.editorMagnifyX !== undefined &&
+    opts.editorMagnifyY !== undefined &&
+    opts.editorMagnifyW !== undefined &&
+    opts.editorMagnifyH !== undefined &&
+    opts.editorMagnifyW > 0 &&
+    opts.editorMagnifyH > 0
+  ) {
+    const mx = Math.round((opts.editorMagnifyX / 100) * imgWidth);
+    const my = Math.round((opts.editorMagnifyY / 100) * imgHeight);
+    const mw = Math.round((opts.editorMagnifyW / 100) * imgWidth);
+    const mh = Math.round((opts.editorMagnifyH / 100) * imgHeight);
+    const scale = Math.max(1.5, Math.min(5, opts.editorMagnifyScale ?? 2));
+    const corner = opts.editorMagnifyCorner || "bottom-right";
+    const insetW = Math.round(Math.min(imgWidth, imgHeight) * 0.15);
+    const insetH = insetW;
+    let insetX = imgWidth - insetW - 20;
+    let insetY = imgHeight - insetH - 20;
+    if (corner.includes("left")) insetX = 20;
+    if (corner.includes("top")) insetY = 20;
+    magnifyFilter = `split[orig][magbase];[magbase]crop=${mw}:${mh}:${mx}:${my},scale=${insetW}:${insetH}:flags=lanczos[mag];[orig][mag]overlay=${insetX}:${insetY}:format=auto,drawbox=x=${insetX}:y=${insetY}:w=${insetW}:h=${insetH}:color=white@0.8:t=3,`;
+  }
+
+  // ── Canvas editor: color filter (fallback) ──
+  let colorFilter = "";
+  if (opts.editorColorFilter && opts.editorColorFilter !== "none") {
+    switch (opts.editorColorFilter) {
+      case "grayscale":
+        colorFilter = "hue=s=0,";
+        break;
+      case "sepia":
+        colorFilter = "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131,";
+        break;
+      case "warm":
+        colorFilter = "colorbalance=rs=0.1:gs=-0.05:bs=-0.1,";
+        break;
+      case "cool":
+        colorFilter = "colorbalance=rs=-0.1:gs=0.05:bs=0.1,";
+        break;
+      case "contrast":
+        colorFilter = "eq=contrast=1.5:saturation=1.2,";
+        break;
+    }
+  }
+
   const geo = fitGeometry(imgWidth, imgHeight, outW, outH);
   const targetXPx = geo.offsetX + (opts.zoomTargetX / 100) * geo.scaledW;
   const targetYPx = geo.offsetY + (opts.zoomTargetY / 100) * geo.scaledH;
 
-  const zoomFilter = buildZoomFilter(targetXPx, targetYPx, paddedDuration, outputRes);
+  const maxZoom = opts.editorZoomScale ?? 1.6;
+  const zoomFilter = buildZoomFilter(targetXPx, targetYPx, paddedDuration, outputRes, maxZoom);
   const delayMs = Math.round(AUDIO_LEAD_IN * 1000);
+
+  // ── Canvas editor: text overlay ──
+  let overlayFilter = "";
+  if (opts.editorOverlayText && opts.editorOverlayX !== undefined && opts.editorOverlayY !== undefined) {
+    const fontFile = getFontPath();
+    const ovSize = opts.editorOverlaySize === "small" ? Math.round(outH * 0.04)
+      : opts.editorOverlaySize === "large" ? Math.round(outH * 0.07)
+      : Math.round(outH * 0.055);
+    const ovColor = (opts.editorOverlayColor || "#FFFFFF").replace("#", "0x");
+    const ovX = Math.round((opts.editorOverlayX / 100) * outW);
+    const ovY = Math.round((opts.editorOverlayY / 100) * outH);
+    const escapedOvText = opts.editorOverlayText.replace(/'/g, "’").replace(/:/g, "\\:").replace(/%/g, "\\%");
+    overlayFilter = `,drawtext=fontfile='${fontFile}':text='${escapedOvText}':fontcolor=${ovColor}:fontsize=${ovSize}:x=${ovX}-text_w/2:y=${ovY}-text_h/2:shadowcolor=0x000000:shadowx=2:shadowy=2`;
+  }
+
+  // ── Captions: prefer canvas editor caption if set ──
+  let captionsFilter = "";
+  const captionText = opts.editorCaptionText || opts.captions?.text || "";
+  const captionStyle = opts.editorCaptionStyle || opts.captions?.style || "standard";
+  const captionSize = opts.editorCaptionSize || opts.captions?.size || "medium";
+  const captionPosition = opts.editorCaptionPosition || opts.captions?.position || "bottom";
+  const captionColor = opts.editorCaptionColor || opts.captions?.color || "#FFFFFF";
+
+  if (captionText && opts.captions?.enabled) {
+    const caps = await buildCaptionsFilter(
+      captionText,
+      captionStyle,
+      captionSize,
+      captionPosition,
+      captionColor,
+      outW,
+      outH,
+      opts.audioDuration
+    );
+    if (caps) {
+      captionsFilter = `,${caps}`;
+    }
+  }
 
   const args = [
     "-y",
@@ -391,8 +871,8 @@ async function renderStepVideoFallback(
     "-i", opts.screenshotPath,
     "-i", opts.audioPath,
     "-filter_complex",
-    `[0:v]scale=${outW}:${outH}:force_original_aspect_ratio=decrease,` +
-      `pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2,${zoomFilter},format=yuv420p[v];` +
+    `[0:v]${drawboxFilter}${cropFilter}${blurFilter}${redactFilter}${pixelateFilter}${spotlightFilter}${colorFilter}scale=${outW}:${outH}:force_original_aspect_ratio=decrease,` +
+      `pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2,${zoomFilter}${overlayFilter}${watermarkFilter}${badgeFilter}${magnifyFilter}${captionsFilter},format=yuv420p[v];` +
       `[1:a]adelay=${delayMs}:all=1,apad=pad_dur=${AUDIO_TAIL}[a]`,
     "-map", "[v]",
     "-map", "[a]",
@@ -718,6 +1198,185 @@ export async function cleanupTempFiles(paths: string[]): Promise<void> {
       // Ignore cleanup errors
     }
   }
+}
+
+/**
+ * Trim an audio file to a specific duration using FFmpeg.
+ */
+export async function trimAudio(
+  audioPath: string,
+  outputPath: string,
+  durationSec: number,
+  startSec = 0
+): Promise<string> {
+  if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
+  await execFileAsync(ffmpegPath, [
+    "-y",
+    "-i", audioPath,
+    "-ss", startSec.toFixed(3),
+    "-t", durationSec.toFixed(3),
+    "-c:a", "copy",
+    outputPath,
+  ], { timeout: 30000, shell: true });
+  return outputPath;
+}
+
+/**
+ * Render multiple zoom segments from one screenshot + audio.
+ * Each zoom point gets its own video segment with the same audio slice.
+ */
+export async function renderMultiZoomSegments(opts: {
+  screenshotPath: string;
+  audioPath: string;
+  audioDuration: number;
+  multiZooms: Array<{
+    targetX: number;
+    targetY: number;
+    rectX?: number;
+    rectY?: number;
+    rectW?: number;
+    rectH?: number;
+    zoomScale?: number;
+    duration?: number;
+  }>;
+  outputRes?: string;
+  captions?: { text: string; style: string; size: string; position: string; color: string; enabled: boolean };
+  editorCropX?: number;
+  editorCropY?: number;
+  editorCropW?: number;
+  editorCropH?: number;
+  editorBlurX?: number;
+  editorBlurY?: number;
+  editorBlurW?: number;
+  editorBlurH?: number;
+  editorBlurIntensity?: number;
+  editorRedactX?: number;
+  editorRedactY?: number;
+  editorRedactW?: number;
+  editorRedactH?: number;
+  editorRedactColor?: string;
+  editorWatermarkText?: string;
+  editorWatermarkPosition?: string;
+  editorWatermarkSize?: string;
+  editorWatermarkColor?: string;
+  editorWatermarkOpacity?: number;
+  editorPixelateX?: number;
+  editorPixelateY?: number;
+  editorPixelateW?: number;
+  editorPixelateH?: number;
+  editorPixelateBlockSize?: number;
+  editorSpotlightX?: number;
+  editorSpotlightY?: number;
+  editorSpotlightW?: number;
+  editorSpotlightH?: number;
+  editorSpotlightIntensity?: number;
+  editorBadgeNumber?: number;
+  editorBadgeX?: number;
+  editorBadgeY?: number;
+  editorBadgeColor?: string;
+  editorMagnifyX?: number;
+  editorMagnifyY?: number;
+  editorMagnifyW?: number;
+  editorMagnifyH?: number;
+  editorMagnifyScale?: number;
+  editorMagnifyCorner?: string;
+  editorColorFilter?: string;
+  editorOverlayText?: string;
+  editorOverlayX?: number;
+  editorOverlayY?: number;
+  editorOverlayColor?: string;
+  editorOverlaySize?: string;
+  editorCaptionText?: string;
+  editorCaptionPosition?: string;
+  editorCaptionStyle?: string;
+  editorCaptionColor?: string;
+  editorCaptionSize?: string;
+}): Promise<string[]> {
+  const segments: string[] = [];
+  const totalDuration = opts.audioDuration;
+  const zooms = opts.multiZooms.length > 0 ? opts.multiZooms : [{ targetX: 50, targetY: 50, zoomScale: 1, duration: totalDuration }];
+  const totalZoomDuration = zooms.reduce((sum, z) => sum + (z.duration || 3), 0);
+  const timeScale = totalDuration / totalZoomDuration;
+
+  let currentTime = 0;
+  for (let i = 0; i < zooms.length; i++) {
+    const z = zooms[i];
+    const segDuration = Math.max(1, (z.duration || 3) * timeScale);
+    const segAudioPath = path.join(WORK_DIR, `mz_audio_${nanoid(8)}.wav`);
+
+    // Trim audio slice for this segment
+    await trimAudio(opts.audioPath, segAudioPath, segDuration, currentTime);
+
+    const segPath = await renderStepVideo({
+      screenshotPath: opts.screenshotPath,
+      audioPath: segAudioPath,
+      audioDuration: segDuration,
+      zoomTargetX: z.targetX,
+      zoomTargetY: z.targetY,
+      zoomRectX: z.rectX,
+      zoomRectY: z.rectY,
+      zoomRectW: z.rectW,
+      zoomRectH: z.rectH,
+      outputRes: opts.outputRes,
+      captions: opts.captions,
+      editorCropX: opts.editorCropX,
+      editorCropY: opts.editorCropY,
+      editorCropW: opts.editorCropW,
+      editorCropH: opts.editorCropH,
+      editorBlurX: opts.editorBlurX,
+      editorBlurY: opts.editorBlurY,
+      editorBlurW: opts.editorBlurW,
+      editorBlurH: opts.editorBlurH,
+      editorBlurIntensity: opts.editorBlurIntensity,
+      editorRedactX: opts.editorRedactX,
+      editorRedactY: opts.editorRedactY,
+      editorRedactW: opts.editorRedactW,
+      editorRedactH: opts.editorRedactH,
+      editorRedactColor: opts.editorRedactColor,
+      editorWatermarkText: opts.editorWatermarkText,
+      editorWatermarkPosition: opts.editorWatermarkPosition,
+      editorWatermarkSize: opts.editorWatermarkSize,
+      editorWatermarkColor: opts.editorWatermarkColor,
+      editorWatermarkOpacity: opts.editorWatermarkOpacity,
+      editorPixelateX: opts.editorPixelateX,
+      editorPixelateY: opts.editorPixelateY,
+      editorPixelateW: opts.editorPixelateW,
+      editorPixelateH: opts.editorPixelateH,
+      editorPixelateBlockSize: opts.editorPixelateBlockSize,
+      editorSpotlightX: opts.editorSpotlightX,
+      editorSpotlightY: opts.editorSpotlightY,
+      editorSpotlightW: opts.editorSpotlightW,
+      editorSpotlightH: opts.editorSpotlightH,
+      editorSpotlightIntensity: opts.editorSpotlightIntensity,
+      editorBadgeNumber: opts.editorBadgeNumber,
+      editorBadgeX: opts.editorBadgeX,
+      editorBadgeY: opts.editorBadgeY,
+      editorBadgeColor: opts.editorBadgeColor,
+      editorMagnifyX: opts.editorMagnifyX,
+      editorMagnifyY: opts.editorMagnifyY,
+      editorMagnifyW: opts.editorMagnifyW,
+      editorMagnifyH: opts.editorMagnifyH,
+      editorMagnifyScale: opts.editorMagnifyScale,
+      editorMagnifyCorner: opts.editorMagnifyCorner,
+      editorColorFilter: opts.editorColorFilter,
+      editorOverlayText: opts.editorOverlayText,
+      editorOverlayX: opts.editorOverlayX,
+      editorOverlayY: opts.editorOverlayY,
+      editorOverlayColor: opts.editorOverlayColor,
+      editorOverlaySize: opts.editorOverlaySize,
+      editorCaptionText: opts.editorCaptionText,
+      editorCaptionPosition: opts.editorCaptionPosition,
+      editorCaptionStyle: opts.editorCaptionStyle,
+      editorCaptionColor: opts.editorCaptionColor,
+      editorCaptionSize: opts.editorCaptionSize,
+      editorZoomScale: z.zoomScale,
+    });
+
+    segments.push(segPath);
+    currentTime += segDuration;
+  }
+
+  return segments;
 }
 
 /**

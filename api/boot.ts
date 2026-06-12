@@ -73,6 +73,9 @@ app.post("/api/upload", async (c) => {
       "image/jpeg",
       "image/webp",
       "image/gif",
+      "video/mp4",
+      "video/webm",
+      "video/quicktime",
     ];
     if (!allowedTypes.includes(file.type)) {
       return c.json(

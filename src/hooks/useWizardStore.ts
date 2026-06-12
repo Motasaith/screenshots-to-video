@@ -52,6 +52,8 @@ interface WizardStepData {
     outroTemplate: string;
     introText: string;
     outroText: string;
+    introVideoPath: string;
+    outroVideoPath: string;
     introDuration: number;
     outroDuration: number;
     captionsEnabled: boolean;
@@ -124,6 +126,8 @@ const initialState: Omit<
       outroTemplate: "",
       introText: "",
       outroText: "",
+      introVideoPath: "",
+      outroVideoPath: "",
       introDuration: 3.0,
       outroDuration: 3.0,
       captionsEnabled: true,

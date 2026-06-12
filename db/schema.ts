@@ -8,6 +8,7 @@ import {
   float,
   bigint,
   int,
+  json,
 } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
@@ -56,6 +57,8 @@ export const projects = mysqlTable("projects", {
   outroTemplate: varchar("outroTemplate", { length: 50 }),
   introText: text("introText"),
   outroText: text("outroText"),
+  introVideoPath: text("introVideoPath"),
+  outroVideoPath: text("outroVideoPath"),
   introDuration: float("introDuration").default(3.0),
   outroDuration: float("outroDuration").default(3.0),
   captionsEnabled: int("captionsEnabled").default(1),
@@ -91,6 +94,80 @@ export const steps = mysqlTable("steps", {
   zoomRectY: float("zoomRectY"),
   zoomRectWidth: float("zoomRectWidth"),
   zoomRectHeight: float("zoomRectHeight"),
+  // ── Canvas Editor fields ──
+  editorCaptionText: text("editorCaptionText"),
+  editorCaptionPosition: varchar("editorCaptionPosition", { length: 20 }).default("bottom"),
+  editorCaptionStyle: varchar("editorCaptionStyle", { length: 20 }).default("standard"),
+  editorCaptionColor: varchar("editorCaptionColor", { length: 20 }).default("#FFFFFF"),
+  editorCaptionSize: varchar("editorCaptionSize", { length: 20 }).default("medium"),
+  editorOverlayText: text("editorOverlayText"),
+  editorOverlayX: float("editorOverlayX"),
+  editorOverlayY: float("editorOverlayY"),
+  editorOverlayColor: varchar("editorOverlayColor", { length: 20 }).default("#FFFFFF"),
+  editorOverlaySize: varchar("editorOverlaySize", { length: 20 }).default("medium"),
+  editorCropX: float("editorCropX"),
+  editorCropY: float("editorCropY"),
+  editorCropW: float("editorCropW"),
+  editorCropH: float("editorCropH"),
+  editorBlurX: float("editorBlurX"),
+  editorBlurY: float("editorBlurY"),
+  editorBlurW: float("editorBlurW"),
+  editorBlurH: float("editorBlurH"),
+  editorBlurIntensity: float("editorBlurIntensity").default(20),
+  // ── Redaction ──
+  editorRedactX: float("editorRedactX"),
+  editorRedactY: float("editorRedactY"),
+  editorRedactW: float("editorRedactW"),
+  editorRedactH: float("editorRedactH"),
+  editorRedactColor: varchar("editorRedactColor", { length: 20 }).default("#000000"),
+  // ── Watermark ──
+  editorWatermarkText: text("editorWatermarkText"),
+  editorWatermarkPosition: varchar("editorWatermarkPosition", { length: 20 }).default("bottom-right"),
+  editorWatermarkSize: varchar("editorWatermarkSize", { length: 20 }).default("small"),
+  editorWatermarkColor: varchar("editorWatermarkColor", { length: 20 }).default("#FFFFFF"),
+  editorWatermarkOpacity: float("editorWatermarkOpacity").default(0.5),
+  // ── Pixelate ──
+  editorPixelateX: float("editorPixelateX"),
+  editorPixelateY: float("editorPixelateY"),
+  editorPixelateW: float("editorPixelateW"),
+  editorPixelateH: float("editorPixelateH"),
+  editorPixelateBlockSize: float("editorPixelateBlockSize").default(20),
+  // ── Spotlight ──
+  editorSpotlightX: float("editorSpotlightX"),
+  editorSpotlightY: float("editorSpotlightY"),
+  editorSpotlightW: float("editorSpotlightW"),
+  editorSpotlightH: float("editorSpotlightH"),
+  editorSpotlightIntensity: float("editorSpotlightIntensity").default(0.6),
+  // ── Step Number Badge ──
+  editorBadgeNumber: int("editorBadgeNumber"),
+  editorBadgeX: float("editorBadgeX"),
+  editorBadgeY: float("editorBadgeY"),
+  editorBadgeColor: varchar("editorBadgeColor", { length: 20 }).default("#FBBF24"),
+  // ── Magnifying Glass Inset ──
+  editorMagnifyX: float("editorMagnifyX"),
+  editorMagnifyY: float("editorMagnifyY"),
+  editorMagnifyW: float("editorMagnifyW"),
+  editorMagnifyH: float("editorMagnifyH"),
+  editorMagnifyScale: float("editorMagnifyScale").default(2.0),
+  editorMagnifyCorner: varchar("editorMagnifyCorner", { length: 20 }).default("bottom-right"),
+  // ── Color Filter ──
+  editorColorFilter: varchar("editorColorFilter", { length: 20 }).default("none"),
+  editorZoomScale: float("editorZoomScale").default(1.0),
+  editorDuration: float("editorDuration"),
+  // ── Multi-Zoom (multiple zoom points on one screenshot) ──
+  editorMultiZooms: json("editorMultiZooms").$type<
+    Array<{
+      id: string;
+      targetX: number;
+      targetY: number;
+      rectX?: number;
+      rectY?: number;
+      rectW?: number;
+      rectH?: number;
+      zoomScale?: number;
+      duration?: number;
+    }>
+  >(),
   audioPath: text("audioPath"),
   audioDuration: float("audioDuration"),
   transition: varchar("transition", { length: 30 }).default("fade"),
@@ -161,6 +238,8 @@ export const studioProjects = mysqlTable("studio_projects", {
   outroTemplate: varchar("outroTemplate", { length: 50 }),
   introText: text("introText"),
   outroText: text("outroText"),
+  introVideoPath: text("introVideoPath"),
+  outroVideoPath: text("outroVideoPath"),
   introDuration: float("introDuration").default(3.0),
   outroDuration: float("outroDuration").default(3.0),
   captionsEnabled: int("captionsEnabled").default(1),

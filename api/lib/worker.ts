@@ -239,34 +239,171 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
         zoomY = Math.max(0, Math.min(100, zoomY + (Math.random() * 20 - 10)));
       }
 
-      // Render the video segment
-      const segmentPath = await renderStepVideo({
-        screenshotPath: screenshotLocalPath,
-        audioPath: audioLocalPath,
-        audioDuration: audioDuration,
-        zoomTargetX: zoomX,
-        zoomTargetY: zoomY,
-        zoomRectX: step.zoomRectX ?? undefined,
-        zoomRectY: step.zoomRectY ?? undefined,
-        zoomRectW: step.zoomRectWidth ?? undefined,
-        zoomRectH: step.zoomRectHeight ?? undefined,
-        outputRes: outputRes,
-        captions: {
-          enabled: project.captionsEnabled === 1,
-          style: project.captionStyle || "standard",
-          size: project.captionSize || "medium",
-          position: project.captionPosition || "bottom",
-          color: project.captionColor || "#FFFFFF",
-          text: step.userEditedScript || step.aiScript || step.description || "",
-        },
-      });
+      // ── Multi-zoom: render multiple segments from one screenshot ──
+      let stepSegments: string[] = [];
+      const multiZooms = (step as any).editorMultiZooms;
+      if (multiZooms && Array.isArray(multiZooms) && multiZooms.length > 0) {
+        const { renderMultiZoomSegments } = await import("./ffmpeg");
+        stepSegments = await renderMultiZoomSegments({
+          screenshotPath: screenshotLocalPath,
+          audioPath: audioLocalPath,
+          audioDuration: audioDuration,
+          multiZooms: multiZooms.map((mz: any) => ({
+            targetX: mz.targetX ?? 50,
+            targetY: mz.targetY ?? 50,
+            rectX: mz.rectX,
+            rectY: mz.rectY,
+            rectW: mz.rectW,
+            rectH: mz.rectH,
+            zoomScale: mz.zoomScale ?? 2,
+            duration: mz.duration ?? 3,
+          })),
+          outputRes: outputRes,
+          captions: {
+            enabled: project.captionsEnabled === 1,
+            style: project.captionStyle || "standard",
+            size: project.captionSize || "medium",
+            position: project.captionPosition || "bottom",
+            color: project.captionColor || "#FFFFFF",
+            text: step.userEditedScript || step.aiScript || step.description || "",
+          },
+          editorCropX: step.editorCropX ?? undefined,
+          editorCropY: step.editorCropY ?? undefined,
+          editorCropW: step.editorCropW ?? undefined,
+          editorCropH: step.editorCropH ?? undefined,
+          editorBlurX: step.editorBlurX ?? undefined,
+          editorBlurY: step.editorBlurY ?? undefined,
+          editorBlurW: step.editorBlurW ?? undefined,
+          editorBlurH: step.editorBlurH ?? undefined,
+          editorBlurIntensity: step.editorBlurIntensity ?? undefined,
+          editorRedactX: step.editorRedactX ?? undefined,
+          editorRedactY: step.editorRedactY ?? undefined,
+          editorRedactW: step.editorRedactW ?? undefined,
+          editorRedactH: step.editorRedactH ?? undefined,
+          editorRedactColor: step.editorRedactColor ?? undefined,
+          editorWatermarkText: step.editorWatermarkText ?? undefined,
+          editorWatermarkPosition: step.editorWatermarkPosition ?? undefined,
+          editorWatermarkSize: step.editorWatermarkSize ?? undefined,
+          editorWatermarkColor: step.editorWatermarkColor ?? undefined,
+          editorWatermarkOpacity: step.editorWatermarkOpacity ?? undefined,
+          editorPixelateX: step.editorPixelateX ?? undefined,
+          editorPixelateY: step.editorPixelateY ?? undefined,
+          editorPixelateW: step.editorPixelateW ?? undefined,
+          editorPixelateH: step.editorPixelateH ?? undefined,
+          editorPixelateBlockSize: step.editorPixelateBlockSize ?? undefined,
+          editorSpotlightX: step.editorSpotlightX ?? undefined,
+          editorSpotlightY: step.editorSpotlightY ?? undefined,
+          editorSpotlightW: step.editorSpotlightW ?? undefined,
+          editorSpotlightH: step.editorSpotlightH ?? undefined,
+          editorSpotlightIntensity: step.editorSpotlightIntensity ?? undefined,
+          editorBadgeNumber: step.editorBadgeNumber ?? undefined,
+          editorBadgeX: step.editorBadgeX ?? undefined,
+          editorBadgeY: step.editorBadgeY ?? undefined,
+          editorBadgeColor: step.editorBadgeColor ?? undefined,
+          editorMagnifyX: step.editorMagnifyX ?? undefined,
+          editorMagnifyY: step.editorMagnifyY ?? undefined,
+          editorMagnifyW: step.editorMagnifyW ?? undefined,
+          editorMagnifyH: step.editorMagnifyH ?? undefined,
+          editorMagnifyScale: step.editorMagnifyScale ?? undefined,
+          editorMagnifyCorner: step.editorMagnifyCorner ?? undefined,
+          editorColorFilter: step.editorColorFilter ?? undefined,
+          editorOverlayText: step.editorOverlayText ?? undefined,
+          editorOverlayX: step.editorOverlayX ?? undefined,
+          editorOverlayY: step.editorOverlayY ?? undefined,
+          editorOverlayColor: step.editorOverlayColor ?? undefined,
+          editorOverlaySize: step.editorOverlaySize ?? undefined,
+          editorCaptionText: step.editorCaptionText ?? undefined,
+          editorCaptionPosition: step.editorCaptionPosition ?? undefined,
+          editorCaptionStyle: step.editorCaptionStyle ?? undefined,
+          editorCaptionColor: step.editorCaptionColor ?? undefined,
+          editorCaptionSize: step.editorCaptionSize ?? undefined,
+        });
+      } else {
+        // Render the video segment
+        const segmentPath = await renderStepVideo({
+          screenshotPath: screenshotLocalPath,
+          audioPath: audioLocalPath,
+          audioDuration: audioDuration,
+          zoomTargetX: zoomX,
+          zoomTargetY: zoomY,
+          zoomRectX: step.zoomRectX ?? undefined,
+          zoomRectY: step.zoomRectY ?? undefined,
+          zoomRectW: step.zoomRectWidth ?? undefined,
+          zoomRectH: step.zoomRectHeight ?? undefined,
+          outputRes: outputRes,
+          captions: {
+            enabled: project.captionsEnabled === 1,
+            style: project.captionStyle || "standard",
+            size: project.captionSize || "medium",
+            position: project.captionPosition || "bottom",
+            color: project.captionColor || "#FFFFFF",
+            text: step.userEditedScript || step.aiScript || step.description || "",
+          },
+          // ── Canvas editor fields ──
+          editorCropX: step.editorCropX ?? undefined,
+          editorCropY: step.editorCropY ?? undefined,
+          editorCropW: step.editorCropW ?? undefined,
+          editorCropH: step.editorCropH ?? undefined,
+          editorZoomScale: step.editorZoomScale ?? undefined,
+          editorOverlayText: step.editorOverlayText ?? undefined,
+          editorOverlayX: step.editorOverlayX ?? undefined,
+          editorOverlayY: step.editorOverlayY ?? undefined,
+          editorOverlayColor: step.editorOverlayColor ?? undefined,
+          editorOverlaySize: step.editorOverlaySize ?? undefined,
+          editorCaptionText: step.editorCaptionText ?? undefined,
+          editorCaptionPosition: step.editorCaptionPosition ?? undefined,
+          editorCaptionStyle: step.editorCaptionStyle ?? undefined,
+          editorCaptionColor: step.editorCaptionColor ?? undefined,
+          editorCaptionSize: step.editorCaptionSize ?? undefined,
+          editorBlurX: step.editorBlurX ?? undefined,
+          editorBlurY: step.editorBlurY ?? undefined,
+          editorBlurW: step.editorBlurW ?? undefined,
+          editorBlurH: step.editorBlurH ?? undefined,
+          editorBlurIntensity: step.editorBlurIntensity ?? undefined,
+          editorRedactX: step.editorRedactX ?? undefined,
+          editorRedactY: step.editorRedactY ?? undefined,
+          editorRedactW: step.editorRedactW ?? undefined,
+          editorRedactH: step.editorRedactH ?? undefined,
+          editorRedactColor: step.editorRedactColor ?? undefined,
+          editorWatermarkText: step.editorWatermarkText ?? undefined,
+          editorWatermarkPosition: step.editorWatermarkPosition ?? undefined,
+          editorWatermarkSize: step.editorWatermarkSize ?? undefined,
+          editorWatermarkColor: step.editorWatermarkColor ?? undefined,
+          editorWatermarkOpacity: step.editorWatermarkOpacity ?? undefined,
+          editorPixelateX: step.editorPixelateX ?? undefined,
+          editorPixelateY: step.editorPixelateY ?? undefined,
+          editorPixelateW: step.editorPixelateW ?? undefined,
+          editorPixelateH: step.editorPixelateH ?? undefined,
+          editorPixelateBlockSize: step.editorPixelateBlockSize ?? undefined,
+          editorSpotlightX: step.editorSpotlightX ?? undefined,
+          editorSpotlightY: step.editorSpotlightY ?? undefined,
+          editorSpotlightW: step.editorSpotlightW ?? undefined,
+          editorSpotlightH: step.editorSpotlightH ?? undefined,
+          editorSpotlightIntensity: step.editorSpotlightIntensity ?? undefined,
+          editorBadgeNumber: step.editorBadgeNumber ?? undefined,
+          editorBadgeX: step.editorBadgeX ?? undefined,
+          editorBadgeY: step.editorBadgeY ?? undefined,
+          editorBadgeColor: step.editorBadgeColor ?? undefined,
+          editorMagnifyX: step.editorMagnifyX ?? undefined,
+          editorMagnifyY: step.editorMagnifyY ?? undefined,
+          editorMagnifyW: step.editorMagnifyW ?? undefined,
+          editorMagnifyH: step.editorMagnifyH ?? undefined,
+          editorMagnifyScale: step.editorMagnifyScale ?? undefined,
+          editorMagnifyCorner: step.editorMagnifyCorner ?? undefined,
+          editorColorFilter: step.editorColorFilter ?? undefined,
+        });
+        stepSegments = [segmentPath];
+      }
 
-      segmentPaths.push(segmentPath);
-      segmentDurations.push(audioDuration); // Store duration for crossfade
-      tempFiles.push(segmentPath);
+      for (const segPath of stepSegments) {
+        segmentPaths.push(segPath);
+        segmentDurations.push(audioDuration / stepSegments.length);
+        tempFiles.push(segPath);
+      }
 
-      // Upload segment to R2
-      const segmentBuffer = await fs.readFile(segmentPath);
+      // Upload segment to R2 (use first segment as primary, or concatenate step segments)
+      const primarySegmentPath = stepSegments[0];
+      const segmentBuffer = await fs.readFile(primarySegmentPath);
       const segmentKey = await uploadToR2(segmentBuffer, {
         folder: `projects/${projectId}/segments`,
         filename: `step_${step.id}.mp4`,
@@ -281,7 +418,7 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
         })
         .where(eq(steps.id, step.id));
 
-      console.log(`[Worker] Step ${i + 1}/${totalSteps}: video segment rendered`);
+      console.log(`[Worker] Step ${i + 1}/${totalSteps}: video segment rendered (${stepSegments.length} sub-segments)`);
     }
 
     // ── STAGE 3: Concatenate segments with crossfade transitions ──
@@ -296,7 +433,18 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
       transitions.push(projectSteps[i].transition || "fade");
     }
 
-    if (project.introTemplate && project.introText) {
+    if (project.introVideoPath) {
+      // Use custom uploaded intro video
+      const introBuffer = await downloadFromR2(project.introVideoPath);
+      const introPath = path.join(os.tmpdir(), "aivideo-render", `intro_${nanoid(8)}.mp4`);
+      await fs.mkdir(path.dirname(introPath), { recursive: true });
+      await fs.writeFile(introPath, introBuffer);
+      tempFiles.push(introPath);
+      const introDuration = await probeMediaDuration(introPath);
+      segmentPaths.unshift(introPath);
+      segmentDurations.unshift(introDuration);
+      transitions.unshift("fade");
+    } else if (project.introTemplate && project.introText) {
       const introDuration = project.introDuration || 3.0;
       const introPath = await renderTextSegment(project.introTemplate, project.introText, outputRes, introDuration);
       segmentPaths.unshift(introPath);
@@ -304,7 +452,18 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
       transitions.unshift("fade");
       tempFiles.push(introPath);
     }
-    if (project.outroTemplate && project.outroText) {
+    if (project.outroVideoPath) {
+      // Use custom uploaded outro video
+      const outroBuffer = await downloadFromR2(project.outroVideoPath);
+      const outroPath = path.join(os.tmpdir(), "aivideo-render", `outro_${nanoid(8)}.mp4`);
+      await fs.mkdir(path.dirname(outroPath), { recursive: true });
+      await fs.writeFile(outroPath, outroBuffer);
+      tempFiles.push(outroPath);
+      const outroDuration = await probeMediaDuration(outroPath);
+      segmentPaths.push(outroPath);
+      segmentDurations.push(outroDuration);
+      transitions.push("fade");
+    } else if (project.outroTemplate && project.outroText) {
       const outroDuration = project.outroDuration || 3.0;
       const outroPath = await renderTextSegment(project.outroTemplate, project.outroText, outputRes, outroDuration);
       segmentPaths.push(outroPath);
