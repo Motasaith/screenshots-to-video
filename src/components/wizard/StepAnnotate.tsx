@@ -22,14 +22,13 @@ import {
   Settings2,
   Move,
   Maximize,
-  Blur,
+  Aperture,
   Shield,
   Stamp,
   Grid3x3,
   Sun,
   BadgeCheck,
   Search,
-  Palette,
   Scan,
   HelpCircle,
 } from "lucide-react";
@@ -767,7 +766,7 @@ export default function StepAnnotate() {
           <ToolButton
             active={mode === "blur"}
             onClick={() => setMode("blur")}
-            icon={<Blur className="w-4 h-4" />}
+            icon={<Aperture className="w-4 h-4" />}
             label="Blur"
           />
           <ToolButton
@@ -860,13 +859,13 @@ export default function StepAnnotate() {
         </div>
 
         {/* Main layout */}
-        <div className="mt-4 grid grid-cols-1 lg:grid-cols-[200px_1fr_320px] gap-4">
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-[120px_1fr] gap-3">
           {/* ── Left: Step thumbnails ── */}
-          <div className="sketch-card p-3 bg-[var(--sketch-card-bg)] h-fit max-h-[calc(100vh-240px)] overflow-y-auto">
-            <h3 className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-wider mb-3">
+          <div className="sketch-card p-2 bg-[var(--sketch-card-bg)] h-fit max-h-[calc(100vh-200px)] overflow-y-auto">
+            <h3 className="font-mono text-[10px] text-[var(--sketch-fg-muted)] uppercase tracking-wider mb-2">
               Steps
             </h3>
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {steps.map((step: any, idx: number) => {
                 const ann = annotations[step.id];
                 const isActive = idx === currentStepIndex;
@@ -876,33 +875,33 @@ export default function StepAnnotate() {
                   <button
                     key={step.id}
                     onClick={() => setCurrentStepIndex(idx)}
-                    className={`w-full text-left p-2 border-2 transition-all relative ${
+                    className={`w-full text-left p-1 border-2 transition-all relative ${
                       isActive
                         ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/10 shadow-[2px_2px_0px_0px_#FBBF24]"
                         : "border-[var(--sketch-fg-subtle)]/30 hover:border-[var(--sketch-border-color)]/40"
                     }`}
-                    style={{ borderRadius: "8px" }}
+                    style={{ borderRadius: "6px" }}
                   >
                     {edited && (
-                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500" />
+                      <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     )}
                     {step.screenshotPath ? (
                       <img
                         src={step.screenshotPath}
                         alt={`Step ${idx + 1}`}
-                        className="w-full aspect-video object-cover rounded mb-1"
+                        className="w-full aspect-video object-cover rounded-sm mb-0.5"
                       />
                     ) : (
-                      <div className="w-full aspect-video bg-[var(--sketch-fg-subtle)]/10 rounded mb-1 flex items-center justify-center">
-                        <ImageIcon className="w-4 h-4 text-[var(--sketch-fg-subtle)]" />
+                      <div className="w-full aspect-video bg-[var(--sketch-fg-subtle)]/10 rounded-sm mb-0.5 flex items-center justify-center">
+                        <ImageIcon className="w-3 h-3 text-[var(--sketch-fg-subtle)]" />
                       </div>
                     )}
-                    <div className="flex items-center gap-1">
-                      <span className="font-mono text-[10px] text-[var(--sketch-fg-muted)]">
+                    <div className="flex items-center gap-0.5">
+                      <span className="font-mono text-[9px] text-[var(--sketch-fg-muted)]">
                         {idx + 1}
                       </span>
-                      <span className="text-xs font-body truncate text-[var(--sketch-fg)]">
-                        {step.description?.slice(0, 30) || "Untitled"}
+                      <span className="text-[9px] font-body truncate text-[var(--sketch-fg)] leading-tight">
+                        {step.description?.slice(0, 20) || "Untitled"}
                       </span>
                     </div>
                   </button>
@@ -965,7 +964,7 @@ export default function StepAnnotate() {
                     )}
                     {currentAnn?.editorBlurX != null && (
                       <span className="flex items-center gap-1 text-xs font-mono text-pink-600 bg-pink-50 px-2 py-0.5 rounded">
-                        <Blur className="w-3 h-3" />
+                        <Aperture className="w-3 h-3" />
                         Blur
                       </span>
                     )}
@@ -1060,7 +1059,7 @@ export default function StepAnnotate() {
                         height: `${rect.h}%`,
                       }}
                     >
-                      <div className="absolute -top-5 left-0 bg-[#FBBF24] text-black text-[10px] font-mono px-1 rounded">
+                      <div className="absolute top-1 left-1 bg-[#FBBF24] text-black text-[10px] font-mono px-1 rounded">
                         Highlight
                       </div>
                     </div>
@@ -1090,7 +1089,7 @@ export default function StepAnnotate() {
                         height: `${cropRect.h}%`,
                       }}
                     >
-                      <div className="absolute -top-5 left-0 bg-emerald-500 text-white text-[10px] font-mono px-1 rounded">
+                      <div className="absolute top-1 left-1 bg-emerald-500 text-white text-[10px] font-mono px-1 rounded">
                         Crop
                       </div>
                     </div>
@@ -1115,7 +1114,7 @@ export default function StepAnnotate() {
                           backgroundColor: "rgba(255,255,255,0.05)",
                         }}
                       />
-                      <div className="absolute -top-5 left-0 bg-pink-500 text-white text-[10px] font-mono px-1 rounded">
+                      <div className="absolute top-1 left-1 bg-pink-500 text-white text-[10px] font-mono px-1 rounded">
                         Blur
                       </div>
                     </div>
@@ -1133,7 +1132,7 @@ export default function StepAnnotate() {
                         backgroundColor: currentAnn?.editorRedactColor || "#000000",
                       }}
                     >
-                      <div className="absolute -top-5 left-0 bg-gray-700 text-white text-[10px] font-mono px-1 rounded">
+                      <div className="absolute top-1 left-1 bg-gray-700 text-white text-[10px] font-mono px-1 rounded">
                         Redacted
                       </div>
                     </div>
@@ -1194,7 +1193,7 @@ export default function StepAnnotate() {
                           opacity: 0.7,
                         }}
                       />
-                      <div className="absolute -top-5 left-0 bg-cyan-500 text-white text-[10px] font-mono px-1 rounded">
+                      <div className="absolute top-1 left-1 bg-cyan-500 text-white text-[10px] font-mono px-1 rounded">
                         Pixelate
                       </div>
                     </div>
@@ -1225,7 +1224,7 @@ export default function StepAnnotate() {
                           borderRadius: "4px",
                         }}
                       >
-                        <div className="absolute -top-5 left-0 bg-orange-500 text-white text-[10px] font-mono px-1 rounded">
+                        <div className="absolute top-1 left-1 bg-orange-500 text-white text-[10px] font-mono px-1 rounded">
                           Spotlight
                         </div>
                       </div>
@@ -1248,7 +1247,7 @@ export default function StepAnnotate() {
                       >
                         {currentAnn.editorBadgeNumber}
                       </div>
-                      <div className="absolute -top-5 left-0 bg-yellow-500 text-white text-[10px] font-mono px-1 rounded">
+                      <div className="absolute top-1 left-1 bg-yellow-500 text-white text-[10px] font-mono px-1 rounded">
                         Badge
                       </div>
                     </div>
@@ -1372,8 +1371,8 @@ export default function StepAnnotate() {
                     </div>
                   ))}
 
-                  {/* Mode indicator */}
-                  <div className="absolute top-2 left-2 bg-black/60 text-white text-[10px] font-mono px-2 py-1 rounded">
+                  {/* Mode indicator — moved to bottom so it doesn't cover screenshot */}
+                  <div className="absolute bottom-2 left-2 bg-black/60 text-white text-[10px] font-mono px-2 py-1 rounded z-10">
                     {mode === "rect" && "Highlight Box"}
                     {mode === "point" && "Zoom Point"}
                     {mode === "overlay" && "Click to place text"}
@@ -1407,15 +1406,16 @@ export default function StepAnnotate() {
               </>
             )}
           </div>
+        </div>
 
-          {/* ── Right: Properties panel ── */}
-          <div className="sketch-card p-4 bg-[var(--sketch-card-bg)] h-fit">
-            <h3 className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-wider mb-3 flex items-center gap-2">
-              <Settings2 className="w-3 h-3" />
-              Properties
-            </h3>
+        {/* ── Bottom: Properties panel ── */}
+        <div className="mt-3 sketch-card p-4 bg-[var(--sketch-card-bg)]">
+          <h3 className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-wider mb-3 flex items-center gap-2">
+            <Settings2 className="w-3 h-3" />
+            Properties
+          </h3>
 
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="w-full grid grid-cols-5 mb-3">
                 <TabsTrigger value="caption" className="text-xs">
                   <Type className="w-3 h-3 mr-1" />
@@ -2791,7 +2791,6 @@ export default function StepAnnotate() {
               </TabsContent>
             </Tabs>
           </div>
-        </div>
 
         {/* Footer actions */}
         <div className="mt-6 flex items-center justify-between">
