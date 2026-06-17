@@ -4,7 +4,6 @@ type WizardStep =
   | "setup"
   | "upload"
   | "script"
-  | "annotate"
   | "preview"
   | "voice"
   | "render"
@@ -31,19 +30,6 @@ interface WizardStepData {
   };
   script: {
     scripts: Record<number, string>;
-  };
-  annotate: {
-    annotations: Record<
-      number,
-      {
-        zoomTargetX?: number;
-        zoomTargetY?: number;
-        zoomRectX?: number;
-        zoomRectY?: number;
-        zoomRectWidth?: number;
-        zoomRectHeight?: number;
-      }
-    >;
   };
   preview: {
     stepTransitions: Record<number, TransitionType>;
@@ -116,9 +102,6 @@ const initialState: Omit<
     script: {
       scripts: {},
     },
-    annotate: {
-      annotations: {},
-    },
     preview: {
       stepTransitions: {},
       transitionDuration: 0.5,
@@ -167,7 +150,6 @@ export const stepOrder: WizardStep[] = [
   "setup",
   "upload",
   "script",
-  "annotate",
   "preview",
   "voice",
   "render",
@@ -180,7 +162,6 @@ export const stepLabels: Record<WizardStep, string> = {
   setup: "Setup",
   upload: "Upload",
   script: "Script",
-  annotate: "Annotate",
   preview: "Preview",
   voice: "Voice",
   render: "Render",

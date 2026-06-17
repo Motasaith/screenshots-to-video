@@ -14,7 +14,6 @@ import {
 import StepSetup from "@/components/wizard/StepSetup";
 import StepUpload from "@/components/wizard/StepUpload";
 import StepScript from "@/components/wizard/StepScript";
-import StepAnnotate from "@/components/wizard/StepAnnotate";
 import StepPreview from "@/components/wizard/StepPreview";
 import StepVoice from "@/components/wizard/StepVoice";
 import StepRender from "@/components/wizard/StepRender";
@@ -84,7 +83,6 @@ export default function Wizard() {
     setup: <StepSetup />,
     upload: <StepUpload />,
     script: <StepScript />,
-    annotate: <StepAnnotate />,
     preview: <StepPreview />,
     voice: <StepVoice />,
     render: <StepRender />,
@@ -112,7 +110,7 @@ export default function Wizard() {
               </span>
             )}
             <span className="font-mono text-xs text-[var(--sketch-fg-muted)] bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm">
-              Step {currentStepIdx + 1} of 7
+              Step {currentStepIdx + 1} of {stepOrder.length}
             </span>
           </div>
         </div>
@@ -211,7 +209,7 @@ export default function Wizard() {
 
           <div className="flex items-center gap-2">
             <span className="font-mono text-xs text-muted-foreground">
-              {currentStepIdx + 1} / 7
+              {currentStepIdx + 1} / {stepOrder.length}
             </span>
           </div>
         </div>

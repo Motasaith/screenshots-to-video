@@ -226,8 +226,7 @@ export async function getClickRipplePngs(
         framePath,
       ], {
         timeout: 10000,
-        shell: true,
-      });
+        });
       frames.push(framePath);
     } catch (err: any) {
       console.warn(`[CursorOverlay] Failed to generate ripple frame ${i}:`, err.message);

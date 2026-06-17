@@ -202,8 +202,7 @@ export async function probeAudioDuration(filePath: string): Promise<number> {
       filePath,
     ], {
       timeout: 10000,
-      shell: true,
-    });
+      });
 
     const duration = parseFloat(stdout.trim());
     if (isNaN(duration)) {

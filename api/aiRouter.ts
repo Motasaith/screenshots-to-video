@@ -13,6 +13,7 @@ import {
   checkMediaSafety,
 } from "./lib/llm";
 import { generateTTSAudio, speedToRate } from "./lib/tts";
+import { detectGibberish } from "./lib/gibberish";
 import fs from "fs/promises";
 
 // ── Fallback responses when LLM is not configured ──
@@ -64,12 +65,7 @@ const PLATFORM_FALLBACK_SCRIPTS: Record<string, string[]> = {
 };
 
 function isGibberish(text: string): boolean {
-  if (!text) return false;
-  // More than 4 consecutive identical characters (e.g. jjjjjjj)
-  if (/(.)\1{4,}/.test(text)) return true;
-  // 6 or more consecutive consonants (e.g. fsfsgsfgg)
-  if (/[bcdfghjklmnpqrstvwxyzBCDFGHJKLMNPQRSTVWXYZ]{6,}/.test(text)) return true;
-  return false;
+  return detectGibberish(text).isGibberish;
 }
 
 export const aiRouter = createRouter({
@@ -172,6 +168,19 @@ export const aiRouter = createRouter({
         .where(eq(steps.projectId, input.projectId))
         .orderBy(steps.order);
 
+      // Reject gibberish descriptions before burning LLM tokens. Tell the
+      // client which steps are bad so the UI can highlight them.
+      const badSteps = projectSteps
+        .map((s) => ({ s, g: detectGibberish(s.description) }))
+        .filter((x) => x.g.isGibberish)
+        .map((x) => ({ stepId: x.s.id, order: x.s.order, reason: x.g.reason }));
+
+      if (badSteps.length > 0) {
+        throw new Error(
+          `Step ${badSteps[0].order} looks like random text. Please write a real description for it. (${badSteps[0].reason})`
+        );
+      }
+
       let scripts: string[];
 
       if (isLLMConfigured()) {
@@ -182,6 +191,7 @@ export const aiRouter = createRouter({
             projectSteps.map((s) => ({
               order: s.order,
               description: s.description,
+              screenshotPath: s.screenshotPath || undefined,
             }))
           );
         } catch (err) {
@@ -227,6 +237,83 @@ export const aiRouter = createRouter({
       }
 
       return { scripts: updatedSteps.map((s) => s.aiScript) };
+    }),
+
+  regenerateStepScript: authedQuery
+    .use(rateLimitByUser(60_000, 15))
+    .input(z.object({ stepId: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const [step] = await getDb()
+        .select()
+        .from(steps)
+        .where(eq(steps.id, input.stepId))
+        .limit(1);
+
+      if (!step) throw new Error("Step not found");
+
+      const [project] = await getDb()
+        .select()
+        .from(projects)
+        .where(
+          and(
+            eq(projects.id, step.projectId),
+            eq(projects.userId, ctx.user!.id)
+          )
+        )
+        .limit(1);
+
+      if (!project) throw new Error("Not authorized");
+
+      // Reject gibberish descriptions so the LLM never writes troll narration.
+      const g = detectGibberish(step.description);
+      if (g.isGibberish) {
+        throw new Error(
+          `Step ${step.order} looks like random text. Please write a real description for it. (${g.reason})`
+        );
+      }
+
+      let newScript: string;
+
+      if (isLLMConfigured()) {
+        try {
+          // Regenerate ALL scripts, then pick just this one so the LLM keeps
+          // them coherent and on-topic. This way the new script is grounded in
+          // the actual step description and screenshot.
+          const allScripts = await generateTutorialScript(
+            project.description || project.title,
+            project.platform,
+            [
+              {
+                order: step.order,
+                description: step.description,
+                screenshotPath: step.screenshotPath || undefined,
+              },
+            ]
+          );
+          newScript =
+            allScripts[0] ||
+            `Proceed with step ${step.order} as shown on screen.`;
+        } catch (err) {
+          console.warn("LLM single-step regeneration failed:", err);
+          newScript = `${step.description}.`;
+        }
+      } else {
+        // No LLM: derive a script directly from the user's description so it
+        // is at least on-topic, even if not fancy.
+        newScript = step.description.endsWith(".")
+          ? step.description
+          : `${step.description}.`;
+      }
+
+      await getDb()
+        .update(steps)
+        .set({
+          aiScript: newScript,
+          userEditedScript: newScript,
+        })
+        .where(eq(steps.id, input.stepId));
+
+      return { stepId: input.stepId, script: newScript };
     }),
 
   suggestZooms: authedQuery

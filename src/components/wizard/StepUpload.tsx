@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { useParams, useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { useWizardStore } from "@/hooks/useWizardStore";
@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { nanoid } from "nanoid";
+import { detectGibberish } from "@/lib/gibberish";
 import {
   DndContext,
   closestCenter,
@@ -48,6 +49,85 @@ interface WizardStep {
   isCheckingSafety?: boolean;
   isSafe?: boolean;
   safetyReason?: string;
+}
+
+function padImageToRatio(file: File, aspectRatioStr: string): Promise<File> {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith("image/")) {
+      resolve(file);
+      return;
+    }
+    
+    const img = new Image();
+    img.onload = () => {
+      let targetRatio = 16 / 9;
+      if (aspectRatioStr === "9:16") targetRatio = 9 / 16;
+      else if (aspectRatioStr === "1:1") targetRatio = 1;
+      else if (aspectRatioStr === "4:5") targetRatio = 4 / 5;
+
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+      const imgRatio = w / h;
+
+      // Allow small tolerance
+      if (Math.abs(imgRatio - targetRatio) < 0.01) {
+        resolve(file);
+        return;
+      }
+
+      let canvasW = w;
+      let canvasH = h;
+      let drawX = 0;
+      let drawY = 0;
+
+      if (imgRatio > targetRatio) {
+        // Image is wider than target -> pad vertically (top/bottom)
+        canvasW = w;
+        canvasH = Math.round(w / targetRatio);
+        drawX = 0;
+        drawY = Math.round((canvasH - h) / 2);
+      } else {
+        // Image is taller than target -> pad horizontally (left/right)
+        canvasH = h;
+        canvasW = Math.round(h * targetRatio);
+        drawX = Math.round((canvasW - w) / 2);
+        drawY = 0;
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = canvasW;
+      canvas.height = canvasH;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(file);
+        return;
+      }
+
+      // Fill background with black
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(0, 0, canvasW, canvasH);
+
+      // Draw image centered
+      ctx.drawImage(img, drawX, drawY, w, h);
+
+      // Convert back to File
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          resolve(file);
+          return;
+        }
+        const paddedFile = new File([blob], file.name, {
+          type: file.type || "image/png",
+          lastModified: Date.now(),
+        });
+        resolve(paddedFile);
+      }, file.type || "image/png");
+    };
+    img.onerror = () => {
+      resolve(file);
+    };
+    img.src = URL.createObjectURL(file);
+  });
 }
 
 async function uploadFile(
@@ -90,6 +170,9 @@ function SortableStep({
   onRemoveScreenshot: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
+  const dropZoneRef = useRef<HTMLButtonElement>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
   const {
     attributes,
     listeners,
@@ -106,8 +189,82 @@ function SortableStep({
     opacity: isDragging ? 0.8 : 1,
   };
 
+  // Live gibberish check so the user sees a soft warning the moment they
+  // type nonsense (before they even try to continue).
+  const gibberish = useMemo(
+    () => detectGibberish(step.description),
+    [step.description]
+  );
+
+  // Accept files dropped anywhere on the step card (and pasted from the clipboard).
+  useEffect(() => {
+    const node = cardRef.current;
+    if (!node) return;
+
+    const handlePaste = (e: ClipboardEvent) => {
+      // Only react when the step is focused / the user is interacting with it
+      if (!node.contains(document.activeElement) && document.activeElement !== document.body) {
+        return;
+      }
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.kind === "file" && item.type.startsWith("image/")) {
+          const file = item.getAsFile();
+          if (file) {
+            e.preventDefault();
+            onFileUpload(file);
+            return;
+          }
+        }
+      }
+    };
+
+    const handleDragOver = (e: DragEvent) => {
+      if (e.dataTransfer?.types?.includes("Files")) {
+        e.preventDefault();
+        setIsDragOver(true);
+      }
+    };
+    const handleDragLeave = (e: DragEvent) => {
+      if (!node.contains(e.relatedTarget as Node)) {
+        setIsDragOver(false);
+      }
+    };
+    const handleDrop = (e: DragEvent) => {
+      if (!e.dataTransfer?.files?.length) return;
+      e.preventDefault();
+      setIsDragOver(false);
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith("image/")) {
+        onFileUpload(file);
+      }
+    };
+
+    node.addEventListener("paste", handlePaste as any);
+    node.addEventListener("dragover", handleDragOver);
+    node.addEventListener("dragleave", handleDragLeave);
+    node.addEventListener("drop", handleDrop);
+
+    return () => {
+      node.removeEventListener("paste", handlePaste as any);
+      node.removeEventListener("dragover", handleDragOver);
+      node.removeEventListener("dragleave", handleDragLeave);
+      node.removeEventListener("drop", handleDrop);
+    };
+  }, [onFileUpload]);
+
   return (
-    <div ref={setNodeRef} style={style} className={`sketch-card p-4 bg-[var(--sketch-card-bg)] ${isDragging ? 'shadow-xl scale-[1.02]' : ''}`}>
+    <div
+      ref={(el) => {
+        setNodeRef(el);
+        cardRef.current = el;
+      }}
+      data-step-id={step.localId}
+      style={style}
+      className={`sketch-card p-4 bg-[var(--sketch-card-bg)] relative ${isDragging ? 'shadow-xl scale-[1.02]' : ''} ${isDragOver ? 'ring-2 ring-blue-500 ring-offset-2 ring-offset-[var(--sketch-bg)]' : ''}`}
+    >
       <div className="flex items-start gap-4">
         <div className="flex flex-col items-center gap-1 pt-1">
           <span className="font-hand text-lg font-bold text-[var(--sketch-fg-muted)]">
@@ -155,6 +312,7 @@ function SortableStep({
               </div>
             ) : (
               <button
+                ref={dropZoneRef}
                 onClick={() => fileInputRef.current?.click()}
                 className={`w-full h-full border-2 border-dashed flex flex-col items-center justify-center gap-1 transition-colors ${
                   error?.includes("Screenshot")
@@ -165,7 +323,7 @@ function SortableStep({
               >
                 <Upload className="w-5 h-5 text-[var(--sketch-fg-subtle)]" />
                 <span className="font-hand text-sm text-[var(--sketch-fg-subtle)]">
-                  Drop here!
+                  Drop / paste!
                 </span>
               </button>
             )}
@@ -188,13 +346,21 @@ function SortableStep({
               placeholder="e.g. Open Task Manager and click the Startup tab"
               rows={3}
               className={`sketch-input resize-none text-sm ${
-                error?.includes("Description") ? "border-red-500" : ""
+                error?.includes("Description") || (step.description.trim() && gibberish.isGibberish)
+                  ? "border-red-500"
+                  : ""
               }`}
             />
             {error?.includes("Description") && (
               <p className="font-body text-xs text-red-600 mt-1 flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3" />
                 {error}
+              </p>
+            )}
+            {!error?.includes("Description") && step.description.trim() && gibberish.isGibberish && (
+              <p className="font-body text-xs text-amber-600 mt-1 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                {gibberish.reason}
               </p>
             )}
             {step.uploadError && (
@@ -222,7 +388,7 @@ function SortableStep({
             {step.isCheckingSafety && (
               <div className="mt-2 text-xs flex items-center gap-1 text-blue-600">
                 <Loader2 className="w-3 h-3 animate-spin" />
-                Scanning for safety & copyright...
+                Running Copyright Checker...
               </div>
             )}
             {step.isSafe === false && (
@@ -236,7 +402,7 @@ function SortableStep({
             {step.isSafe === true && (
               <div className="mt-2 text-xs flex items-center gap-1 text-emerald-600">
                 <CheckCircle className="w-3 h-3" />
-                Safe & Clear
+                Copyright Checker: Clear
               </div>
             )}
           </div>
@@ -406,13 +572,22 @@ export default function StepUpload() {
       return;
     }
 
-    const previewUrl = URL.createObjectURL(file);
+    let processedFile = file;
+    if (file.type.startsWith("image/")) {
+      try {
+        processedFile = await padImageToRatio(file, stepData.setup.aspectRatio || "16:9");
+      } catch (e) {
+        console.error("Error padding image:", e);
+      }
+    }
+
+    const previewUrl = URL.createObjectURL(processedFile);
     
     setSteps(currentSteps => currentSteps.map(s => {
       if (s.localId === localId) {
         return {
           ...s,
-          file,
+          file: processedFile,
           previewUrl,
           isUploading: true,
           uploadError: undefined,
@@ -428,7 +603,7 @@ export default function StepUpload() {
     });
 
     try {
-      const result = await uploadFile(file, `projects/${projectIdNum}/screenshots`);
+      const result = await uploadFile(processedFile, `projects/${projectIdNum}/screenshots`);
       setSteps(currentSteps => currentSteps.map(s => {
         if (s.localId === localId) {
           return {
@@ -461,7 +636,7 @@ export default function StepUpload() {
             return s;
           }));
         })
-        .catch((err) => {
+        .catch(() => {
           setSteps(currentSteps => currentSteps.map(s => {
             if (s.localId === localId) return { ...s, isCheckingSafety: false };
             return s;
@@ -485,15 +660,23 @@ export default function StepUpload() {
 
   const validate = useCallback(() => {
     const errs: Record<string, string> = {};
-    steps.forEach((step) => {
-      if (!step.description.trim()) {
-        errs[step.localId] = "Description is required";
+    steps.forEach((step, idx) => {
+      const desc = step.description.trim();
+      if (!desc) {
+        errs[step.localId] = `Description is required for step ${idx + 1}`;
+      } else if (desc.length < 5) {
+        errs[step.localId] = `Description is too short for step ${idx + 1} (min 5 characters)`;
+      } else {
+        const g = detectGibberish(desc);
+        if (g.isGibberish) {
+          errs[step.localId] = `Step ${idx + 1} looks like random text — please write a real description.`;
+        }
       }
       if (!step.previewUrl && !step.screenshotPath && !step.screenshotKey) {
-        errs[step.localId] = "Screenshot is required";
+        errs[step.localId] = `Screenshot is required for step ${idx + 1}`;
       }
       if (step.isUploading) {
-        errs[step.localId] = "Wait for upload to finish";
+        errs[step.localId] = `Wait for upload to finish (step ${idx + 1})`;
       }
     });
     setErrors(errs);
@@ -501,7 +684,15 @@ export default function StepUpload() {
   }, [steps]);
 
   const handleContinue = async () => {
-    if (!validate()) return;
+    if (!validate()) {
+      // Scroll to the first invalid step so the user can see what's missing
+      const firstBadId = Object.keys(errors)[0] || (steps.find(s => !s.description.trim() || (!s.previewUrl && !s.screenshotPath && !s.screenshotKey))?.localId);
+      if (firstBadId) {
+        const el = document.querySelector(`[data-step-id="${firstBadId}"]`);
+        el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      return;
+    }
 
     setIsSaving(true);
     setStepData("upload", { steps });

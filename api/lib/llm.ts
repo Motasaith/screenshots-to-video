@@ -79,7 +79,7 @@ export async function chatCompletion(
 export async function generateTutorialScript(
   description: string,
   platform: string,
-  steps: Array<{ order: number; description: string }>
+  steps: Array<{ order: number; description: string; screenshotPath?: string }>
 ): Promise<string[]> {
   const stepsText = steps
     .map((s) => `Step ${s.order}: ${s.description}`)
@@ -99,11 +99,19 @@ How a real tutorial narrator talks:
 - Refer to what's on screen: "this button right here", "up in the top corner", "see that menu?".
 - 1-3 sentences per step. Be specific about the action. No markdown, no emoji, no stage directions, no quotes around UI names — say them plainly.
 
-Steps:
+CRITICAL RULES:
+- Every script MUST be written SPECIFICALLY for the step description it is paired with. Do NOT invent steps, do NOT add steps that are not in the list, do NOT rearrange them.
+- The narration for step N must describe EXACTLY the action in "Step N" below. If a step says "scroll down on the left sidebar and select About", the narration must be about scrolling down the left sidebar and selecting About — not about something else.
+- Never reuse a script from another step. Each step's script is unique.
+- If a step description mentions a specific UI element (button, menu, tab, field), mention it in the narration so the viewer knows what to look at on screen.
+- Keep the script faithful to the user's description. Do not add unrelated actions, do not skip the action, do not summarize it away.
+
+Steps (in order — write one script per step, in this exact order):
 ${stepsText}
 
 Return ONLY a JSON object with this exact format:
-{"scripts": ["narration for step 1", "narration for step 2", ...]}`;
+{"scripts": ["narration for step 1", "narration for step 2", ...]}
+The array MUST have exactly ${steps.length} entries, in the same order as the steps above. Do not add or remove entries.`;
 
   const response = await chatCompletion(
     [{ role: "user", content: prompt }],

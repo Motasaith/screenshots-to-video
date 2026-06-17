@@ -3,6 +3,7 @@ import { createRouter, authedQuery, rateLimitByUser } from "./middleware";
 import { getDb } from "./queries/connection";
 import { steps, projects } from "@db/schema";
 import { eq, and } from "drizzle-orm";
+import { detectGibberish } from "./lib/gibberish";
 
 export const stepRouter = createRouter({
   create: authedQuery
@@ -30,6 +31,14 @@ export const stepRouter = createRouter({
         .limit(1);
 
       if (!project) throw new Error("Project not found");
+
+      // Reject keyboard-mash / troll input.
+      const g = detectGibberish(input.description);
+      if (g.isGibberish) {
+        throw new Error(
+          g.reason || "Step description looks like random text. Please write a real description."
+        );
+      }
 
       const [result] = await getDb()
         .insert(steps)
@@ -86,64 +95,64 @@ export const stepRouter = createRouter({
         screenshotPath: z.string().optional(),
         aiScript: z.string().optional(),
         userEditedScript: z.string().optional(),
-        zoomTargetX: z.number().min(0).max(100).optional(),
-        zoomTargetY: z.number().min(0).max(100).optional(),
-        zoomRectX: z.number().min(0).max(100).optional(),
-        zoomRectY: z.number().min(0).max(100).optional(),
-        zoomRectWidth: z.number().min(0).max(100).optional(),
-        zoomRectHeight: z.number().min(0).max(100).optional(),
-        editorCaptionText: z.string().optional(),
-        editorCaptionPosition: z.string().optional(),
-        editorCaptionStyle: z.string().optional(),
-        editorCaptionColor: z.string().optional(),
-        editorCaptionSize: z.string().optional(),
-        editorOverlayText: z.string().optional(),
-        editorOverlayX: z.number().optional(),
-        editorOverlayY: z.number().optional(),
-        editorOverlayColor: z.string().optional(),
-        editorOverlaySize: z.string().optional(),
-        editorCropX: z.number().optional(),
-        editorCropY: z.number().optional(),
-        editorCropW: z.number().optional(),
-        editorCropH: z.number().optional(),
-        editorBlurX: z.number().optional(),
-        editorBlurY: z.number().optional(),
-        editorBlurW: z.number().optional(),
-        editorBlurH: z.number().optional(),
-        editorBlurIntensity: z.number().optional(),
-        editorRedactX: z.number().optional(),
-        editorRedactY: z.number().optional(),
-        editorRedactW: z.number().optional(),
-        editorRedactH: z.number().optional(),
-        editorRedactColor: z.string().optional(),
-        editorWatermarkText: z.string().optional(),
-        editorWatermarkPosition: z.string().optional(),
-        editorWatermarkSize: z.string().optional(),
-        editorWatermarkColor: z.string().optional(),
-        editorWatermarkOpacity: z.number().optional(),
-        editorPixelateX: z.number().optional(),
-        editorPixelateY: z.number().optional(),
-        editorPixelateW: z.number().optional(),
-        editorPixelateH: z.number().optional(),
-        editorPixelateBlockSize: z.number().optional(),
-        editorSpotlightX: z.number().optional(),
-        editorSpotlightY: z.number().optional(),
-        editorSpotlightW: z.number().optional(),
-        editorSpotlightH: z.number().optional(),
-        editorSpotlightIntensity: z.number().optional(),
-        editorBadgeNumber: z.number().optional(),
-        editorBadgeX: z.number().optional(),
-        editorBadgeY: z.number().optional(),
-        editorBadgeColor: z.string().optional(),
-        editorMagnifyX: z.number().optional(),
-        editorMagnifyY: z.number().optional(),
-        editorMagnifyW: z.number().optional(),
-        editorMagnifyH: z.number().optional(),
-        editorMagnifyScale: z.number().optional(),
-        editorMagnifyCorner: z.string().optional(),
-        editorColorFilter: z.string().optional(),
-        editorZoomScale: z.number().optional(),
-        editorDuration: z.number().optional(),
+        zoomTargetX: z.number().min(0).max(100).nullish(),
+        zoomTargetY: z.number().min(0).max(100).nullish(),
+        zoomRectX: z.number().min(0).max(100).nullish(),
+        zoomRectY: z.number().min(0).max(100).nullish(),
+        zoomRectWidth: z.number().min(0).max(100).nullish(),
+        zoomRectHeight: z.number().min(0).max(100).nullish(),
+        editorCaptionText: z.string().nullish(),
+        editorCaptionPosition: z.string().nullish(),
+        editorCaptionStyle: z.string().nullish(),
+        editorCaptionColor: z.string().nullish(),
+        editorCaptionSize: z.string().nullish(),
+        editorOverlayText: z.string().nullish(),
+        editorOverlayX: z.number().nullish(),
+        editorOverlayY: z.number().nullish(),
+        editorOverlayColor: z.string().nullish(),
+        editorOverlaySize: z.string().nullish(),
+        editorCropX: z.number().nullish(),
+        editorCropY: z.number().nullish(),
+        editorCropW: z.number().nullish(),
+        editorCropH: z.number().nullish(),
+        editorBlurX: z.number().nullish(),
+        editorBlurY: z.number().nullish(),
+        editorBlurW: z.number().nullish(),
+        editorBlurH: z.number().nullish(),
+        editorBlurIntensity: z.number().nullish(),
+        editorRedactX: z.number().nullish(),
+        editorRedactY: z.number().nullish(),
+        editorRedactW: z.number().nullish(),
+        editorRedactH: z.number().nullish(),
+        editorRedactColor: z.string().nullish(),
+        editorWatermarkText: z.string().nullish(),
+        editorWatermarkPosition: z.string().nullish(),
+        editorWatermarkSize: z.string().nullish(),
+        editorWatermarkColor: z.string().nullish(),
+        editorWatermarkOpacity: z.number().nullish(),
+        editorPixelateX: z.number().nullish(),
+        editorPixelateY: z.number().nullish(),
+        editorPixelateW: z.number().nullish(),
+        editorPixelateH: z.number().nullish(),
+        editorPixelateBlockSize: z.number().nullish(),
+        editorSpotlightX: z.number().nullish(),
+        editorSpotlightY: z.number().nullish(),
+        editorSpotlightW: z.number().nullish(),
+        editorSpotlightH: z.number().nullish(),
+        editorSpotlightIntensity: z.number().nullish(),
+        editorBadgeNumber: z.number().nullish(),
+        editorBadgeX: z.number().nullish(),
+        editorBadgeY: z.number().nullish(),
+        editorBadgeColor: z.string().nullish(),
+        editorMagnifyX: z.number().nullish(),
+        editorMagnifyY: z.number().nullish(),
+        editorMagnifyW: z.number().nullish(),
+        editorMagnifyH: z.number().nullish(),
+        editorMagnifyScale: z.number().nullish(),
+        editorMagnifyCorner: z.string().nullish(),
+        editorColorFilter: z.string().nullish(),
+        editorZoomScale: z.number().nullish(),
+        editorDuration: z.number().nullish(),
         editorMultiZooms: z
           .array(
             z.object({
@@ -192,6 +201,16 @@ export const stepRouter = createRouter({
       const updateData: any = { ...data };
       if (data.isSafe !== undefined) {
         updateData.isSafe = data.isSafe ? 1 : 0;
+      }
+
+      // Reject gibberish descriptions on update too.
+      if (data.description !== undefined) {
+        const g = detectGibberish(data.description);
+        if (g.isGibberish) {
+          throw new Error(
+            g.reason || "Step description looks like random text. Please write a real description."
+          );
+        }
       }
 
       await getDb()

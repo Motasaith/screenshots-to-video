@@ -63,8 +63,7 @@ export async function probeImageDimensions(
     imagePath,
   ], {
     timeout: 10000,
-    shell: true,
-  });
+    });
 
   const [w, h] = stdout.trim().split("x").map(Number);
   if (!w || !h) throw new Error(`Failed to probe image dimensions: ${stdout}`);
@@ -84,8 +83,7 @@ export async function probeMediaDuration(filePath: string): Promise<number> {
       filePath,
     ], {
       timeout: 10000,
-      shell: true,
-    });
+      });
     const duration = parseFloat(stdout.trim());
     if (isNaN(duration)) throw new Error("Non-numeric duration");
     return duration;
@@ -594,8 +592,7 @@ export async function renderStepVideo(opts: {
     if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
     await execFileAsync(ffmpegPath, args, {
       timeout: 300000, // supersampled zoompan is heavier — allow 5 min
-      shell: true,
-    });
+      });
   } catch (err: any) {
     console.warn("[FFmpeg] Primary render failed, retrying simplified:", err.message);
     return renderStepVideoFallback(opts, outputPath, paddedDuration);
@@ -819,6 +816,8 @@ async function renderStepVideoFallback(
     }
   }
 
+  // Fallback renders at output resolution (no supersampling), so compute
+  // zoom target in output-resolution pixels directly.
   const geo = fitGeometry(imgWidth, imgHeight, outW, outH);
   const targetXPx = geo.offsetX + (opts.zoomTargetX / 100) * geo.scaledW;
   const targetYPx = geo.offsetY + (opts.zoomTargetY / 100) * geo.scaledH;
@@ -891,8 +890,7 @@ async function renderStepVideoFallback(
   if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
   await execFileAsync(ffmpegPath, args, {
     timeout: 180000,
-    shell: true,
-  });
+    });
 
   const stat = await fs.stat(outputPath);
   if (stat.size === 0) throw new Error("FFmpeg produced an empty video file");
@@ -942,8 +940,7 @@ export async function concatenateSegments(
       outputPath,
     ], {
       timeout: 120000,
-      shell: true,
-    });
+      });
   } catch (err: any) {
     console.warn("[FFmpeg] Stream-copy concat failed, re-encoding:", err.message);
     return concatenateSegmentsReencode(segmentPaths);
@@ -994,8 +991,7 @@ async function concatenateSegmentsReencode(
     outputPath,
   ], {
     timeout: 300000,
-    shell: true,
-  });
+    });
 
   const stat = await fs.stat(outputPath);
   if (stat.size === 0) throw new Error("FFmpeg produced an empty final video");
@@ -1172,8 +1168,7 @@ export async function concatenateSegmentsWithTransitions(
   try {
     await execFileAsync(ffmpegPath, args, {
       timeout: 600000, // 10 minutes max for complex xfade
-      shell: true,
-    });
+      });
   } catch (err: any) {
     console.warn("[FFmpeg] xfade concat failed, falling back to simple concat:", err.message);
     return concatenateSegments(segmentPaths);
@@ -1217,7 +1212,7 @@ export async function trimAudio(
     "-t", durationSec.toFixed(3),
     "-c:a", "copy",
     outputPath,
-  ], { timeout: 30000, shell: true });
+  ], { timeout: 30000, });
   return outputPath;
 }
 
@@ -1442,8 +1437,7 @@ export async function mixBackgroundMusic(
   if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
   await execFileAsync(ffmpegPath, args, {
     timeout: 180000,
-    shell: true,
-  });
+    });
 
   return outputPath;
 }

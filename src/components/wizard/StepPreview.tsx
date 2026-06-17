@@ -13,6 +13,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { StepEditorPanel } from "./StepEditorPanel";
 
 const transitionTypes: { value: TransitionType; label: string }[] = [
   { value: "fade", label: "Fade" },
@@ -112,24 +113,29 @@ export default function StepPreview() {
   };
 
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-5xl">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <div className="relative">
           <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
-            Step 4 of 8
+            Step 4 of 7
           </span>
           <span className="font-hand text-lg text-[var(--sketch-fg-muted)] absolute -top-6 left-32 rotate-[-5deg] animate-float hidden sm:block">
-            Add some flair ✨
+            Polish & customize ✨
           </span>
         </div>
         <h2 className="font-body font-bold text-3xl mt-3 tracking-tight text-[var(--sketch-fg)]">
-          Adjustments & Preview
+          Preview & Editor
         </h2>
         <p className="font-body text-[var(--sketch-fg-muted)] mt-2">
-          Configure video transitions and customize your intro/outro templates.
+          Edit your screenshots with annotations, blur, captions, and more. Then configure video transitions, captions, and your intro/outro below.
         </p>
 
-        <div className="mt-8 space-y-8">
+        {/* Full canvas editor with all 14 tools */}
+        <div className="mt-6">
+          <StepEditorPanel />
+        </div>
+
+        <div className="mt-10 space-y-8">
           
           {/* Transitions */}
           <div className="sketch-card p-5 bg-[var(--sketch-card-bg)]">

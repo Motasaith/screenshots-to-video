@@ -228,7 +228,14 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
       }
 
       const audioLocalPath = (step as any)._audioLocalPath;
-      const audioDuration = (step as any)._audioDuration;
+      let audioDuration = (step as any)._audioDuration;
+
+      // Honor the user's per-step duration override (from the editor "Duration
+      // Override" field). When set, we pad/trim the clip to exactly this many
+      // seconds so the zoom animation timing matches what the user previewed.
+      if (typeof step.editorDuration === "number" && step.editorDuration > 0) {
+        audioDuration = step.editorDuration;
+      }
 
       // Use zoom target, default to center if not set
       let zoomX = step.zoomTargetX ?? 50;
@@ -344,7 +351,12 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
           editorCropY: step.editorCropY ?? undefined,
           editorCropW: step.editorCropW ?? undefined,
           editorCropH: step.editorCropH ?? undefined,
-          editorZoomScale: step.editorZoomScale ?? undefined,
+          // Treat null/0/1.0 (legacy schema default) as "unset" so the renderer
+          // falls back to its own 1.6x default and the zoom is actually visible.
+          editorZoomScale:
+            step.editorZoomScale && step.editorZoomScale > 1.0
+              ? step.editorZoomScale
+              : undefined,
           editorOverlayText: step.editorOverlayText ?? undefined,
           editorOverlayX: step.editorOverlayX ?? undefined,
           editorOverlayY: step.editorOverlayY ?? undefined,

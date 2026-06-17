@@ -152,7 +152,7 @@ export const steps = mysqlTable("steps", {
   editorMagnifyCorner: varchar("editorMagnifyCorner", { length: 20 }).default("bottom-right"),
   // ── Color Filter ──
   editorColorFilter: varchar("editorColorFilter", { length: 20 }).default("none"),
-  editorZoomScale: float("editorZoomScale").default(1.0),
+  editorZoomScale: float("editorZoomScale").default(1.6),
   editorDuration: float("editorDuration"),
   // ── Multi-Zoom (multiple zoom points on one screenshot) ──
   editorMultiZooms: json("editorMultiZooms").$type<
