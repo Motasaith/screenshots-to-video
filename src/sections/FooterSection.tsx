@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 import { Film, Github, Twitter, Linkedin } from "lucide-react";
+import { motion } from "framer-motion";
 
 const footerLinks = {
   Product: [
@@ -98,7 +99,7 @@ export default function FooterSection() {
         </div>
 
         {/* Legal Footer Bottom */}
-        <div className="border-t border-[var(--space-border)] mt-12 pt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div className="border-t border-[var(--space-border)] mt-12 pt-8 flex flex-col sm:flex-row justify-between items-center gap-4 relative z-10">
           <p className="font-sans text-[10px] text-[var(--space-text-subtle)]">
             © 2026 Abdul Rauf Azhar. All rights reserved.
           </p>
@@ -117,6 +118,75 @@ export default function FooterSection() {
             </Link>
           </div>
         </div>
+      </div>
+
+      {/* Giant STV Brand Graphic Background Watermark */}
+      <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-full text-center pointer-events-none select-none z-0 overflow-hidden leading-none translate-y-[15%] h-[16vw] [perspective:1000px]">
+        <span className="font-mono text-[7px] tracking-[0.5em] uppercase text-[var(--space-text-subtle)] opacity-25 block mb-1">
+          SCREENSHOT TO VIDEO
+        </span>
+        <motion.h3 
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: false, amount: 0.3 }}
+          variants={{
+            hidden: { opacity: 0 },
+            visible: {
+              opacity: 1,
+              transition: {
+                staggerChildren: 0.12
+              }
+            }
+          }}
+          className="font-sans font-black text-[16vw] leading-none tracking-[-0.02em] uppercase select-none inline-flex items-center justify-center [transform-style:preserve-3d]"
+        >
+          <motion.span 
+            variants={{
+              hidden: { opacity: 0, x: -100, rotateY: -45, filter: "blur(10px)" },
+              visible: { 
+                opacity: 1, 
+                x: 0, 
+                rotateY: 0, 
+                filter: "blur(0px)",
+                transition: { type: "spring", stiffness: 60, damping: 15 }
+              }
+            }}
+            className="watermark-text-outer"
+          >
+            S
+          </motion.span>
+          <motion.span 
+            variants={{
+              hidden: { opacity: 0, y: 80, z: -80, rotateX: 60, filter: "blur(12px)" },
+              visible: { 
+                opacity: 1, 
+                y: 0, 
+                z: 0, 
+                rotateX: 0, 
+                filter: "blur(0px)",
+                transition: { type: "spring", stiffness: 70, damping: 12 }
+              }
+            }}
+            className="watermark-text-inner mx-[0.01em]"
+          >
+            T
+          </motion.span>
+          <motion.span 
+            variants={{
+              hidden: { opacity: 0, x: 100, rotateY: 45, filter: "blur(10px)" },
+              visible: { 
+                opacity: 1, 
+                x: 0, 
+                rotateY: 0, 
+                filter: "blur(0px)",
+                transition: { type: "spring", stiffness: 60, damping: 15 }
+              }
+            }}
+            className="watermark-text-outer"
+          >
+            V
+          </motion.span>
+        </motion.h3>
       </div>
     </footer>
   );

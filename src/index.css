@@ -940,3 +940,31 @@
   35%, 65% { border-radius: 12px; width: 20px; height: 36px; }
   70%, 100% { border-radius: 4px; width: 32px; height: 32px; }
 }
+
+/* Giant STV watermark styling */
+.watermark-text-outer {
+  color: #000000;
+  display: inline-block;
+  opacity: 0.92;
+  transition: color 0.3s ease;
+}
+
+.dark .watermark-text-outer {
+  color: #ffffff;
+  opacity: 0.80;
+}
+
+.watermark-text-inner {
+  color: var(--teal-500); /* Cyprus Accent used in buttons */
+  display: inline-block;
+  opacity: 0.95;
+  transition: color 0.3s ease;
+}
+
+.dark .watermark-text-inner {
+  color: var(--teal-400); /* Button accent in dark mode */
+  opacity: 0.90;
+}
+
+
+
