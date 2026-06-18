@@ -54,33 +54,19 @@ export default function Navbar() {
 
   const isHomepage = location.pathname === "/";
 
-  const mutedTextClass = isHomepage
-    ? "text-[var(--space-text-muted)] hover:text-[var(--space-text)] font-sans"
-    : "text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)]";
-  const btnPrimaryClass = isHomepage
-    ? "glass-btn glass-btn-primary text-xs py-2 px-4"
-    : "sketch-btn-primary text-sm py-2 px-4";
-  const btnGhostClass = isHomepage
-    ? "glass-btn glass-btn-secondary text-xs py-2 px-4"
-    : "sketch-btn-ghost text-sm py-2 px-4";
-
   return (
     <nav
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-350 ${
-        isHomepage
-          ? scrolled
-            ? "max-w-6xl mx-auto mt-4 rounded-full bg-[var(--space-card)] backdrop-blur-lg border border-[var(--space-border)] shadow-[0_10px_35px_rgba(0,0,0,0.06)] px-4 py-1"
-            : "bg-transparent py-4"
-          : scrolled
-            ? "bg-[var(--sketch-navbar-bg)] backdrop-blur-sm border-b-2 border-[var(--sketch-border-color)] shadow-[0px_4px_0px_0px_var(--sketch-accent)]"
-            : "bg-[var(--sketch-navbar-bg)] backdrop-blur-sm border-b-2 border-[var(--sketch-navbar-border)]"
+      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
+        scrolled
+          ? "max-w-6xl mx-auto mt-4 rounded-full bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] shadow-[0_10px_35px_rgba(0,0,0,0.06)] px-4 py-1"
+          : "bg-transparent py-4 px-4"
       }`}
     >
-      <div className={isHomepage ? "w-full px-4" : "w-full px-6 lg:px-12"}>
+      <div className="w-full max-w-6xl mx-auto">
         <div className="flex items-center justify-between h-14">
           <Link to="/" className="flex items-center gap-2 group">
-            <Film className={`w-5 h-5 ${isHomepage ? "text-teal-600 dark:text-teal-400 group-hover:text-teal-500 transition-colors" : "text-[var(--sketch-fg)]"}`} />
-            <span className={`font-bold text-lg tracking-tight transition-colors ${isHomepage ? "text-[var(--space-text)] font-sans" : "text-[var(--sketch-fg)] font-body"}`}>
+            <Film className="w-5 h-5 text-teal-600 dark:text-teal-400 group-hover:text-teal-500 transition-colors" />
+            <span className="font-bold text-lg tracking-tight font-sans text-[var(--space-text)] transition-colors">
               AIVideo
             </span>
           </Link>
@@ -109,23 +95,15 @@ export default function Navbar() {
                       onMouseEnter={() => setHoveredIdx(idx)}
                       className={`text-sm font-medium px-4 py-2 rounded-full relative transition-colors duration-250 block focus:outline-none ${
                         isActive
-                          ? isHomepage
-                            ? "text-[var(--space-text)] font-semibold"
-                            : "text-[var(--sketch-fg)] font-bold"
-                          : isHomepage
-                            ? "text-[var(--space-text-subtle)] hover:text-[var(--space-text)]"
-                            : "text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)]"
+                          ? "text-[var(--space-text)] font-semibold"
+                          : "text-[var(--space-text-subtle)] hover:text-[var(--space-text)]"
                       }`}
                     >
                       <span className="relative z-10">{item.label}</span>
                       {isHovered && (
                         <motion.span
                           layoutId="navHoverPill"
-                          className={`absolute inset-0 rounded-full -z-0 ${
-                            isHomepage
-                              ? "bg-teal-500/8 dark:bg-teal-400/8 border border-teal-500/15"
-                              : "bg-[var(--sketch-accent)]/20 border border-[var(--sketch-border-color)]/30"
-                          }`}
+                          className="absolute inset-0 rounded-full -z-0 bg-teal-500/8 dark:bg-teal-400/8 border border-teal-500/15"
                           transition={{ type: "spring", stiffness: 380, damping: 30 }}
                         />
                       )}
@@ -136,23 +114,15 @@ export default function Navbar() {
                       onMouseEnter={() => setHoveredIdx(idx)}
                       className={`text-sm font-medium px-4 py-2 rounded-full relative transition-colors duration-250 block ${
                         isActive
-                          ? isHomepage
-                            ? "text-[var(--space-text)] font-semibold"
-                            : "text-[var(--sketch-fg)] font-bold"
-                          : isHomepage
-                            ? "text-[var(--space-text-subtle)] hover:text-[var(--space-text)]"
-                            : "text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)]"
+                          ? "text-[var(--space-text)] font-semibold"
+                          : "text-[var(--space-text-subtle)] hover:text-[var(--space-text)]"
                       }`}
                     >
                       <span className="relative z-10">{item.label}</span>
                       {isHovered && (
                         <motion.span
                           layoutId="navHoverPill"
-                          className={`absolute inset-0 rounded-full -z-0 ${
-                            isHomepage
-                              ? "bg-teal-500/8 dark:bg-teal-400/8 border border-teal-500/15"
-                              : "bg-[var(--sketch-accent)]/20 border border-[var(--sketch-border-color)]/30"
-                          }`}
+                          className="absolute inset-0 rounded-full -z-0 bg-teal-500/8 dark:bg-teal-400/8 border border-teal-500/15"
                           transition={{ type: "spring", stiffness: 380, damping: 30 }}
                         />
                       )}
@@ -168,14 +138,14 @@ export default function Navbar() {
               <>
                 <Link
                   to="/dashboard"
-                  className={btnGhostClass}
+                  className="glass-btn glass-btn-secondary text-xs py-2 px-4"
                 >
                   <LayoutDashboard className="w-3.5 h-3.5" />
                   Dashboard
                 </Link>
                 <button
                   onClick={logout}
-                  className={btnPrimaryClass}
+                  className="glass-btn glass-btn-primary text-xs py-2 px-4"
                 >
                   <LogOut className="w-3.5 h-3.5" />
                   Sign Out
@@ -185,11 +155,11 @@ export default function Navbar() {
               <>
                 <Link
                   to="/login"
-                  className={btnGhostClass}
+                  className="glass-btn glass-btn-secondary text-xs py-2 px-4"
                 >
                   Sign In
                 </Link>
-                <Link to="/login" className={btnPrimaryClass}>
+                <Link to="/login" className="glass-btn glass-btn-primary text-xs py-2 px-4">
                   Start Free
                 </Link>
               </>
@@ -197,23 +167,21 @@ export default function Navbar() {
             
             <button
               onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-              className={isHomepage
-                ? "p-2 ml-1 rounded-xl bg-[var(--space-card)] border border-[var(--space-border)] hover:bg-[var(--space-card-hover)] hover:border-teal-500/50 transition-colors focus:outline-none"
-                : "p-2 ml-2 border-2 border-[var(--sketch-border-color)] bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-accent)] transition-colors focus:outline-none sketch-border-sm"
-              }
+              className="p-2 ml-1 rounded-xl bg-[var(--space-card)] border border-[var(--space-border)] hover:bg-[var(--space-card-hover)] hover:border-teal-500/50 transition-colors focus:outline-none"
               aria-label="Toggle dark mode"
             >
               {resolvedTheme === "dark" ? (
-                <Sun className={`w-4 h-4 ${isHomepage ? "text-teal-400" : "text-[var(--sketch-accent)]"}`} />
+                <Sun className="w-4 h-4 text-teal-400" />
               ) : (
-                <Moon className={`w-4 h-4 ${isHomepage ? "text-[var(--space-text-muted)]" : "text-[var(--sketch-fg)]"}`} />
+                <Moon className="w-4 h-4 text-[var(--space-text-muted)]" />
               )}
             </button>
           </div>
 
           <button
-            className={`md:hidden p-2 ${isHomepage ? "text-[var(--space-text)]" : "text-[var(--sketch-fg)]"}`}
+            className="md:hidden p-2 text-[var(--space-text)] focus:outline-none"
             onClick={() => setMobileOpen(!mobileOpen)}
+            aria-label="Toggle menu"
           >
             {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
@@ -226,45 +194,40 @@ export default function Navbar() {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            className={`md:hidden border-b ${
-              isHomepage 
-                ? "bg-[var(--space-bg)] border-[var(--space-border)] shadow-[0_10px_30px_rgba(0,0,0,0.05)]" 
-                : "bg-[var(--sketch-bg)] border-b-2 border-[var(--sketch-border-color)] shadow-[0px_4px_0px_0px_var(--sketch-accent)]"
-            }`}
+            className="md:hidden mt-2 mx-1 rounded-2xl bg-[var(--space-card)]/95 backdrop-blur-lg border border-[var(--space-border)] shadow-[0_10px_30px_rgba(0,0,0,0.15)] overflow-hidden"
           >
             <div className="px-6 py-4 space-y-3">
-              <button
-                onClick={() => scrollToSection("features")}
-                className={`block w-full text-left font-medium py-2 ${
-                  isHomepage ? "text-[var(--space-text)] font-sans text-sm" : "font-body text-sm text-[var(--sketch-fg)]"
-                }`}
-              >
-                Features
-              </button>
-              <button
-                onClick={() => scrollToSection("how-it-works")}
-                className={`block w-full text-left font-medium py-2 ${
-                  isHomepage ? "text-[var(--space-text)] font-sans text-sm" : "font-body text-sm text-[var(--sketch-fg)]"
-                }`}
-              >
-                How It Works
-              </button>
-              <button
-                onClick={() => scrollToSection("pricing")}
-                className={`block w-full text-left font-medium py-2 ${
-                  isHomepage ? "text-[var(--space-text)] font-sans text-sm" : "font-body text-sm text-[var(--sketch-fg)]"
-                }`}
-              >
-                Pricing
-              </button>
-              <hr className={isHomepage ? "border-[var(--space-border)]" : "border-[var(--sketch-fg-subtle)]"} />
+              {[
+                { id: "features", label: "Features", type: "section" },
+                { id: "how-it-works", label: "How It Works", type: "section" },
+                { id: "pricing", label: "Pricing", type: "section" },
+                { id: "docs", label: "Docs", type: "link", path: "/docs" }
+              ].map((item) => (
+                <div key={item.id}>
+                  {item.type === "section" ? (
+                    <button
+                      onClick={() => scrollToSection(item.id)}
+                      className="block w-full text-left font-medium py-2 text-[var(--space-text)] font-sans text-sm hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
+                    >
+                      {item.label}
+                    </button>
+                  ) : (
+                    <Link
+                      to={item.path || "/"}
+                      className="block font-medium py-2 text-[var(--space-text)] font-sans text-sm hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      {item.label}
+                    </Link>
+                  )}
+                </div>
+              ))}
+              <hr className="border-[var(--space-border)]" />
               {user ? (
-                <>
+                <div className="flex flex-col gap-2 pt-2">
                   <Link
                     to="/dashboard"
-                    className={`block font-medium py-2 ${
-                      isHomepage ? "text-[var(--space-text)] font-sans text-sm" : "font-body text-sm text-[#1E1B4B]"
-                    }`}
+                    className="glass-btn glass-btn-secondary text-xs py-2.5 w-full text-center"
                     onClick={() => setMobileOpen(false)}
                   >
                     Dashboard
@@ -274,34 +237,28 @@ export default function Navbar() {
                       logout();
                       setMobileOpen(false);
                     }}
-                    className={`block w-full text-left font-medium py-2 ${
-                      isHomepage ? "text-[var(--space-text)] font-sans text-sm" : "font-body text-sm text-[#1E1B4B]"
-                    }`}
+                    className="glass-btn glass-btn-primary text-xs py-2.5 w-full text-center"
                   >
                     Sign Out
                   </button>
-                </>
+                </div>
               ) : (
-                <>
+                <div className="flex flex-col gap-2 pt-2">
                   <Link
                     to="/login"
-                    className={`block font-medium py-2 ${
-                      isHomepage ? "text-[var(--space-text)] font-sans text-sm" : "font-body text-sm text-[#1E1B4B]"
-                    }`}
+                    className="glass-btn glass-btn-secondary text-xs py-2.5 w-full text-center"
                     onClick={() => setMobileOpen(false)}
                   >
                     Sign In
                   </Link>
                   <Link
                     to="/login"
-                    className={`block font-medium py-2 ${
-                      isHomepage ? "text-[var(--space-text)] font-sans text-sm" : "font-body text-sm text-[#1E1B4B]"
-                    }`}
+                    className="glass-btn glass-btn-primary text-xs py-2.5 w-full text-center"
                     onClick={() => setMobileOpen(false)}
                   >
                     Start Free
                   </Link>
-                </>
+                </div>
               )}
             </div>
           </motion.div>

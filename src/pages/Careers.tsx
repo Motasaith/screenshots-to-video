@@ -3,6 +3,7 @@ import Navbar from "@/components/Navbar";
 import FooterSection from "@/sections/FooterSection";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Code, Video, BrainCircuit } from "lucide-react";
+import { SpaceBackground } from "@/components/shared/SpaceBackground";
 
 const POSITIONS = [
   {
@@ -30,75 +31,78 @@ const POSITIONS = [
 
 export default function Careers() {
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="max-w-5xl mx-auto pt-32 pb-20 px-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-16"
-        >
-          <h1 className="font-body font-bold text-6xl tracking-tight mb-6 text-[var(--sketch-fg)]">
-            Help us redefine <span className="text-[var(--sketch-accent)]">documentation.</span>
-          </h1>
-          <p className="font-body text-xl text-[var(--sketch-fg-muted)] max-w-2xl mx-auto">
-            We are a small, fast-shipping team building the future of automated cinematic tutorials and AI video generation. 
-            Join us and let's craft tools that creators actually enjoy using.
-          </p>
-        </motion.div>
+    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
+      <SpaceBackground />
+      <div className="relative z-10">
+        <Navbar />
+        <main className="max-w-5xl mx-auto pt-32 pb-20 px-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="text-center mb-16"
+          >
+            <h1 className="font-extrabold text-5xl lg:text-6xl tracking-tight mb-6 text-[var(--space-text)]">
+              Redefining <span className="text-teal-650">documentation.</span>
+            </h1>
+            <p className="text-lg text-[var(--space-text-muted)] max-w-2xl mx-auto leading-relaxed">
+              We are a small, fast-shipping team building the future of automated cinematic tutorials and AI video generation. 
+              Join us and let's craft tools that creators actually enjoy using.
+            </p>
+          </motion.div>
 
-        <div className="relative">
-          {/* OVERLAY */}
-          <div className="absolute inset-0 z-10 flex items-center justify-center">
-            <div className="sketch-card bg-[var(--sketch-card-bg)] px-10 py-6 transform -rotate-3 text-center max-w-sm w-full mx-4 border-2 border-[var(--sketch-border-color)] shadow-[12px_12px_0px_0px_#FBBF24]">
-              <h2 className="font-body font-bold text-4xl uppercase tracking-widest text-[var(--sketch-accent)]">Coming Soon</h2>
-              <p className="font-body text-[var(--sketch-fg)] mt-3 font-semibold">We're quietly building our core team right now. Check back later!</p>
+          <div className="relative">
+            {/* OVERLAY */}
+            <div className="absolute inset-0 z-10 flex items-center justify-center">
+              <div className="glass-panel bg-[var(--space-card)]/90 px-10 py-8 text-center max-w-sm w-full mx-4 border border-teal-500 shadow-[0_0_40px_rgba(13,148,136,0.25)] rounded-2xl">
+                <h2 className="font-bold text-3xl uppercase tracking-widest text-teal-500">Coming Soon</h2>
+                <p className="text-[var(--space-text)] mt-3 font-medium text-sm leading-relaxed">We're quietly building our core team right now. Check back later!</p>
+              </div>
+            </div>
+
+            <div className="blur-[5px] opacity-30 pointer-events-none select-none">
+              <div className="mb-16">
+                <h2 className="font-bold text-3xl mb-8 border-b border-[var(--space-border)] pb-4 text-[var(--space-text)]">Open Positions</h2>
+                <div className="space-y-6">
+                  {POSITIONS.map((pos, idx) => {
+                    const Icon = pos.icon;
+                    return (
+                      <div key={idx} className="glass-panel p-6 border border-[var(--space-border)] bg-[var(--space-card)]/80 flex flex-col md:flex-row md:items-center justify-between gap-6 group rounded-2xl">
+                        <div className="flex items-start gap-4">
+                          <div className="p-3 bg-teal-500/10 rounded-xl border border-teal-500/20">
+                            <Icon className="w-6 h-6 text-teal-500" />
+                          </div>
+                          <div>
+                            <h3 className="font-bold text-xl mb-1 text-[var(--space-text)]">{pos.title}</h3>
+                            <div className="flex gap-3 mb-2 text-xs text-[var(--space-text-subtle)] font-mono">
+                              <span className="bg-[var(--space-card)] px-2 py-0.5 rounded border border-[var(--space-border)]">{pos.type}</span>
+                              <span className="bg-[var(--space-card)] px-2 py-0.5 rounded border border-[var(--space-border)]">{pos.location}</span>
+                            </div>
+                            <p className="text-[var(--space-text-muted)] text-sm leading-relaxed">{pos.desc}</p>
+                          </div>
+                        </div>
+                        <Button className="shrink-0 glass-btn glass-btn-primary rounded-xl text-xs py-3 px-6 font-semibold">
+                          Apply Now <ArrowRight className="w-4 h-4 ml-2" />
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              
+              <div className="glass-panel p-10 bg-teal-500/5 text-center border border-dashed border-teal-500/30 rounded-2xl">
+                <h3 className="font-bold text-2xl mb-3 text-[var(--space-text)]">Don't see a fit?</h3>
+                <p className="text-[var(--space-text-muted)] text-sm mb-6 max-w-lg mx-auto leading-relaxed">
+                  We're always looking for talented folks. Send your resume to hello@aivideo.ai and tell us how you can help.
+                </p>
+                <Button variant="outline" className="border border-[var(--space-border)] bg-[var(--space-card)] text-[var(--space-text)] hover:border-teal-500 hover:text-teal-500 font-semibold px-8 py-3.5 rounded-xl text-sm transition-colors">
+                  Send Open Application
+                </Button>
+              </div>
             </div>
           </div>
-
-          <div className="blur-[6px] opacity-40 pointer-events-none select-none">
-            <div className="mb-16">
-              <h2 className="font-body font-bold text-3xl mb-8 border-b-2 border-[var(--sketch-border-color)] pb-4 text-[var(--sketch-fg)]">Open Positions</h2>
-              <div className="space-y-6">
-                {POSITIONS.map((pos, idx) => {
-                  const Icon = pos.icon;
-              return (
-                <div key={idx} className="sketch-card p-6 bg-[var(--sketch-card-bg)] flex flex-col md:flex-row md:items-center justify-between gap-6 group">
-                  <div className="flex items-start gap-4">
-                    <div className="p-3 bg-[#FBBF24]/10 rounded-sm border-2 border-[var(--sketch-border-color)] sketch-border-sm">
-                      <Icon className="w-6 h-6 text-[#1E1B4B]" />
-                    </div>
-                    <div>
-                      <h3 className="font-body font-bold text-xl mb-1 text-[var(--sketch-fg)]">{pos.title}</h3>
-                      <div className="flex gap-3 mb-2 font-body text-sm text-[var(--sketch-fg-muted)]">
-                        <span className="bg-[var(--sketch-bg)] px-2 py-1 rounded-sm border border-[var(--sketch-border-color)]">{pos.type}</span>
-                        <span className="bg-[var(--sketch-bg)] px-2 py-1 rounded-sm border border-[var(--sketch-border-color)]">{pos.location}</span>
-                      </div>
-                      <p className="font-body text-[var(--sketch-fg-muted)]">{pos.desc}</p>
-                    </div>
-                  </div>
-                  <Button className="shrink-0 font-body font-bold border-2 sketch-btn-primary transition-all">
-                    Apply Now <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        
-        <div className="sketch-card p-10 bg-[#FBBF24]/5 text-center border-2 border-[#FBBF24] border-dashed">
-          <h3 className="font-body font-bold text-2xl mb-3 text-[var(--sketch-fg)]">Don't see a fit?</h3>
-          <p className="font-body text-[var(--sketch-fg-muted)] mb-6">
-            We're always looking for talented folks. Send your resume to hello@aivideo.ai and tell us how you can help.
-          </p>
-          <Button variant="outline" className="border-2 border-[var(--sketch-border-color)] text-[var(--sketch-fg)] hover:bg-[#FBBF24] hover:text-[#1E1B4B] font-body font-bold px-8 sketch-btn-ghost">
-            Send Open Application
-          </Button>
-        </div>
-        </div>
-        </div>
-      </main>
-      <FooterSection />
+        </main>
+        <FooterSection />
+      </div>
     </div>
   );
 }

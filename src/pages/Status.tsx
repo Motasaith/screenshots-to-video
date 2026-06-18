@@ -1,7 +1,8 @@
 import { motion } from "framer-motion";
 import Navbar from "@/components/Navbar";
 import FooterSection from "@/sections/FooterSection";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, AlertTriangle } from "lucide-react";
+import { SpaceBackground } from "@/components/shared/SpaceBackground";
 
 const SYSTEMS = [
   { name: "Web Application", status: "operational", uptime: "99.99%" },
@@ -13,48 +14,51 @@ const SYSTEMS = [
 
 export default function Status() {
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <main className="max-w-3xl mx-auto pt-32 pb-20 px-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-12"
-        >
-          <h1 className="font-body font-bold text-6xl tracking-tight mb-4 text-[var(--sketch-fg)]">
-            System Status
-          </h1>
-          <div className="sketch-card p-4 bg-green-100/50 dark:bg-green-900/20 border-green-500 border-2 flex items-center gap-3">
-            <CheckCircle2 className="text-green-600 dark:text-green-400 w-6 h-6" />
-            <span className="font-body font-bold text-green-800 dark:text-green-300">All Systems Operational</span>
-          </div>
-        </motion.div>
-
-        <div className="space-y-4">
-          {SYSTEMS.map((sys) => (
-            <div key={sys.name} className="sketch-card p-6 bg-[var(--sketch-card-bg)] flex items-center justify-between">
-              <div>
-                <h3 className="font-body font-bold text-xl mb-1 text-[var(--sketch-fg)]">{sys.name}</h3>
-                <p className="font-body text-sm text-[var(--sketch-fg-muted)]">Uptime (30 days): {sys.uptime}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                {sys.status === "operational" ? (
-                  <>
-                    <span className="w-3 h-3 rounded-full bg-green-500 animate-pulse" />
-                    <span className="font-body font-bold text-green-600">Operational</span>
-                  </>
-                ) : (
-                  <>
-                    <span className="w-3 h-3 rounded-full bg-yellow-500 animate-pulse" />
-                    <span className="font-body font-bold text-yellow-600">Degraded Performance</span>
-                  </>
-                )}
-              </div>
+    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
+      <SpaceBackground />
+      <div className="relative z-10">
+        <Navbar />
+        <main className="max-w-3xl mx-auto pt-32 pb-20 px-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-12"
+          >
+            <h1 className="font-extrabold text-5xl tracking-tight mb-4 text-[var(--space-text)]">
+              System Status
+            </h1>
+            <div className="glass-panel p-4 bg-emerald-500/5 border border-emerald-500/25 flex items-center gap-3 rounded-2xl shadow-sm">
+              <CheckCircle2 className="text-emerald-500 w-6 h-6 animate-pulse" />
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400">All Systems Operational</span>
             </div>
-          ))}
-        </div>
-      </main>
-      <FooterSection />
+          </motion.div>
+
+          <div className="space-y-4">
+            {SYSTEMS.map((sys) => (
+              <div key={sys.name} className="glass-panel p-6 border border-[var(--space-border)] bg-[var(--space-card)]/80 flex items-center justify-between rounded-2xl">
+                <div>
+                  <h3 className="font-bold text-xl mb-1 text-[var(--space-text)]">{sys.name}</h3>
+                  <p className="text-sm text-[var(--space-text-muted)]">Uptime (30 days): {sys.uptime}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {sys.status === "operational" ? (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                      <span className="font-semibold text-emerald-600 dark:text-emerald-450 text-sm">Operational</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                      <span className="font-semibold text-amber-600 dark:text-amber-450 text-sm">Degraded</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </main>
+        <FooterSection />
+      </div>
     </div>
   );
 }

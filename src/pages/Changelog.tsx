@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import Navbar from "@/components/Navbar";
 import FooterSection from "@/sections/FooterSection";
+import { SpaceBackground } from "@/components/shared/SpaceBackground";
 
 const UPDATES = [
   {
@@ -43,59 +44,62 @@ const UPDATES = [
 ];
 
 const TYPE_COLORS: Record<string, string> = {
-  added: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  fixed: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  improved: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+  added: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
+  fixed: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border border-cyan-500/20",
+  improved: "bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20",
 };
 
 export default function Changelog() {
   return (
-    <div className="min-h-screen dot-grid">
-      <Navbar />
-      <main className="max-w-3xl mx-auto pt-32 pb-20 px-6">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="mb-16 text-center"
-        >
-          <h1 className="font-body font-bold text-6xl tracking-tight mb-4 text-[var(--sketch-fg)]">
-            <span className="text-[var(--sketch-accent)]">Changelog</span>
-          </h1>
-          <p className="font-body text-xl text-[var(--sketch-fg-muted)]">
-            Tracking every improvement, fix, and new feature of AIVideo.
-          </p>
-        </motion.div>
+    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
+      <SpaceBackground />
+      <div className="relative z-10">
+        <Navbar />
+        <main className="max-w-3xl mx-auto pt-32 pb-20 px-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-16 text-center"
+          >
+            <h1 className="font-extrabold text-5xl lg:text-6xl tracking-tight mb-4 text-[var(--space-text)]">
+              <span className="text-teal-650">Changelog</span>
+            </h1>
+            <p className="text-lg text-[var(--space-text-muted)]">
+              Tracking every improvement, fix, and new feature of AIVideo.
+            </p>
+          </motion.div>
 
-        <div className="space-y-12">
-          {UPDATES.map((update) => (
-            <div key={update.version} className="relative pl-8 border-l-2 border-[var(--sketch-border-color)]">
-              <div className="absolute -left-2 top-0 w-4 h-4 rounded-full bg-[var(--sketch-accent)] border-4 border-[var(--sketch-bg)]" />
-              
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="font-body font-bold text-3xl text-[var(--sketch-fg)]">{update.version}</h2>
-                <span className="font-body text-[var(--sketch-fg-muted)]">{update.date}</span>
-              </div>
+          <div className="space-y-12">
+            {UPDATES.map((update) => (
+              <div key={update.version} className="relative pl-8 border-l border-[var(--space-border)]">
+                <div className="absolute -left-1.5 top-1.5 w-3 h-3 rounded-full bg-teal-500 shadow-[0_0_8px_rgba(20,184,166,0.6)]" />
+                
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="font-bold text-3xl text-[var(--space-text)]">{update.version}</h2>
+                  <span className="text-sm text-[var(--space-text-subtle)] font-mono">{update.date}</span>
+                </div>
 
-              <div className="grid gap-4">
-                {update.changes.map((change, cIdx) => (
-                  <div 
-                    key={cIdx} 
-                    className="sketch-card p-4 flex items-start gap-4"
-                  >
-                    <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded-sm shrink-0 sketch-border-sm ${TYPE_COLORS[change.type]}`}>
-                      {change.type}
-                    </span>
-                    <p className="font-body text-[var(--sketch-fg)] leading-relaxed">
-                      {change.text}
-                    </p>
-                  </div>
-                ))}
+                <div className="grid gap-4">
+                  {update.changes.map((change, cIdx) => (
+                    <div 
+                      key={cIdx} 
+                      className="glass-panel p-4 flex items-start gap-4 border border-[var(--space-border)] bg-[var(--space-card)]/80 rounded-2xl"
+                    >
+                      <span className={`text-[9px] font-mono font-semibold uppercase px-2 py-0.5 rounded shrink-0 ${TYPE_COLORS[change.type]}`}>
+                        {change.type}
+                      </span>
+                      <p className="text-sm text-[var(--space-text-muted)] leading-relaxed">
+                        {change.text}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </main>
-      <FooterSection />
+            ))}
+          </div>
+        </main>
+        <FooterSection />
+      </div>
     </div>
   );
 }

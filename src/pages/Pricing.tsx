@@ -6,6 +6,7 @@ import Navbar from "@/components/Navbar";
 import FooterSection from "@/sections/FooterSection";
 import { SEO, createBreadcrumbSchema } from "@/components/SEO";
 import { AdSensePlaceholder } from "@/components/shared/AdSensePlaceholder";
+import { SpaceBackground } from "@/components/shared/SpaceBackground";
 
 const plans = [
   {
@@ -77,100 +78,105 @@ export default function Pricing() {
   ]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
       <SEO
         title="Pricing"
         description="Simple, transparent pricing for AIVideo. Start free and upgrade when you need more power. No hidden fees."
         canonical="https://aivideo.ai/pricing"
         jsonLd={breadcrumbJsonLd}
       />
-      <Navbar />
-      <main className="pt-28 pb-20" ref={ref}>
-        <div className="w-full px-6 lg:px-12">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={isInView ? { opacity: 1, y: 0 } : {}}
-            transition={{ duration: 0.6 }}
-            className="text-center mb-16"
-          >
-            <Link
-              to="/"
-              className="inline-flex items-center gap-2 text-muted-foreground hover:text-foreground transition-colors mb-6 font-dm text-sm"
+      <SpaceBackground />
+      <div className="relative z-10">
+        <Navbar />
+        <main className="pt-28 pb-20" ref={ref}>
+          <div className="w-full px-6 lg:px-12">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={isInView ? { opacity: 1, y: 0 } : {}}
+              transition={{ duration: 0.6 }}
+              className="text-center mb-16"
             >
-              <ArrowLeft className="w-4 h-4" />
-              Back to home
-            </Link>
-            <h1 className="font-syne font-extrabold text-4xl lg:text-6xl tracking-tight">
-              Simple, transparent pricing
-            </h1>
-            <p className="font-dm text-muted-foreground mt-4 max-w-lg mx-auto">
-              Start free. Upgrade when you need more power. No hidden fees.
-            </p>
-          </motion.div>
-
-          <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {plans.map((plan, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, y: 30 }}
-                animate={isInView ? { opacity: 1, y: 0 } : {}}
-                transition={{ duration: 0.5, delay: index * 0.15 }}
-                className={`relative ${plan.popular ? "md:-mt-4 md:mb-4" : ""}`}
+              <Link
+                to="/"
+                className="inline-flex items-center gap-2 text-[var(--space-text-subtle)] hover:text-[var(--space-text)] transition-colors mb-6 font-mono text-sm"
               >
-                {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-4 py-1 text-xs font-semibold font-mono border-2 border-border shadow-[2px_2px_0px_0px_hsl(var(--border))]">
-                    <Zap className="w-3 h-3 inline mr-1" />
-                    Most Popular
-                  </div>
-                )}
-                <div
-                  className={`h-full p-6 lg:p-8 border-2 ${
-                    plan.popular
-                      ? "border-primary bg-primary/5 shadow-[6px_6px_0px_0px_hsl(var(--primary))]"
-                      : "border-border bg-card shadow-[4px_4px_0px_0px_hsl(var(--border))]"
-                  }`}
+                <ArrowLeft className="w-4 h-4" />
+                Back to home
+              </Link>
+              <h1 className="font-extrabold text-4xl lg:text-6xl tracking-tight text-[var(--space-text)] leading-tight">
+                Simple, transparent pricing
+              </h1>
+              <p className="text-[var(--space-text-muted)] mt-4 max-w-lg mx-auto">
+                Start free. Upgrade when you need more power. No hidden fees.
+              </p>
+            </motion.div>
+
+            <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto items-stretch">
+              {plans.map((plan, index) => (
+                <motion.div
+                  key={index}
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={isInView ? { opacity: 1, y: 0 } : {}}
+                  transition={{ duration: 0.5, delay: index * 0.15 }}
+                  className={`relative flex flex-col ${plan.popular ? "md:-mt-4 md:mb-4" : ""}`}
                 >
-                  <h3 className="font-syne font-bold text-xl">{plan.name}</h3>
-                  <div className="mt-4 flex items-baseline gap-1">
-                    <span className="font-syne font-extrabold text-4xl">
-                      {plan.price}
-                    </span>
-                    <span className="font-dm text-sm text-muted-foreground">
-                      {plan.period}
-                    </span>
-                  </div>
-                  <p className="font-dm text-sm text-muted-foreground mt-2">
-                    {plan.description}
-                  </p>
-
-                  <ul className="mt-6 space-y-3">
-                    {plan.features.map((feature, i) => (
-                      <li
-                        key={i}
-                        className="flex items-start gap-3 font-dm text-sm"
-                      >
-                        <Check className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-
-                  <button
-                    disabled
-                    className={`mt-8 w-full neo-btn text-center block opacity-70 cursor-not-allowed ${
-                      plan.popular ? "neo-btn-primary" : "neo-btn-ghost"
+                  {plan.popular && (
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-teal-500 text-white px-4 py-1 text-[10px] font-semibold font-mono rounded-full border border-teal-400/20 shadow-md z-20">
+                      <Zap className="w-3 h-3 inline mr-1 -mt-0.5 animate-pulse" />
+                      Most Popular
+                    </div>
+                  )}
+                  <div
+                    className={`h-full p-6 lg:p-8 flex flex-col justify-between rounded-2xl border ${
+                      plan.popular
+                        ? "border-teal-500 bg-teal-500/5 shadow-[0_0_30px_rgba(13,148,136,0.1)]"
+                        : "border-[var(--space-border)] bg-[var(--space-card)]"
                     }`}
                   >
-                    Coming Soon
-                  </button>
-                </div>
-              </motion.div>
-            ))}
+                    <div>
+                      <h3 className="font-bold text-xl text-[var(--space-text)]">{plan.name}</h3>
+                      <div className="mt-4 flex items-baseline gap-1">
+                        <span className="font-extrabold text-4xl text-[var(--space-text)]">
+                          {plan.price}
+                        </span>
+                        <span className="text-sm text-[var(--space-text-muted)]">
+                          {plan.period}
+                        </span>
+                      </div>
+                      <p className="text-sm text-[var(--space-text-muted)] mt-2">
+                        {plan.description}
+                      </p>
+
+                      <ul className="mt-6 space-y-3.5 border-t border-[var(--space-border)] pt-6">
+                        {plan.features.map((feature, i) => (
+                          <li
+                            key={i}
+                            className="flex items-start gap-3 text-sm text-[var(--space-text-muted)]"
+                          >
+                            <Check className="w-4 h-4 text-teal-500 flex-shrink-0 mt-0.5" />
+                            <span>{feature}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <button
+                      disabled
+                      className={`mt-8 w-full glass-btn py-3.5 text-center font-semibold text-xs opacity-60 cursor-not-allowed ${
+                        plan.popular ? "glass-btn-primary" : "glass-btn-secondary"
+                      }`}
+                    >
+                      Coming Soon
+                    </button>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+            <div className="container mx-auto px-4 mt-12"><AdSensePlaceholder size="leaderboard" /></div>
           </div>
-          <div className="container mx-auto px-4 mt-12"><AdSensePlaceholder size="leaderboard" /></div>
-        </div>
-      </main>
-      <FooterSection />
+        </main>
+        <FooterSection />
+      </div>
     </div>
   );
 }

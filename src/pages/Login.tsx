@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Film, Sparkles, ArrowLeft } from "lucide-react";
 import { Link } from "react-router";
+import { SpaceBackground } from "@/components/shared/SpaceBackground";
 
 function getOAuthUrl() {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -20,39 +21,42 @@ function getOAuthUrl() {
 
 export default function Login() {
   return (
-    <div className="min-h-screen dot-grid flex items-center justify-center px-4 relative">
-      <Link to="/" className="absolute top-8 left-8 flex items-center gap-2 font-body font-bold text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] transition-colors">
-        <ArrowLeft className="w-5 h-5" />
-        Back to Home
-      </Link>
-      <Card className="w-full max-w-sm sketch-card border-2">
-        <CardHeader className="text-center pb-2">
-          <div className="w-14 h-14 bg-[var(--sketch-accent)] border-2 border-[var(--sketch-border-color)] flex items-center justify-center mx-auto mb-4 sketch-border-sm">
-            <Film className="w-7 h-7 text-[var(--sketch-fg)]" />
-          </div>
-          <CardTitle className="font-body font-bold text-2xl text-[var(--sketch-fg)]">
-            Welcome back
-          </CardTitle>
-          <p className="font-body text-sm text-[var(--sketch-fg-muted)] mt-1">
-            Sign in to continue creating
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Button
-            className="w-full sketch-btn-primary"
-            size="lg"
-            onClick={() => {
-              window.location.href = getOAuthUrl();
-            }}
-          >
-            <Sparkles className="w-4 h-4" />
-            Sign in with Google
-          </Button>
-          <p className="text-center font-body text-xs text-[var(--sketch-fg-subtle)] pt-2">
-            By signing in, you agree to our Terms & Privacy Policy
-          </p>
-        </CardContent>
-      </Card>
+    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans flex items-center justify-center px-4">
+      <SpaceBackground />
+      <div className="relative z-10 w-full max-w-sm">
+        <Link to="/" className="absolute -top-16 left-0 flex items-center gap-2 font-mono text-sm text-[var(--space-text-subtle)] hover:text-[var(--space-text)] transition-colors">
+          <ArrowLeft className="w-4 h-4" />
+          Back to Home
+        </Link>
+        <Card className="w-full glass-panel border border-[var(--space-border)] bg-[var(--space-card)]/80 backdrop-blur-md p-6">
+          <CardHeader className="text-center pb-2">
+            <div className="w-14 h-14 bg-teal-500/10 border border-teal-500/20 flex items-center justify-center mx-auto mb-4 rounded-2xl shadow-sm">
+              <Film className="w-7 h-7 text-teal-500" />
+            </div>
+            <CardTitle className="font-extrabold text-2xl text-[var(--space-text)]">
+              Welcome back
+            </CardTitle>
+            <p className="text-sm text-[var(--space-text-muted)] mt-1">
+              Sign in to continue creating
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4 pt-4">
+            <Button
+              className="w-full glass-btn glass-btn-primary py-6 text-sm font-semibold rounded-xl"
+              size="lg"
+              onClick={() => {
+                window.location.href = getOAuthUrl();
+              }}
+            >
+              <Sparkles className="w-4 h-4" />
+              Sign in with Google
+            </Button>
+            <p className="text-center text-xs text-[var(--space-text-subtle)] pt-2 leading-relaxed">
+              By signing in, you agree to our Terms & Privacy Policy
+            </p>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

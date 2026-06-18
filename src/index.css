@@ -966,5 +966,147 @@
   opacity: 0.90;
 }
 
+/* ==========================================
+   WIZARD AND STUDIO SCENIC LOOK ADAPTATION
+   Redefine/adapt the old sketchbook variables
+   and classes inside theme-3d-immersive pages
+   to look like premium glassmorphism.
+   ========================================== */
 
+.theme-3d-immersive {
+  --sketch-bg: var(--space-bg);
+  --sketch-fg: var(--space-text);
+  --sketch-accent: var(--teal-500);
+  --sketch-fg-muted: var(--space-text-muted);
+  --sketch-fg-subtle: var(--space-text-subtle);
+  --sketch-border-color: var(--space-border);
+  --sketch-card-bg: var(--space-card);
+  --sketch-input-bg: var(--space-card);
+}
 
+.theme-3d-immersive .sketch-card,
+.theme-3d-immersive .neo-card {
+  background: var(--space-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid var(--space-border);
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 30px rgba(9, 13, 22, 0.03);
+}
+
+.dark .theme-3d-immersive .sketch-card,
+.dark .theme-3d-immersive .neo-card {
+  box-shadow: 0 15px 35px 0 rgba(0, 0, 0, 0.25),
+              inset 0 1px 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.theme-3d-immersive .sketch-card-hover,
+.theme-3d-immersive .neo-card-hover {
+  background: var(--space-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid var(--space-border);
+  border-radius: 0.75rem;
+  box-shadow: 0 10px 30px rgba(9, 13, 22, 0.03);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.theme-3d-immersive .sketch-card-hover:hover,
+.theme-3d-immersive .neo-card-hover:hover {
+  background: var(--space-card-hover);
+  border-color: var(--space-border-hover);
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px rgba(9, 13, 22, 0.07);
+}
+
+.theme-3d-immersive .sketch-border,
+.theme-3d-immersive .sketch-border-sm,
+.theme-3d-immersive .sketch-border-lg {
+  border: 1px solid var(--space-border);
+  border-radius: 0.75rem;
+}
+
+.theme-3d-immersive .sketch-btn {
+  border-radius: 0.75rem !important;
+  border: 1px solid var(--space-border) !important;
+}
+
+.theme-3d-immersive .sketch-btn-primary,
+.theme-3d-immersive .neo-btn-primary {
+  background: linear-gradient(135deg, var(--teal-500) 0%, var(--teal-600) 100%) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 0.75rem !important;
+  box-shadow: 0 4px 20px rgba(var(--btn-glow-rgb), 0.25),
+              inset 0 1px 1px rgba(255, 255, 255, 0.2) !important;
+  transform: none !important;
+}
+
+.theme-3d-immersive .sketch-btn-primary:hover,
+.theme-3d-immersive .neo-btn-primary:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 30px rgba(var(--btn-glow-rgb), 0.4),
+              0 0 15px rgba(var(--btn-glow-rgb), 0.2) !important;
+}
+
+.theme-3d-immersive .sketch-btn-ghost,
+.theme-3d-immersive .neo-btn-ghost {
+  background: transparent !important;
+  color: var(--space-text-muted) !important;
+  border: 1px solid transparent !important;
+  border-radius: 0.75rem !important;
+  box-shadow: none !important;
+}
+
+.theme-3d-immersive .sketch-btn-ghost:hover,
+.theme-3d-immersive .neo-btn-ghost:hover {
+  color: var(--space-text) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+.theme-3d-immersive .sketch-btn-secondary,
+.theme-3d-immersive .neo-btn-secondary {
+  background: var(--space-card) !important;
+  color: var(--space-text) !important;
+  border: 1px solid var(--space-border) !important;
+  border-radius: 0.75rem !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05) !important;
+}
+
+.theme-3d-immersive .sketch-btn-secondary:hover,
+.theme-3d-immersive .neo-btn-secondary:hover {
+  background: var(--space-card-hover) !important;
+  border-color: var(--space-border-hover) !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08) !important;
+}
+
+.theme-3d-immersive .sketch-input,
+.theme-3d-immersive .neo-input {
+  background-color: var(--space-card) !important;
+  color: var(--space-text) !important;
+  border: 1px solid var(--space-border) !important;
+  border-radius: 0.75rem !important;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.02) !important;
+}
+
+.theme-3d-immersive .sketch-input:focus,
+.theme-3d-immersive .neo-input:focus {
+  border-color: var(--teal-500) !important;
+  ring: 2px solid var(--teal-500)/20 !important;
+}
+
+.theme-3d-immersive .sketch-dashed {
+  border: 2px dashed var(--space-border) !important;
+  border-radius: 0.75rem !important;
+  background-color: rgba(0, 71, 65, 0.02) !important;
+}
+
+.dark .theme-3d-immersive .sketch-dashed {
+  background-color: rgba(45, 212, 191, 0.02) !important;
+}
+
+.theme-3d-immersive .font-hand,
+.theme-3d-immersive .font-body {
+  font-family: 'Inter', sans-serif !important;
+}
