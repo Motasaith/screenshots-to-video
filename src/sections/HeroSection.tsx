@@ -456,23 +456,23 @@ export default function HeroSection() {
                       className="w-full h-full p-4 flex flex-col justify-between"
                       style={{ transform: "translateZ(40px)" }}
                     >
-                      <div className="flex-1 bg-slate-950 rounded-lg overflow-hidden border border-slate-800 dark:border-white/10 relative flex flex-col justify-between shadow-[0_12px_30px_rgba(0,0,0,0.2)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.6)]">
-                        <div className="bg-slate-900/80 p-2 border-b border-white/5 flex items-center justify-between text-[10px]">
-                          <span className="font-sans text-slate-300 truncate max-w-[150px]">Clean Partition Tutorial</span>
-                          <span className="text-emerald-400 font-mono text-[8px] bg-emerald-500/10 px-1 rounded border border-emerald-500/20">Render Complete</span>
+                      <div className="flex-1 bg-slate-100 dark:bg-slate-950 rounded-lg overflow-hidden border border-slate-200 dark:border-white/10 relative flex flex-col justify-between shadow-[0_12px_30px_rgba(0,0,0,0.05)] dark:shadow-[0_12px_30px_rgba(0,0,0,0.6)]">
+                        <div className="bg-slate-200/50 dark:bg-slate-900/80 p-2 border-b border-slate-200 dark:border-white/5 flex items-center justify-between text-[10px]">
+                          <span className="font-sans text-slate-800 dark:text-slate-300 truncate max-w-[150px]">Clean Partition Tutorial</span>
+                          <span className="text-emerald-600 dark:text-emerald-400 font-mono text-[8px] bg-emerald-500/10 px-1 rounded border border-emerald-500/20">Render Complete</span>
                         </div>
                         
-                        <div className="flex-1 relative flex items-center justify-center bg-black">
+                        <div className="flex-1 relative flex items-center justify-center bg-slate-50 dark:bg-black">
                           <motion.div 
                             animate={{ scale: [1, 1.12, 1.12, 1], x: [0, -10, -10, 0] }}
                             transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
-                            className="w-[80%] h-[60%] bg-slate-800 rounded border border-white/10 p-2 flex flex-col justify-center"
+                            className="w-[80%] h-[60%] bg-white dark:bg-slate-800 rounded border border-slate-200 dark:border-white/10 p-2 flex flex-col justify-center shadow-sm"
                           >
-                            <div className="h-3 bg-white/10 rounded w-1/3 mb-1" />
-                            <div className="h-5 bg-cyan-500/20 border-2 border-cyan-400 rounded shadow-[0_0_10px_rgba(6,182,212,0.3)] flex items-center px-1" />
+                            <div className="h-3 bg-slate-100 dark:bg-white/10 rounded w-1/3 mb-1" />
+                            <div className="h-5 bg-cyan-500/10 dark:bg-cyan-500/5 border-2 border-cyan-500 dark:border-cyan-400 rounded shadow-[0_0_10px_rgba(6,182,212,0.1)] dark:shadow-[0_0_10px_rgba(6,182,212,0.3)] flex items-center px-1" />
                           </motion.div>
 
-                          <div className="absolute bottom-2 left-2 right-2 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                          <div className="absolute bottom-2 left-2 right-2 h-1.5 bg-slate-200 dark:bg-white/10 rounded-full overflow-hidden">
                             <motion.div 
                               animate={{ width: ["0%", "100%"] }}
                               transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
@@ -480,16 +480,16 @@ export default function HeroSection() {
                             />
                           </div>
 
-                          <div className="absolute inset-0 flex items-center justify-center bg-slate-950/20 group">
-                            <div className="w-10 h-10 rounded-full bg-slate-950/70 border border-white/20 flex items-center justify-center text-white backdrop-blur-sm cursor-pointer shadow-[0_4px_10px_rgba(0,0,0,0.4)]">
-                              <Pause className="w-4 h-4 fill-white" />
+                          <div className="absolute inset-0 flex items-center justify-center bg-slate-950/10 dark:bg-slate-950/30 group">
+                            <div className="w-10 h-10 rounded-full bg-white/80 dark:bg-slate-950/70 border border-slate-200 dark:border-white/25 flex items-center justify-center text-slate-800 dark:text-white backdrop-blur-sm cursor-pointer shadow-[0_4px_10px_rgba(0,0,0,0.06)] dark:shadow-[0_4px_10px_rgba(0,0,0,0.4)]">
+                              <Pause className="w-4 h-4 fill-current text-slate-800 dark:text-white" />
                             </div>
                           </div>
                         </div>
 
-                        <div className="bg-slate-950 p-2 border-t border-white/5 flex items-center justify-between text-[9px] text-[var(--space-text-subtle)] font-mono">
+                        <div className="bg-slate-100 dark:bg-slate-950 p-2 border-t border-slate-200 dark:border-white/5 flex items-center justify-between text-[9px] text-slate-500 dark:text-[var(--space-text-subtle)] font-mono">
                           <div className="flex items-center gap-1.5">
-                            <Video className="w-3 h-3 text-cyan-400" />
+                            <Video className="w-3 h-3 text-cyan-500 dark:text-cyan-400" />
                             <span>1080p60</span>
                           </div>
                           <span>00:14 / 00:30</span>
