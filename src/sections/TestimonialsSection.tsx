@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { motion, useInView, AnimatePresence } from "framer-motion";
 import { Star, Quote, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -79,9 +79,30 @@ export default function TestimonialsSection() {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
   const [activeIndex, setActiveIndex] = useState(0);
+  const [direction, setDirection] = useState(1); // 1 = next, -1 = prev
 
-  const goNext = () => setActiveIndex((prev) => (prev + 1) % testimonials.length);
-  const goPrev = () => setActiveIndex((prev) => (prev - 1 + testimonials.length) % testimonials.length);
+  const goNext = () => {
+    setDirection(1);
+    setActiveIndex((prev) => (prev + 1) % testimonials.length);
+  };
+  const goPrev = () => {
+    setDirection(-1);
+    setActiveIndex((prev) => (prev - 1 + testimonials.length) % testimonials.length);
+  };
+
+  const selectIndex = (index: number) => {
+    if (index === activeIndex) return;
+    setDirection(index > activeIndex ? 1 : -1);
+    setActiveIndex(index);
+  };
+
+  // Autoplay timer that resets when user interacts manually
+  useEffect(() => {
+    const timer = setInterval(() => {
+      goNext();
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [activeIndex]);
 
   // Get cards to show: previous, current, next
   const getCardIndex = (offset: number) =>
@@ -112,19 +133,42 @@ export default function TestimonialsSection() {
 
         {/* 3D Perspective Carousel */}
         <div className="relative max-w-4xl mx-auto">
-          {/* Large decorative quote mark */}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeIndex}
-              initial={{ scale: 0.5, opacity: 0, rotate: -15 }}
-              animate={{ scale: 1, opacity: 0.04, rotate: 0 }}
-              exit={{ scale: 0.5, opacity: 0, rotate: 15 }}
-              transition={{ duration: 0.5 }}
-              className="absolute -top-8 left-1/2 -translate-x-1/2 pointer-events-none select-none z-0"
-            >
-              <Quote className="w-40 h-40 text-[var(--space-text)]" />
-            </motion.div>
-          </AnimatePresence>
+          {/* Large decorative counter watermark with direction-aware slide */}
+          <div className="absolute -top-16 left-1/2 -translate-x-1/2 pointer-events-none select-none z-0 w-80 h-48 overflow-hidden flex items-center justify-center">
+            <AnimatePresence mode="popLayout" custom={direction}>
+              <motion.div
+                key={activeIndex}
+                custom={direction}
+                variants={{
+                  enter: (dir: number) => ({
+                    y: dir > 0 ? 120 : -120,
+                    opacity: 0,
+                    scale: 0.8,
+                    filter: "blur(12px)"
+                  }),
+                  center: {
+                    y: 0,
+                    opacity: 0.05,
+                    scale: 1,
+                    filter: "blur(0px)"
+                  },
+                  exit: (dir: number) => ({
+                    y: dir > 0 ? -120 : 120,
+                    opacity: 0,
+                    scale: 0.8,
+                    filter: "blur(12px)"
+                  })
+                }}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+                className="absolute font-sans font-black text-[14rem] tracking-tight leading-none text-[var(--space-text)]"
+              >
+                {`0${activeIndex + 1}`}
+              </motion.div>
+            </AnimatePresence>
+          </div>
 
           {/* Cards in 3D perspective fan */}
           <div className="relative h-[380px] lg:h-[340px] flex items-center justify-center perspective-3d">
@@ -148,9 +192,13 @@ export default function TestimonialsSection() {
                   className={`absolute w-full max-w-md glass-panel rounded-2xl p-6 lg:p-8 border border-[var(--space-border)] ${
                     isCenter
                       ? "z-30 shadow-[0_20px_50px_rgba(0,0,0,0.15)] dark:shadow-[0_20px_50px_rgba(0,0,0,0.4)]"
-                      : "z-10 pointer-events-none hidden lg:block"
+                      : "z-10 cursor-pointer hover:border-teal-500/30 hidden lg:block"
                   }`}
                   style={{ transformStyle: "preserve-3d" }}
+                  onClick={() => {
+                    if (offset === -1) goPrev();
+                    if (offset === 1) goNext();
+                  }}
                 >
                   <Quote className="absolute top-6 right-6 w-8 h-8 text-[var(--space-text-subtle)] opacity-10 pointer-events-none" />
 
@@ -188,7 +236,7 @@ export default function TestimonialsSection() {
                         className={`w-10 h-10 rounded-full bg-gradient-to-br ${item.gradient} p-[2px] shadow-md`}
                       >
                         <div
-                          className="w-full h-full rounded-full flex items-center justify-center text-xs font-bold text-white"
+                          className="w-full h-full rounded-full flex items-center justify-center text-xs font-bold text-[var(--space-text)]"
                           style={{ backgroundColor: "var(--space-bg)" }}
                         >
                           {item.initials}
@@ -228,7 +276,7 @@ export default function TestimonialsSection() {
               {testimonials.map((_, i) => (
                 <button
                   key={i}
-                  onClick={() => setActiveIndex(i)}
+                  onClick={() => selectIndex(i)}
                   className={`w-2 h-2 rounded-full transition-all duration-300 ${
                     i === activeIndex
                       ? "w-6 bg-teal-500"

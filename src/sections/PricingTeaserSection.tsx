@@ -95,25 +95,28 @@ function PricingCard({
         plan.popular
           ? "border-teal-500/20 shadow-[0_15px_40px_rgba(13,148,136,0.04)] dark:shadow-[0_15px_40px_rgba(13,148,136,0.15)]"
           : `border-[var(--space-border)] ${!plan.popular ? "border-dashed" : ""}`
-      } hover:border-[var(--space-border-hover)] overflow-hidden`}
+      } hover:border-[var(--space-border-hover)]`}
     >
-      {/* Cursor glow */}
-      <div
-        className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10"
-        style={{
-          background: `radial-gradient(circle 200px at var(--mouse-x, 50%) var(--mouse-y, 50%), ${plan.popular ? "rgba(13,148,136,0.08)" : "rgba(13,148,136,0.05)"}, transparent)`,
-        }}
-      />
+      {/* Clipped inner overlays (Glow and Glare) */}
+      <div className="absolute inset-0 overflow-hidden rounded-[inherit] pointer-events-none z-20">
+        {/* Cursor glow */}
+        <div
+          className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10"
+          style={{
+            background: `radial-gradient(circle 200px at var(--mouse-x, 50%) var(--mouse-y, 50%), ${plan.popular ? "rgba(13,148,136,0.08)" : "rgba(13,148,136,0.05)"}, transparent)`,
+          }}
+        />
 
-      {/* Specular glare */}
-      <div
-        className="absolute inset-0 pointer-events-none select-none z-20"
-        style={{
-          background: `radial-gradient(circle 180px at ${50 + rotateY * 15}% ${50 - rotateX * 15}%, rgba(255, 255, 255, ${resolvedTheme === "dark" ? 0.05 : 0.18}), transparent)`,
-          mixBlendMode: "overlay",
-          borderRadius: "inherit",
-        }}
-      />
+        {/* Specular glare */}
+        <div
+          className="absolute inset-0 pointer-events-none select-none z-20"
+          style={{
+            background: `radial-gradient(circle 180px at ${50 + rotateY * 15}% ${50 - rotateX * 15}%, rgba(255, 255, 255, ${resolvedTheme === "dark" ? 0.05 : 0.18}), transparent)`,
+            mixBlendMode: "overlay",
+            borderRadius: "inherit",
+          }}
+        />
+      </div>
 
       {/* Top accent line for popular */}
       {plan.popular && (
