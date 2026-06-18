@@ -52,36 +52,178 @@ function UIProcessingIllustration() {
 
 function ZoomPathIllustration() {
   return (
-    <div className="relative w-full h-20 flex items-center justify-center">
-      <div className="w-20 h-14 rounded border border-[var(--space-border)] relative overflow-hidden">
-        <motion.div
-          className="absolute w-6 h-6 border-2 border-cyan-400 rounded-sm"
-          animate={{
-            x: [2, 12, 8, 2],
-            y: [2, 6, 2, 2],
-            scale: [1, 1.3, 1.1, 1],
-          }}
-          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-        />
-        <motion.div
-          className="absolute w-1 h-1 rounded-full bg-cyan-400"
-          animate={{
-            x: [5, 15, 11, 5],
-            y: [5, 9, 5, 5],
-          }}
-          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-        />
-        {/* Crosshair lines */}
-        <motion.div
-          className="absolute top-0 left-1/2 w-px h-full bg-cyan-400/20"
-          animate={{ left: ["30%", "60%", "45%", "30%"] }}
-          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-        />
-        <motion.div
-          className="absolute left-0 top-1/2 w-full h-px bg-cyan-400/20"
-          animate={{ top: ["25%", "55%", "35%", "25%"] }}
-          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-        />
+    <div className="relative w-full h-[300px] flex items-center justify-center bg-[var(--space-bg)]/20 p-3 select-none">
+      {/* Mock Program Editor Window */}
+      <div className="w-full h-full rounded-xl border border-[var(--space-border)] bg-[var(--space-card)] flex flex-col overflow-hidden shadow-md">
+        
+        {/* Editor Titlebar */}
+        <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--space-border)] bg-slate-100/60 dark:bg-slate-900/60 text-[9px] font-mono text-[var(--space-text-subtle)]">
+          <div className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+            <span className="w-1.5 h-1.5 rounded-full bg-yellow-400" />
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+            <span className="ml-2 font-semibold text-[var(--space-text-muted)]">AIVideo - Zoom Studio</span>
+          </div>
+          <span className="opacity-60">1920 × 1080 (100%)</span>
+        </div>
+
+        {/* Editor Menu Bar */}
+        <div className="flex items-center gap-3 px-3 py-1 border-b border-[var(--space-border)] bg-slate-50 dark:bg-slate-950/40 text-[8px] font-sans text-[var(--space-text-subtle)]">
+          <span className="hover:text-[var(--space-text)] cursor-pointer">File</span>
+          <span className="hover:text-[var(--space-text)] cursor-pointer font-bold text-teal-650">Select Area</span>
+          <span className="hover:text-[var(--space-text)] cursor-pointer">Transitions</span>
+          <span className="hover:text-[var(--space-text)] cursor-pointer">Audio</span>
+        </div>
+
+        {/* Main Editor Body */}
+        <div className="flex-1 flex relative bg-slate-100/50 dark:bg-slate-950/20 overflow-hidden">
+          
+          {/* Left Toolbar */}
+          <div className="w-8 border-r border-[var(--space-border)] bg-slate-50 dark:bg-slate-950/40 flex flex-col items-center py-2 gap-2 text-[var(--space-text-subtle)]">
+            <div className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg>
+            </div>
+            <div className="p-1 rounded bg-teal-500/10 border border-teal-500/30 text-teal-600 dark:text-teal-400">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+            </div>
+            <div className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800">
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            </div>
+          </div>
+
+          {/* Screenshot Canvas Area */}
+          <div className="flex-1 relative p-3 flex items-center justify-center">
+            
+            {/* Mock Dashboard Screenshot in Background */}
+            <div className="w-[85%] h-[85%] rounded border border-dashed border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900/60 p-2.5 flex flex-col gap-2 relative pointer-events-none select-none opacity-60">
+              <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-1.5">
+                <div className="w-12 h-2.5 bg-slate-200 dark:bg-slate-850 rounded" />
+                <div className="w-6 h-2.5 bg-slate-100 dark:bg-slate-800 rounded" />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-2 flex-1">
+                <div className="border border-slate-100 dark:border-white/5 rounded p-1.5 flex flex-col gap-1.5 bg-slate-50/50 dark:bg-slate-900/40">
+                  <div className="w-8 h-2 bg-slate-200 dark:bg-slate-850 rounded" />
+                  <div className="w-14 h-4 bg-slate-100 dark:bg-slate-800 rounded" />
+                </div>
+                <div className="border border-teal-500/10 bg-teal-500/5 rounded p-1.5 flex flex-col gap-1.5 items-center justify-center relative">
+                  <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-850" />
+                  <div className="w-12 h-2 bg-slate-200 dark:bg-slate-850 rounded" />
+                </div>
+              </div>
+            </div>
+
+            {/* Drawing Area Canvas Overlay (absolute coordinates) */}
+            <div className="absolute inset-0 w-full h-full pointer-events-none">
+              
+              {/* Selection rectangle representing the Zoom path camera region */}
+              <motion.div
+                className="absolute border-2 border-cyan-400 bg-cyan-500/10 rounded-sm"
+                style={{
+                  left: "98px",
+                  top: "62px",
+                }}
+                animate={{
+                  width: [0, 0, 105, 105, 0],
+                  height: [0, 0, 80, 80, 0],
+                  opacity: [0, 0, 1, 1, 0]
+                }}
+                transition={{
+                  duration: 6,
+                  repeat: Infinity,
+                  times: [0, 0.25, 0.5, 0.85, 1],
+                  ease: "easeInOut"
+                }}
+              >
+                {/* Selection handles (tiny corner boxes to look like a drawing tool) */}
+                <div className="absolute -top-1 -left-1 w-2 h-2 border border-cyan-500 bg-white rounded-sm" />
+                <div className="absolute -top-1 -right-1 w-2 h-2 border border-cyan-500 bg-white rounded-sm" />
+                <div className="absolute -bottom-1 -left-1 w-2 h-2 border border-cyan-500 bg-white rounded-sm" />
+                <div className="absolute -bottom-1 -right-1 w-2 h-2 border border-cyan-500 bg-white rounded-sm" />
+                <div className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 border border-cyan-500 bg-white rounded-sm" />
+                <div className="absolute top-1/2 -right-1 -translate-y-1/2 w-2 h-2 border border-cyan-500 bg-white rounded-sm" />
+                <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 border border-cyan-500 bg-white rounded-sm" />
+                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 border border-cyan-500 bg-white rounded-sm" />
+                
+                {/* Target badge overlay */}
+                <div className="absolute -top-5 left-0 px-1 py-0.5 rounded bg-cyan-500 text-white font-mono text-[6px] shadow-sm select-none z-30">
+                  Target Zoom: 1.5x
+                </div>
+              </motion.div>
+
+              {/* Cursor Drawing the Area */}
+              <motion.div
+                className="absolute w-4 h-4 z-40 flex flex-col items-start gap-1"
+                animate={{
+                  x: [40, 98, 203, 203, 40],
+                  y: [40, 62, 142, 142, 40]
+                }}
+                transition={{
+                  duration: 6,
+                  repeat: Infinity,
+                  times: [0, 0.25, 0.5, 0.85, 1],
+                  ease: "easeInOut"
+                }}
+              >
+                {/* Mouse Pointer Cursor SVG */}
+                <svg width="14" height="14" viewBox="0 0 24 24" className="text-cyan-500 drop-shadow-md">
+                  <path
+                    d="M3 3 L3 21 L8.5 15.5 L14.5 24 L17.5 22 L11.5 13.5 L18 13.5 Z"
+                    fill="currentColor"
+                    stroke="white"
+                    strokeWidth="1.5"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+
+                {/* Coordinate Tooltip (looks like an editor readout) */}
+                <motion.div
+                  className="px-1 py-0.5 rounded bg-slate-900/90 text-white font-mono text-[5px] whitespace-nowrap shadow border border-white/10"
+                  animate={{
+                    opacity: [0, 0, 1, 1, 0]
+                  }}
+                  transition={{
+                    duration: 6,
+                    repeat: Infinity,
+                    times: [0, 0.23, 0.25, 0.85, 1]
+                  }}
+                >
+                  X: 98, Y: 62 | W: 105, H: 80
+                </motion.div>
+              </motion.div>
+
+              {/* Guide Crosshair Lines (drawing aids) */}
+              <motion.div
+                className="absolute top-0 left-0 w-px h-full bg-cyan-400/15 border-dashed border-l border-cyan-400/25"
+                animate={{
+                  left: [40, 98, 203, 203, 40],
+                  opacity: [0, 0.6, 0.6, 0.6, 0]
+                }}
+                transition={{
+                  duration: 6,
+                  repeat: Infinity,
+                  times: [0, 0.25, 0.5, 0.85, 1],
+                  ease: "easeInOut"
+                }}
+              />
+              <motion.div
+                className="absolute top-0 left-0 w-full h-px bg-cyan-400/15 border-dashed border-t border-cyan-400/25"
+                animate={{
+                  top: [40, 62, 142, 142, 40],
+                  opacity: [0, 0.6, 0.6, 0.6, 0]
+                }}
+                transition={{
+                  duration: 6,
+                  repeat: Infinity,
+                  times: [0, 0.25, 0.5, 0.85, 1],
+                  ease: "easeInOut"
+                }}
+              />
+            </div>
+
+          </div>
+        </div>
+
       </div>
     </div>
   );
