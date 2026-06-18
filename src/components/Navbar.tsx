@@ -20,6 +20,7 @@ export default function Navbar() {
   const { setTheme, resolvedTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -84,31 +85,82 @@ export default function Navbar() {
             </span>
           </Link>
 
-          <div className="hidden md:flex items-center gap-8">
-            <button
-              onClick={() => scrollToSection("features")}
-              className={`text-sm font-medium transition-colors ${mutedTextClass}`}
-            >
-              Features
-            </button>
-            <button
-              onClick={() => scrollToSection("how-it-works")}
-              className={`text-sm font-medium transition-colors ${mutedTextClass}`}
-            >
-              How It Works
-            </button>
-            <button
-              onClick={() => scrollToSection("pricing")}
-              className={`text-sm font-medium transition-colors ${mutedTextClass}`}
-            >
-              Pricing
-            </button>
-            <Link
-              to="/docs"
-              className={`text-sm font-medium transition-colors ${mutedTextClass}`}
-            >
-              Docs
-            </Link>
+          {/* Center Navigation Links with sliding background pill */}
+          <div 
+            className="hidden md:flex items-center gap-1.5"
+            onMouseLeave={() => setHoveredIdx(null)}
+          >
+            {[
+              { id: "features", label: "Features", type: "section" },
+              { id: "how-it-works", label: "How It Works", type: "section" },
+              { id: "pricing", label: "Pricing", type: "section" },
+              { id: "docs", label: "Docs", type: "link", path: "/docs" }
+            ].map((item, idx) => {
+              const isHovered = hoveredIdx === idx;
+              const isActive = item.type === "section" 
+                ? location.hash === `#${item.id}` 
+                : location.pathname === item.path;
+
+              return (
+                <div key={item.id} className="relative">
+                  {item.type === "section" ? (
+                    <button
+                      onClick={() => scrollToSection(item.id)}
+                      onMouseEnter={() => setHoveredIdx(idx)}
+                      className={`text-sm font-medium px-4 py-2 rounded-full relative transition-colors duration-250 block focus:outline-none ${
+                        isActive
+                          ? isHomepage
+                            ? "text-[var(--space-text)] font-semibold"
+                            : "text-[var(--sketch-fg)] font-bold"
+                          : isHomepage
+                            ? "text-[var(--space-text-subtle)] hover:text-[var(--space-text)]"
+                            : "text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)]"
+                      }`}
+                    >
+                      <span className="relative z-10">{item.label}</span>
+                      {isHovered && (
+                        <motion.span
+                          layoutId="navHoverPill"
+                          className={`absolute inset-0 rounded-full -z-0 ${
+                            isHomepage
+                              ? "bg-teal-500/8 dark:bg-teal-400/8 border border-teal-500/15"
+                              : "bg-[var(--sketch-accent)]/20 border border-[var(--sketch-border-color)]/30"
+                          }`}
+                          transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                        />
+                      )}
+                    </button>
+                  ) : (
+                    <Link
+                      to={item.path || "/"}
+                      onMouseEnter={() => setHoveredIdx(idx)}
+                      className={`text-sm font-medium px-4 py-2 rounded-full relative transition-colors duration-250 block ${
+                        isActive
+                          ? isHomepage
+                            ? "text-[var(--space-text)] font-semibold"
+                            : "text-[var(--sketch-fg)] font-bold"
+                          : isHomepage
+                            ? "text-[var(--space-text-subtle)] hover:text-[var(--space-text)]"
+                            : "text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)]"
+                      }`}
+                    >
+                      <span className="relative z-10">{item.label}</span>
+                      {isHovered && (
+                        <motion.span
+                          layoutId="navHoverPill"
+                          className={`absolute inset-0 rounded-full -z-0 ${
+                            isHomepage
+                              ? "bg-teal-500/8 dark:bg-teal-400/8 border border-teal-500/15"
+                              : "bg-[var(--sketch-accent)]/20 border border-[var(--sketch-border-color)]/30"
+                          }`}
+                          transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                        />
+                      )}
+                    </Link>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           <div className="hidden md:flex items-center gap-3">
