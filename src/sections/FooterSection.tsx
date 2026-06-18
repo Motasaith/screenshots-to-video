@@ -30,46 +30,55 @@ const footerLinks = {
 
 export default function FooterSection() {
   return (
-    <footer className="border-t-2 border-[var(--sketch-border-color)] bg-[var(--sketch-bg)] py-16 relative">
-      <div className="absolute top-0 left-0 right-0 h-0.5 bg-[#FBBF24]/40" />
-      <div className="w-full px-6 lg:px-12">
+    <footer className="border-t border-[var(--space-border)] backdrop-blur-md py-12 relative overflow-hidden" style={{ backgroundColor: 'var(--space-card)' }}>
+      {/* Decorative subtle top neon line */}
+      <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-teal-500/20 to-transparent" />
+      
+      <div className="w-full px-6 lg:px-12 relative z-10">
         <div className="grid lg:grid-cols-5 gap-12 lg:gap-8">
+          
+          {/* Logo & Pitch */}
           <div className="lg:col-span-2">
-            <Link to="/" className="flex items-center gap-2">
-              <Film className="w-6 h-6 text-[var(--sketch-fg)]" />
-              <span className="font-body font-bold text-xl tracking-tight text-[var(--sketch-fg)]">
+            <Link to="/" className="flex items-center gap-2 group">
+              <Film className="w-5 h-5 text-teal-650 group-hover:text-teal-500 transition-colors" />
+              <span className="font-sans font-bold text-lg tracking-tight text-[var(--space-text)]">
                 AIVideo
               </span>
             </Link>
-            <p className="font-body text-sm text-[var(--sketch-fg-subtle)] mt-4 max-w-xs leading-relaxed">
-              Turn screenshots into professional tutorial videos with cinematic
-              zoom animations. Built for technical content creators.
+            <p className="font-sans text-xs text-[var(--space-text-muted)] mt-4 max-w-xs leading-relaxed">
+              Convert screenshots into studio-grade tutorial videos with automated camera zooms and scripting. Built for technical content creators.
             </p>
+            
+            {/* Social Icons */}
             <div className="flex gap-3 mt-6">
               <a
                 href="#"
-                className="w-9 h-9 border-2 border-[var(--sketch-border-color)] bg-[var(--sketch-card-bg)] flex items-center justify-center hover:border-[#FBBF24] transition-colors sketch-border-sm"
+                className="w-9 h-9 border border-[var(--space-border)] rounded-xl bg-[var(--space-card)] flex items-center justify-center hover:border-teal-500/50 hover:bg-[var(--space-card-hover)] text-[var(--space-text-muted)] hover:text-[var(--space-text)] transition-colors"
+                aria-label="Twitter"
               >
-                <Twitter className="w-4 h-4 text-[var(--sketch-fg)]" />
+                <Twitter className="w-4 h-4" />
               </a>
               <a
                 href="#"
-                className="w-9 h-9 border-2 border-[var(--sketch-border-color)] bg-[var(--sketch-card-bg)] flex items-center justify-center hover:border-[#FBBF24] transition-colors sketch-border-sm"
+                className="w-9 h-9 border border-[var(--space-border)] rounded-xl bg-[var(--space-card)] flex items-center justify-center hover:border-teal-500/50 hover:bg-[var(--space-card-hover)] text-[var(--space-text-muted)] hover:text-[var(--space-text)] transition-colors"
+                aria-label="Github"
               >
-                <Github className="w-4 h-4 text-[var(--sketch-fg)]" />
+                <Github className="w-4 h-4" />
               </a>
               <a
                 href="#"
-                className="w-9 h-9 border-2 border-[var(--sketch-border-color)] bg-[var(--sketch-card-bg)] flex items-center justify-center hover:border-[#FBBF24] transition-colors sketch-border-sm"
+                className="w-9 h-9 border border-[var(--space-border)] rounded-xl bg-[var(--space-card)] flex items-center justify-center hover:border-teal-500/50 hover:bg-[var(--space-card-hover)] text-[var(--space-text-muted)] hover:text-[var(--space-text)] transition-colors"
+                aria-label="Linkedin"
               >
-                <Linkedin className="w-4 h-4 text-[var(--sketch-fg)]" />
+                <Linkedin className="w-4 h-4" />
               </a>
             </div>
           </div>
 
+          {/* Links Columns */}
           {Object.entries(footerLinks).map(([category, links]) => (
             <div key={category}>
-              <h4 className="font-body font-semibold text-sm mb-4 text-[var(--sketch-fg)]">
+              <h4 className="font-sans font-semibold text-xs mb-4 text-[var(--space-text)] uppercase tracking-wider">
                 {category}
               </h4>
               <ul className="space-y-2.5">
@@ -77,7 +86,7 @@ export default function FooterSection() {
                   <li key={link.name}>
                     <Link
                       to={link.href}
-                      className="font-body text-sm text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg)] transition-colors"
+                      className="font-sans text-xs text-[var(--space-text-muted)] hover:text-[var(--space-text)] transition-colors"
                     >
                       {link.name}
                     </Link>
@@ -88,20 +97,21 @@ export default function FooterSection() {
           ))}
         </div>
 
-        <div className="border-t border-border mt-12 pt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
-          <p className="font-dm text-xs text-muted-foreground">
+        {/* Legal Footer Bottom */}
+        <div className="border-t border-[var(--space-border)] mt-12 pt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+          <p className="font-sans text-[10px] text-[var(--space-text-subtle)]">
             © 2026 Abdul Rauf Azhar. All rights reserved.
           </p>
           <div className="flex gap-6">
             <Link
               to="/privacy"
-              className="font-dm text-xs text-muted-foreground hover:text-foreground transition-colors"
+              className="font-sans text-[10px] text-[var(--space-text-subtle)] hover:text-[var(--space-text-muted)] transition-colors"
             >
               Privacy Policy
             </Link>
             <Link
               to="/terms"
-              className="font-dm text-xs text-muted-foreground hover:text-foreground transition-colors"
+              className="font-sans text-[10px] text-[var(--space-text-subtle)] hover:text-[var(--space-text-muted)] transition-colors"
             >
               Terms of Service
             </Link>
