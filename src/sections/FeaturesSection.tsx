@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, useInView } from "framer-motion";
 import { useTheme } from "next-themes";
 import {
@@ -8,43 +8,190 @@ import {
   MessageSquare,
   Smartphone,
   Zap,
+  Edit3,
 } from "lucide-react";
 
 // Mini animated illustrations for each card
 function UIProcessingIllustration() {
   return (
-    <div className="relative w-full h-20 flex items-center justify-center">
-      <div className="w-48 h-14 rounded-md border border-[var(--space-border)] bg-slate-100/40 dark:bg-slate-950/80 p-2.5 flex flex-col justify-between overflow-hidden relative">
-        <div className="flex items-center justify-between border-b border-black/5 dark:border-white/5 pb-1">
-          <div className="w-10 h-1 bg-black/10 dark:bg-white/20 rounded" />
-          <div className="w-3 h-3 rounded bg-cyan-500/10 dark:bg-cyan-400/20 flex items-center justify-center border border-cyan-500/20 dark:border-cyan-400/40">
-            <span className="w-1.5 h-1.5 bg-cyan-600 dark:bg-cyan-400 rounded-full" />
+    <div className="relative w-full h-[180px] flex items-center justify-center p-3 select-none">
+      {/* Editor Window (Wide format) */}
+      <div className="w-[94%] h-full rounded-xl border border-[var(--space-border)] bg-[var(--space-card)] flex overflow-hidden shadow-sm relative">
+        
+        {/* Left Toolbar */}
+        <div className="w-8 border-r border-[var(--space-border)] bg-slate-50 dark:bg-slate-950/40 flex flex-col items-center py-2.5 gap-2 text-[var(--space-text-subtle)]">
+          {/* Box Tool */}
+          <motion.div 
+            className="p-1 rounded border"
+            animate={{
+              borderColor: ["rgba(0,0,0,0)", "rgba(13, 148, 136, 0.3)", "rgba(13, 148, 136, 0.3)", "rgba(0,0,0,0)", "rgba(0,0,0,0)"],
+              backgroundColor: ["rgba(0,0,0,0)", "rgba(13, 148, 136, 0.08)", "rgba(13, 148, 136, 0.08)", "rgba(0,0,0,0)", "rgba(0,0,0,0)"],
+              color: ["currentColor", "var(--teal-600)", "var(--teal-600)", "currentColor", "currentColor"]
+            }}
+            transition={{ duration: 9, repeat: Infinity, times: [0, 0.06, 0.28, 0.30, 1] }}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+          </motion.div>
+          {/* Arrow Tool */}
+          <motion.div 
+            className="p-1 rounded border"
+            animate={{
+              borderColor: ["rgba(0,0,0,0)", "rgba(0,0,0,0)", "rgba(13, 148, 136, 0.3)", "rgba(13, 148, 136, 0.3)", "rgba(0,0,0,0)"],
+              backgroundColor: ["rgba(0,0,0,0)", "rgba(0,0,0,0)", "rgba(13, 148, 136, 0.08)", "rgba(13, 148, 136, 0.08)", "rgba(0,0,0,0)"],
+              color: ["currentColor", "currentColor", "var(--teal-600)", "var(--teal-600)", "currentColor"]
+            }}
+            transition={{ duration: 9, repeat: Infinity, times: [0, 0.32, 0.38, 0.60, 1] }}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </motion.div>
+          {/* Blur Tool */}
+          <motion.div 
+            className="p-1 rounded border"
+            animate={{
+              borderColor: ["rgba(0,0,0,0)", "rgba(0,0,0,0)", "rgba(0,0,0,0)", "rgba(13, 148, 136, 0.3)", "rgba(0,0,0,0)"],
+              backgroundColor: ["rgba(0,0,0,0)", "rgba(0,0,0,0)", "rgba(0,0,0,0)", "rgba(13, 148, 136, 0.08)", "rgba(0,0,0,0)"],
+              color: ["currentColor", "currentColor", "currentColor", "var(--teal-600)", "currentColor"]
+            }}
+            transition={{ duration: 9, repeat: Infinity, times: [0, 0.62, 0.68, 0.88, 1] }}
+          >
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          </motion.div>
+        </div>
+
+        {/* Canvas Area */}
+        <div className="flex-1 bg-slate-100/50 dark:bg-slate-950/20 relative p-2 overflow-hidden flex items-center justify-center">
+          
+          {/* Mock Screenshot (Wide) */}
+          <div className="w-[96%] h-[92%] rounded border border-dashed border-slate-200 dark:border-white/5 bg-white dark:bg-slate-900/60 p-2 flex justify-between gap-4 relative">
+            
+            {/* Left Mock UI Column (Card) */}
+            <div className="flex-1 flex flex-col justify-center gap-1.5 pl-1">
+              <div className="w-16 h-2 bg-slate-200 dark:bg-slate-800 rounded" />
+              {/* Highlight Target Card */}
+              <div className="border border-slate-100 dark:border-white/5 rounded p-1.5 flex flex-col gap-1 bg-slate-50/50 dark:bg-slate-900/30 w-36 h-12 relative">
+                <div className="w-10 h-1.5 bg-slate-250 dark:bg-slate-800 rounded" />
+                <div className="w-20 h-2 bg-slate-200 dark:bg-slate-800 rounded mt-0.5" />
+              </div>
+            </div>
+
+            {/* Right Mock UI Column (Sensitive Data) */}
+            <div className="w-32 border-l border-slate-100 dark:border-white/5 pl-3 flex flex-col justify-center gap-1.5 pr-2">
+              <div className="w-10 h-2 bg-slate-200 dark:bg-slate-850 rounded" />
+              <div className="h-6 rounded border border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-slate-900/40 flex items-center px-1.5 justify-between relative overflow-hidden">
+                {/* Sensitive Text underneath */}
+                <span className="text-[6px] font-mono text-[var(--space-text-subtle)] leading-none select-none">
+                  sk_live_9a2f...
+                </span>
+                
+                {/* Backdrop Blur Overlay Box */}
+                <motion.div
+                  className="absolute left-0 top-0 bottom-0 bg-slate-400/10 backdrop-blur-[2.5px] border-l border-cyan-400/50"
+                  animate={{
+                    width: [0, 0, 0, 0, "100%", "100%", 0],
+                    opacity: [0, 0, 0, 0, 1, 1, 0]
+                  }}
+                  transition={{ duration: 9, repeat: Infinity, times: [0, 0.68, 0.70, 0.72, 0.82, 0.95, 1], ease: "easeInOut" }}
+                />
+              </div>
+            </div>
+
+            {/* DRAWING OVERLAYS */}
+            {/* 1. Drawn Highlight Box */}
+            <motion.div
+              className="absolute border-2 border-teal-500 bg-teal-500/5 rounded-sm"
+              style={{
+                left: "14px",
+                top: "17px",
+              }}
+              animate={{
+                width: [0, 0, 148, 148, 148, 148, 0],
+                height: [0, 0, 52, 52, 52, 52, 0],
+                opacity: [0, 0, 1, 1, 1, 1, 0]
+              }}
+              transition={{
+                duration: 9,
+                repeat: Infinity,
+                times: [0, 0.12, 0.24, 0.26, 0.88, 0.95, 1],
+                ease: "easeInOut"
+              }}
+            >
+              {/* Tooltip: Highlight Box */}
+              <div className="absolute -top-4 left-0 px-1 py-0.5 rounded bg-teal-500 text-white font-mono text-[5px] select-none shadow">
+                Highlight Area
+              </div>
+            </motion.div>
+
+            {/* 2. Drawn Arrow */}
+            <svg className="absolute inset-0 w-full h-full pointer-events-none z-20">
+              <defs>
+                <marker id="arrowhead" markerWidth="6" markerHeight="4" refX="4" refY="2" orient="auto">
+                  <polygon points="0 0, 6 2, 0 4" fill="#06b6d4" />
+                </marker>
+              </defs>
+              <motion.path
+                d="M 215 18 L 172 38"
+                fill="none"
+                stroke="#06b6d4"
+                strokeWidth="1.5"
+                markerEnd="url(#arrowhead)"
+                initial={{ pathLength: 0 }}
+                animate={{
+                  pathLength: [0, 0, 0, 1, 1, 1, 0],
+                  opacity: [0, 0, 0, 1, 1, 1, 0]
+                }}
+                transition={{
+                  duration: 9,
+                  repeat: Infinity,
+                  times: [0, 0.44, 0.46, 0.54, 0.88, 0.95, 1],
+                  ease: "easeInOut"
+                }}
+              />
+            </svg>
+
+            {/* 3. Mouse Pointer Cursor */}
+            <motion.div
+              className="absolute w-4 h-4 z-30 flex flex-col items-start gap-0.5"
+              animate={{
+                x: [0, -10, 14, 162, -10, 215, 172, -10, 275, 360, 0],
+                y: [80, 12, 17, 69, 32, 18, 38, 52, 45, 45, 80]
+              }}
+              transition={{
+                duration: 9,
+                repeat: Infinity,
+                times: [0, 0.06, 0.12, 0.24, 0.32, 0.44, 0.54, 0.62, 0.68, 0.82, 0.95],
+                ease: "easeInOut"
+              }}
+            >
+              {/* Cursor Icon SVG */}
+              <svg width="12" height="12" viewBox="0 0 24 24" className="text-teal-500 drop-shadow-md">
+                <path
+                  d="M3 3 L3 21 L8.5 15.5 L14.5 24 L17.5 22 L11.5 13.5 L18 13.5 Z"
+                  fill="currentColor"
+                  stroke="white"
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                />
+              </svg>
+
+              {/* Coordinates Indicator */}
+              <motion.div
+                className="px-1 py-0.5 rounded bg-slate-900/90 text-white font-mono text-[4.5px] whitespace-nowrap shadow border border-white/10"
+                animate={{
+                  opacity: [0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0]
+                }}
+                transition={{
+                  duration: 9,
+                  repeat: Infinity,
+                  times: [0, 0.08, 0.12, 0.24, 0.26, 0.44, 0.54, 0.56, 0.68, 0.82, 0.95]
+                }}
+              >
+                Drawing...
+              </motion.div>
+            </motion.div>
+
           </div>
         </div>
-        <div className="flex-1 flex gap-2 items-center my-1 relative">
-          <div className="w-16 h-6 rounded border border-dashed border-teal-500/50 bg-teal-500/5 flex items-center justify-center relative">
-            <span className="text-[5px] font-mono text-teal-600 dark:text-teal-400 select-none">[Button]</span>
-            <motion.div
-              className="absolute inset-0 bg-teal-500/10"
-              animate={{ opacity: [0, 0.5, 0] }}
-              transition={{ duration: 2, repeat: Infinity }}
-            />
-          </div>
-          <div className="flex-1 h-6 rounded border border-dashed border-cyan-500/50 bg-cyan-500/5 flex items-center px-1 justify-between relative">
-            <span className="text-[5px] font-mono text-cyan-600 dark:text-cyan-400 select-none">[Input Box]</span>
-            <div className="w-1 h-1 rounded-full bg-cyan-600 dark:bg-cyan-400" />
-            <motion.div
-              className="absolute inset-x-0 h-px bg-cyan-600/60 dark:bg-cyan-400/60"
-              animate={{ top: ["0%", "100%", "0%"] }}
-              transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
-            />
-          </div>
-        </div>
-        <motion.div
-          className="absolute top-0 bottom-0 w-px bg-emerald-500/50 dark:bg-emerald-400/50 shadow-[0_0_8px_rgba(16,185,129,0.2)] dark:shadow-[0_0_8px_rgba(16,185,129,0.3)]"
-          animate={{ left: ["0%", "100%", "0%"] }}
-          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-        />
+
       </div>
     </div>
   );
@@ -70,7 +217,7 @@ function ZoomPathIllustration() {
         {/* Editor Menu Bar */}
         <div className="flex items-center gap-3 px-3 py-1 border-b border-[var(--space-border)] bg-slate-50 dark:bg-slate-950/40 text-[8px] font-sans text-[var(--space-text-subtle)]">
           <span className="hover:text-[var(--space-text)] cursor-pointer">File</span>
-          <span className="hover:text-[var(--space-text)] cursor-pointer font-bold text-teal-650">Select Area</span>
+          <span className="hover:text-[var(--space-text)] cursor-pointer font-bold text-teal-600">Select Area</span>
           <span className="hover:text-[var(--space-text)] cursor-pointer">Transitions</span>
           <span className="hover:text-[var(--space-text)] cursor-pointer">Audio</span>
         </div>
@@ -295,27 +442,204 @@ function ShieldScanIllustration() {
 }
 
 function WaveformIllustration() {
+  const waveHeights = [
+    12, 16, 28, 42, 18, 10, 8, 22, 36, 45, 52, 38, 20, 12, 28, 40, 48, 55, 32, 15, 10, 24, 38, 46,
+    58, 40, 18, 12, 30, 44, 50, 42, 25, 15, 8, 20, 36, 42, 28, 12, 16, 25, 30, 18, 10, 14, 18, 12, 8, 10
+  ];
+
+  const words = [
+    { text: "Ultra-realistic", start: 0.05, end: 0.25 },
+    { text: "AI", start: 0.26, end: 0.35 },
+    { text: "voiceovers", start: 0.36, end: 0.52 },
+    { text: "paced", start: 0.53, end: 0.62 },
+    { text: "to", start: 0.63, end: 0.68 },
+    { text: "your", start: 0.69, end: 0.74 },
+    { text: "video", start: 0.75, end: 0.85 }
+  ];
+
+  const [time, setTime] = useState(0);
+
+  useEffect(() => {
+    const startTime = Date.now();
+    const interval = setInterval(() => {
+      const elapsed = ((Date.now() - startTime) / 1000) % 6; // 6s loop
+      if (elapsed < 4.8) {
+        setTime(elapsed);
+      } else {
+        setTime(4.8);
+      }
+    }, 50);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
-    <div className="relative w-full h-20 flex items-center justify-center gap-[3px]">
-      {Array.from({ length: 20 }).map((_, i) => (
-        <motion.div
-          key={i}
-          className="w-[3px] rounded-full bg-gradient-to-t from-orange-500/60 to-rose-400/60"
-          animate={{
-            height: [
-              `${8 + Math.sin(i * 0.6) * 6}px`,
-              `${8 + Math.cos(i * 0.4 + 1) * 20}px`,
-              `${8 + Math.sin(i * 0.8 + 2) * 10}px`,
-            ],
-          }}
-          transition={{
-            duration: 1.5,
-            repeat: Infinity,
-            delay: i * 0.06,
-            ease: "easeInOut",
-          }}
-        />
-      ))}
+    <div className="relative w-full h-[180px] flex items-center justify-center p-3 select-none">
+      {/* Editor Window (Wide format) */}
+      <div className="w-[94%] h-full rounded-xl border border-[var(--space-border)] bg-[var(--space-card)] flex flex-col overflow-hidden shadow-sm relative">
+        
+        {/* Titlebar / Ruler Header */}
+        <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--space-border)] bg-slate-50 dark:bg-slate-950/40 text-[8px] font-mono text-[var(--space-text-subtle)]">
+          <div className="flex items-center gap-1.5 font-bold">
+            <Mic className="w-2.5 h-2.5 text-orange-500 animate-pulse" />
+            <span>ElevenLabs Audio Editor</span>
+          </div>
+          {/* Time indicator */}
+          <span className="tabular-nums font-mono">
+            {time.toFixed(1)}s
+          </span>
+        </div>
+
+        {/* Timeline Tracks Area */}
+        <div className="flex-1 flex bg-slate-100/50 dark:bg-slate-950/20 overflow-hidden relative">
+          
+          {/* Left Track Info Panel */}
+          <div className="w-24 border-r border-[var(--space-border)] bg-slate-50 dark:bg-slate-950/40 p-2 flex flex-col justify-between text-[7px] font-sans text-[var(--space-text-subtle)]">
+            <div className="flex flex-col gap-1">
+              <span className="font-semibold text-[var(--space-text)] truncate">Voice Track 1</span>
+              <span className="text-[6px] opacity-75 truncate">Adam (Male Tech)</span>
+            </div>
+            
+            {/* Control Badges */}
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-1">
+                <span className="w-1 h-1 rounded-full bg-emerald-500 animate-ping" />
+                <span className="text-[6px] text-emerald-600 dark:text-emerald-400">API Active</span>
+              </div>
+              <div className="flex items-center justify-between bg-slate-200/50 dark:bg-slate-800/50 px-1 py-0.5 rounded border border-[var(--space-border)]">
+                <span>Speed:</span>
+                <span className="font-mono text-teal-600 dark:text-teal-400">1.05x</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Timeline Waveform Area */}
+          <div className="flex-1 relative p-2.5 flex flex-col justify-between overflow-hidden">
+            
+            {/* Waveform Track Container */}
+            <div className="h-16 relative flex items-center bg-slate-200/20 dark:bg-slate-900/30 rounded border border-[var(--space-border)] px-3 overflow-hidden">
+              
+              {/* Background Waveform (Muted Gray) */}
+              <div className="absolute inset-x-3 inset-y-0 flex items-center justify-between gap-[2px] opacity-15">
+                {waveHeights.map((h, i) => (
+                  <div
+                    key={i}
+                    className="w-[3px] bg-slate-400 dark:bg-slate-650 rounded-full"
+                    style={{ height: `${h * 0.9}%` }}
+                  />
+                ))}
+              </div>
+
+              {/* Active Waveform Container (with sweeping width) */}
+              <motion.div
+                className="absolute inset-y-0 left-3 flex items-center overflow-hidden pointer-events-none select-none z-10"
+                animate={{
+                  width: ["0%", "100%", "100%", "0%"]
+                }}
+                transition={{
+                  duration: 6,
+                  repeat: Infinity,
+                  times: [0, 0.8, 0.9, 1],
+                  ease: "linear"
+                }}
+                style={{ width: "0%" }}
+              >
+                {/* Colored Waveform (Identical layout to align perfectly) */}
+                <div className="h-full flex items-center justify-between gap-[2px] min-w-[200px] sm:min-w-[260px] md:min-w-[340px]">
+                  {waveHeights.map((h, i) => (
+                    <div
+                      key={i}
+                      className="w-[3px] bg-gradient-to-t from-orange-500 to-rose-450 rounded-full flex-shrink-0"
+                      style={{ height: `${h * 0.9}%` }}
+                    />
+                  ))}
+                </div>
+              </motion.div>
+
+              {/* Vertical Playhead Cursor line */}
+              <motion.div
+                className="absolute top-0 bottom-0 w-px bg-rose-500 z-20 flex flex-col items-center"
+                animate={{
+                  left: ["12px", "calc(100% - 12px)", "calc(100% - 12px)", "12px"]
+                }}
+                transition={{
+                  duration: 6,
+                  repeat: Infinity,
+                  times: [0, 0.8, 0.9, 1],
+                  ease: "linear"
+                }}
+                style={{ left: "12px" }}
+              >
+                {/* Glowing playhead head */}
+                <div className="w-2.5 h-2.5 -mt-0.5 rounded-full bg-rose-500 shadow-[0_0_8px_rgba(239,68,68,0.8)] border border-white" />
+              </motion.div>
+            </div>
+
+            {/* Subtitle / Script Transcript Box */}
+            <div className="h-7 border border-[var(--space-border)] bg-[var(--space-card)] rounded flex items-center px-2 text-[7.5px] font-mono text-[var(--space-text-subtle)] relative overflow-hidden">
+              <span className="text-[6px] text-teal-600 dark:text-teal-400 font-bold tracking-wider uppercase mr-2 border-r border-[var(--space-border)] pr-2 select-none">
+                Narration
+              </span>
+              <div className="flex flex-wrap items-center">
+                {words.map((w, idx) => (
+                  <motion.span
+                    key={idx}
+                    animate={{
+                      color: [
+                        "var(--space-text-muted)",
+                        "var(--space-text-muted)",
+                        "var(--teal-500)",
+                        "var(--teal-500)",
+                        "var(--space-text-muted)"
+                      ]
+                    }}
+                    transition={{
+                      duration: 6,
+                      repeat: Infinity,
+                      times: [0, w.start, w.start + 0.05, w.end, w.end + 0.08],
+                      ease: "easeInOut"
+                    }}
+                    className="font-medium mr-1 transition-colors"
+                  >
+                    {w.text}
+                  </motion.span>
+                ))}
+              </div>
+            </div>
+
+          </div>
+
+          {/* Right Volume Unit Level Meter */}
+          <div className="w-12 border-l border-[var(--space-border)] bg-slate-50 dark:bg-slate-950/40 p-2 flex flex-col justify-between items-center text-[6px] font-mono text-[var(--space-text-subtle)]">
+            <span className="opacity-80">VU</span>
+            
+            {/* Meter Channel Bars */}
+            <div className="flex-1 my-1.5 flex gap-[1.5px]">
+              {[0, 1].map((channel) => (
+                <div key={channel} className="w-[3px] h-full bg-slate-200 dark:bg-slate-900 rounded-sm overflow-hidden flex flex-col justify-end">
+                  {/* Active bouncing meter */}
+                  <motion.div
+                    className="w-full bg-gradient-to-t from-emerald-500 via-amber-400 to-red-500 rounded-sm"
+                    animate={{
+                      height: ["15%", "90%", "30%", "85%", "10%", "95%", "20%", "75%", "15%"]
+                    }}
+                    transition={{
+                      duration: 2.5,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                      delay: channel * 0.15
+                    }}
+                    style={{ height: "15%" }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <span className="font-semibold text-[6px] text-emerald-600 dark:text-emerald-450">-6dB</span>
+          </div>
+
+        </div>
+
+      </div>
     </div>
   );
 }
@@ -348,10 +672,10 @@ function DeviceFrameIllustration() {
 
 const features = [
   {
-    icon: Target,
-    title: "AI UI-Structure Scan",
-    description: "Our AI automatically parses your screenshots to identify button positions, headers, and form inputs, calculating the camera's focus path with zero manual positioning.",
-    tag: "Computer Vision",
+    icon: Edit3,
+    title: "Interactive UI Canvas",
+    description: "Draw custom highlighting boxes, pointer arrows, or blur private credentials directly on your screens using our secure, drag-and-drop annotation editor.",
+    tag: "Canvas Editor",
     color: "from-teal-500 to-cyan-500",
     glowColor: "rgba(13, 148, 136, 0.12)",
     illustration: UIProcessingIllustration,
@@ -362,7 +686,7 @@ const features = [
     title: "Cinematic Zoom Paths",
     description: "Specify coordinates on screenshots and watch the camera pan, zoom, and sweep automatically with fluid motion curves.",
     tag: "Core Tech",
-    color: "from-teal-650 to-teal-500",
+    color: "from-teal-600 to-teal-500",
     glowColor: "rgba(13, 148, 136, 0.12)",
     illustration: ZoomPathIllustration,
     span: "md:col-span-1 md:row-span-2",

@@ -41,7 +41,7 @@ export default function FooterSection() {
           {/* Logo & Pitch */}
           <div className="lg:col-span-2">
             <Link to="/" className="flex items-center gap-2 group">
-              <Film className="w-5 h-5 text-teal-650 group-hover:text-teal-500 transition-colors" />
+              <Film className="w-5 h-5 text-teal-600 group-hover:text-teal-500 transition-colors" />
               <span className="font-sans font-bold text-lg tracking-tight text-[var(--space-text)]">
                 AIVideo
               </span>
