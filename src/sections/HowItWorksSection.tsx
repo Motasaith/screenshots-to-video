@@ -312,7 +312,7 @@ export default function HowItWorksSection() {
                 </div>
 
                 {/* Screenshot Display Screen Workspace */}
-                <div className="flex-1 my-3 relative overflow-hidden rounded-lg border border-[var(--space-border)] bg-slate-950/20 flex items-center justify-center">
+                <div className="flex-1 my-3 relative overflow-hidden rounded-lg border border-[var(--space-border)] bg-slate-100 dark:bg-slate-950/20 flex items-center justify-center">
                   <AnimatePresence mode="wait">
                     <motion.div
                       key={activeStep}
@@ -342,7 +342,7 @@ export default function HowItWorksSection() {
                       {activeStep === 1 && (
                         <div className="absolute inset-0 bg-cyan-500/5 flex items-center justify-center pointer-events-none">
                           <motion.div
-                            className="px-3 py-1.5 rounded-lg border border-cyan-400 bg-slate-900/90 text-cyan-400 text-[10px] font-mono shadow-[0_0_15px_rgba(6,182,212,0.4)] flex items-center gap-2"
+                            className="px-3 py-1.5 rounded-lg border border-cyan-200 dark:border-cyan-800 bg-white/95 dark:bg-slate-900/90 text-cyan-600 dark:text-cyan-400 text-[10px] font-mono shadow-[0_4px_15px_rgba(6,182,212,0.1)] dark:shadow-[0_0_15px_rgba(6,182,212,0.4)] flex items-center gap-2"
                             animate={{ scale: [1, 1.05, 1], y: [0, -4, 0] }}
                             transition={{ duration: 2, repeat: Infinity }}
                           >
@@ -367,9 +367,9 @@ export default function HowItWorksSection() {
                       )}
 
                       {activeStep === 3 && (
-                        <div className="absolute bottom-4 inset-x-4 bg-slate-950/90 border border-white/10 rounded-lg p-2 flex items-center gap-2 pointer-events-none shadow-xl">
+                        <div className="absolute bottom-4 inset-x-4 bg-white/95 dark:bg-slate-950/90 border border-black/5 dark:border-white/10 rounded-lg p-2 flex items-center gap-2 pointer-events-none shadow-xl">
                           <div className="w-2 h-2 rounded-full bg-teal-500 animate-pulse" />
-                          <span className="text-[9px] font-mono text-teal-300 italic truncate">
+                          <span className="text-[9px] font-mono text-teal-600 dark:text-teal-300 italic truncate">
                             "Now, let's navigate to the main billing settings page..."
                           </span>
                         </div>
@@ -377,7 +377,7 @@ export default function HowItWorksSection() {
 
                       {activeStep === 4 && (
                         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                          <div className="bg-slate-900/95 border border-teal-500/30 rounded-lg px-3 py-1.5 flex items-center gap-2.5">
+                          <div className="bg-white/95 dark:bg-slate-900/95 border border-teal-200 dark:border-teal-800/30 rounded-lg px-3 py-1.5 flex items-center gap-2.5">
                             {Array.from({ length: 10 }).map((_, i) => (
                               <motion.div
                                 key={i}
@@ -396,7 +396,7 @@ export default function HowItWorksSection() {
                             <span className="border-t border-l border-teal-400 w-2 h-2" />
                             <span className="border-t border-r border-teal-400 w-2 h-2" />
                           </div>
-                          <div className="self-center bg-slate-900/90 border border-teal-400/30 px-2.5 py-1 rounded text-[8px] text-teal-400 font-mono flex items-center gap-1.5">
+                          <div className="self-center bg-white/95 dark:bg-slate-900/90 border border-teal-200 dark:border-teal-450/30 px-2.5 py-1 rounded text-[8px] text-teal-600 dark:text-teal-400 font-mono flex items-center gap-1.5">
                             <Eye className="w-3 h-3" /> Cam Path zoom: 1.5x
                           </div>
                           <div className="flex justify-between w-full">
@@ -407,9 +407,9 @@ export default function HowItWorksSection() {
                       )}
 
                       {activeStep === 6 && (
-                        <div className="absolute inset-0 bg-slate-900/60 flex flex-col items-center justify-center gap-3 pointer-events-none">
+                        <div className="absolute inset-0 bg-white/70 dark:bg-slate-900/60 flex flex-col items-center justify-center gap-3 pointer-events-none">
                           <div className="w-8 h-8 rounded-full border border-teal-500/40 border-t-teal-500 animate-spin" />
-                          <span className="text-[10px] font-mono text-teal-400 bg-slate-950 px-2 py-0.5 rounded border border-teal-500/20">
+                          <span className="text-[10px] font-mono text-teal-600 dark:text-teal-400 bg-white dark:bg-slate-950 px-2 py-0.5 rounded border border-teal-200 dark:border-teal-500/20">
                             Stitching frames: 85%
                           </span>
                         </div>

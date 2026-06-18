@@ -14,16 +14,16 @@ import {
 function UIProcessingIllustration() {
   return (
     <div className="relative w-full h-20 flex items-center justify-center">
-      <div className="w-48 h-14 rounded-md border border-[var(--space-border)] bg-slate-950/80 p-2.5 flex flex-col justify-between overflow-hidden relative">
-        <div className="flex items-center justify-between border-b border-white/5 pb-1">
-          <div className="w-10 h-1 bg-white/20 rounded" />
-          <div className="w-3 h-3 rounded bg-cyan-400/20 flex items-center justify-center border border-cyan-400/40">
-            <span className="w-1.5 h-1.5 bg-cyan-400 rounded-full" />
+      <div className="w-48 h-14 rounded-md border border-[var(--space-border)] bg-slate-100/40 dark:bg-slate-950/80 p-2.5 flex flex-col justify-between overflow-hidden relative">
+        <div className="flex items-center justify-between border-b border-black/5 dark:border-white/5 pb-1">
+          <div className="w-10 h-1 bg-black/10 dark:bg-white/20 rounded" />
+          <div className="w-3 h-3 rounded bg-cyan-500/10 dark:bg-cyan-400/20 flex items-center justify-center border border-cyan-500/20 dark:border-cyan-400/40">
+            <span className="w-1.5 h-1.5 bg-cyan-600 dark:bg-cyan-400 rounded-full" />
           </div>
         </div>
         <div className="flex-1 flex gap-2 items-center my-1 relative">
           <div className="w-16 h-6 rounded border border-dashed border-teal-500/50 bg-teal-500/5 flex items-center justify-center relative">
-            <span className="text-[5px] font-mono text-teal-400 select-none">[Button]</span>
+            <span className="text-[5px] font-mono text-teal-600 dark:text-teal-400 select-none">[Button]</span>
             <motion.div
               className="absolute inset-0 bg-teal-500/10"
               animate={{ opacity: [0, 0.5, 0] }}
@@ -31,17 +31,17 @@ function UIProcessingIllustration() {
             />
           </div>
           <div className="flex-1 h-6 rounded border border-dashed border-cyan-500/50 bg-cyan-500/5 flex items-center px-1 justify-between relative">
-            <span className="text-[5px] font-mono text-cyan-400 select-none">[Input Box]</span>
-            <div className="w-1 h-1 rounded-full bg-cyan-400" />
+            <span className="text-[5px] font-mono text-cyan-600 dark:text-cyan-400 select-none">[Input Box]</span>
+            <div className="w-1 h-1 rounded-full bg-cyan-600 dark:bg-cyan-400" />
             <motion.div
-              className="absolute inset-x-0 h-px bg-cyan-400/60"
+              className="absolute inset-x-0 h-px bg-cyan-600/60 dark:bg-cyan-400/60"
               animate={{ top: ["0%", "100%", "0%"] }}
               transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
             />
           </div>
         </div>
         <motion.div
-          className="absolute top-0 bottom-0 w-px bg-emerald-400/50 shadow-[0_0_8px_rgba(16,185,129,0.3)]"
+          className="absolute top-0 bottom-0 w-px bg-emerald-500/50 dark:bg-emerald-400/50 shadow-[0_0_8px_rgba(16,185,129,0.2)] dark:shadow-[0_0_8px_rgba(16,185,129,0.3)]"
           animate={{ left: ["0%", "100%", "0%"] }}
           transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
         />
@@ -106,8 +106,8 @@ function AIChatIllustration() {
           <div
             className={`px-2 py-1 rounded-lg text-[8px] font-mono border ${
               i % 2 === 0
-                ? "bg-teal-500/10 border-teal-500/20 text-teal-400"
-                : "bg-cyan-500/10 border-cyan-500/20 text-cyan-400"
+                ? "bg-teal-500/10 border-teal-500/20 text-teal-600 dark:text-teal-400"
+                : "bg-cyan-500/10 border-cyan-500/20 text-cyan-600 dark:text-cyan-400"
             }`}
           >
             {i === 0 ? "Fix narration?" : i === 1 ? "Adjusting..." : "Done ✓"}
