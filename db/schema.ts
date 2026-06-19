@@ -114,6 +114,17 @@ export const steps = mysqlTable("steps", {
   editorBlurW: float("editorBlurW"),
   editorBlurH: float("editorBlurH"),
   editorBlurIntensity: float("editorBlurIntensity").default(20),
+  // ── Multiple Blur Regions ──
+  editorBlurs: json("editorBlurs").$type<
+    Array<{
+      id: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      intensity?: number;
+    }>
+  >(),
   // ── Redaction ──
   editorRedactX: float("editorRedactX"),
   editorRedactY: float("editorRedactY"),
@@ -132,12 +143,34 @@ export const steps = mysqlTable("steps", {
   editorPixelateW: float("editorPixelateW"),
   editorPixelateH: float("editorPixelateH"),
   editorPixelateBlockSize: float("editorPixelateBlockSize").default(20),
+  // ── Multiple Pixelate Regions ──
+  editorPixelates: json("editorPixelates").$type<
+    Array<{
+      id: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      blockSize?: number;
+    }>
+  >(),
   // ── Spotlight ──
   editorSpotlightX: float("editorSpotlightX"),
   editorSpotlightY: float("editorSpotlightY"),
   editorSpotlightW: float("editorSpotlightW"),
   editorSpotlightH: float("editorSpotlightH"),
   editorSpotlightIntensity: float("editorSpotlightIntensity").default(0.6),
+  // ── Multiple Spotlight Regions ──
+  editorSpotlights: json("editorSpotlights").$type<
+    Array<{
+      id: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      intensity?: number;
+    }>
+  >(),
   // ── Step Number Badge ──
   editorBadgeNumber: int("editorBadgeNumber"),
   editorBadgeX: float("editorBadgeX"),

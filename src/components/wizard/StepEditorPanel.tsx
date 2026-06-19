@@ -77,6 +77,14 @@ interface StepAnnotation {
   editorBlurW?: number | null;
   editorBlurH?: number | null;
   editorBlurIntensity?: number | null;
+  editorBlurs?: Array<{
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    intensity?: number;
+  }> | null;
   editorRedactX?: number | null;
   editorRedactY?: number | null;
   editorRedactW?: number | null;
@@ -92,11 +100,27 @@ interface StepAnnotation {
   editorPixelateW?: number | null;
   editorPixelateH?: number | null;
   editorPixelateBlockSize?: number | null;
+  editorPixelates?: Array<{
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    blockSize?: number;
+  }> | null;
   editorSpotlightX?: number | null;
   editorSpotlightY?: number | null;
   editorSpotlightW?: number | null;
   editorSpotlightH?: number | null;
   editorSpotlightIntensity?: number | null;
+  editorSpotlights?: Array<{
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    intensity?: number;
+  }> | null;
   editorBadgeNumber?: number | null;
   editorBadgeX?: number | null;
   editorBadgeY?: number | null;
@@ -191,7 +215,7 @@ export function StepEditorPanel() {
   const [history, setHistory] = useState<Record<number, StepAnnotation>[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [dragItem, setDragItem] = useState<{
-    type: "overlay" | "badge" | "magnify" | "zoomTarget" | "zoomRect" | "blur" | "redact" | "pixelate" | "spotlight" | "multizoom" | "crop";
+    type: "overlay" | "badge" | "magnify" | "zoomTarget" | "zoomRect" | "blur" | "redact" | "pixelate" | "spotlight" | "multizoom" | "crop" | "blurArr" | "pixelateArr" | "spotlightArr";
     id?: string;
     startX: number;
     startY: number;
@@ -203,6 +227,7 @@ export function StepEditorPanel() {
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  const handleResizeRef = useRef<string | null>(null);
 
   const [bounds, setBounds] = useState<{ visibleW: number; visibleH: number; offsetX: number; offsetY: number } | null>(null);
 
@@ -357,6 +382,7 @@ export function StepEditorPanel() {
           editorBlurW: s.editorBlurW,
           editorBlurH: s.editorBlurH,
           editorBlurIntensity: s.editorBlurIntensity ?? 20,
+          editorBlurs: s.editorBlurs || [],
           editorRedactX: s.editorRedactX,
           editorRedactY: s.editorRedactY,
           editorRedactW: s.editorRedactW,
@@ -372,11 +398,13 @@ export function StepEditorPanel() {
           editorPixelateW: s.editorPixelateW,
           editorPixelateH: s.editorPixelateH,
           editorPixelateBlockSize: s.editorPixelateBlockSize ?? 20,
+          editorPixelates: s.editorPixelates || [],
           editorSpotlightX: s.editorSpotlightX,
           editorSpotlightY: s.editorSpotlightY,
           editorSpotlightW: s.editorSpotlightW,
           editorSpotlightH: s.editorSpotlightH,
           editorSpotlightIntensity: s.editorSpotlightIntensity ?? 0.6,
+          editorSpotlights: s.editorSpotlights || [],
           editorBadgeNumber: s.editorBadgeNumber,
           editorBadgeX: s.editorBadgeX,
           editorBadgeY: s.editorBadgeY,
@@ -576,10 +604,40 @@ export function StepEditorPanel() {
           updated.editorOverlayX = clamp(dragItem.initialX + deltaX, 0, 100);
           updated.editorOverlayY = clamp(dragItem.initialY + deltaY, 0, 100);
         } else if (dragItem.type === "crop") {
-          const w = dragItem.initialW || 0;
-          const h = dragItem.initialH || 0;
-          updated.editorCropX = clamp(dragItem.initialX + deltaX, 0, 100 - w);
-          updated.editorCropY = clamp(dragItem.initialY + deltaY, 0, 100 - h);
+          const handle = handleResizeRef.current;
+          const initX = dragItem.initialX || 0;
+          const initY = dragItem.initialY || 0;
+          const initW = dragItem.initialW || 100;
+          const initH = dragItem.initialH || 100;
+
+          if (handle) {
+            // Resize from a specific edge/corner handle
+            let newX = initX, newY = initY, newW = initW, newH = initH;
+            if (handle.includes("w")) {
+              newX = clamp(initX + deltaX, 0, initX + initW - 5);
+              newW = initW - (newX - initX);
+            }
+            if (handle.includes("e")) {
+              newW = clamp(initW + deltaX, 5, 100 - initX);
+            }
+            if (handle.includes("n")) {
+              newY = clamp(initY + deltaY, 0, initY + initH - 5);
+              newH = initH - (newY - initY);
+            }
+            if (handle.includes("s")) {
+              newH = clamp(initH + deltaY, 5, 100 - initY);
+            }
+            updated.editorCropX = newX;
+            updated.editorCropY = newY;
+            updated.editorCropW = newW;
+            updated.editorCropH = newH;
+          } else {
+            // Move the entire crop rectangle
+            const w = initW;
+            const h = initH;
+            updated.editorCropX = clamp(initX + deltaX, 0, 100 - w);
+            updated.editorCropY = clamp(initY + deltaY, 0, 100 - h);
+          }
         } else if (dragItem.type === "badge") {
           updated.editorBadgeX = clamp(dragItem.initialX + deltaX, 0, 100);
           updated.editorBadgeY = clamp(dragItem.initialY + deltaY, 0, 100);
@@ -601,6 +659,14 @@ export function StepEditorPanel() {
           const h = dragItem.initialH || 0;
           updated.editorBlurX = clamp(dragItem.initialX + deltaX, 0, 100 - w);
           updated.editorBlurY = clamp(dragItem.initialY + deltaY, 0, 100 - h);
+        } else if (dragItem.type === "blurArr") {
+          const w = dragItem.initialW || 0;
+          const h = dragItem.initialH || 0;
+          updated.editorBlurs = (stepAnn.editorBlurs || []).map((r) =>
+            r.id === dragItem.id
+              ? { ...r, x: clamp(dragItem.initialX + deltaX, 0, 100 - w), y: clamp(dragItem.initialY + deltaY, 0, 100 - h) }
+              : r
+          );
         } else if (dragItem.type === "redact") {
           const w = dragItem.initialW || 0;
           const h = dragItem.initialH || 0;
@@ -611,11 +677,27 @@ export function StepEditorPanel() {
           const h = dragItem.initialH || 0;
           updated.editorPixelateX = clamp(dragItem.initialX + deltaX, 0, 100 - w);
           updated.editorPixelateY = clamp(dragItem.initialY + deltaY, 0, 100 - h);
+        } else if (dragItem.type === "pixelateArr") {
+          const w = dragItem.initialW || 0;
+          const h = dragItem.initialH || 0;
+          updated.editorPixelates = (stepAnn.editorPixelates || []).map((r) =>
+            r.id === dragItem.id
+              ? { ...r, x: clamp(dragItem.initialX + deltaX, 0, 100 - w), y: clamp(dragItem.initialY + deltaY, 0, 100 - h) }
+              : r
+          );
         } else if (dragItem.type === "spotlight") {
           const w = dragItem.initialW || 0;
           const h = dragItem.initialH || 0;
           updated.editorSpotlightX = clamp(dragItem.initialX + deltaX, 0, 100 - w);
           updated.editorSpotlightY = clamp(dragItem.initialY + deltaY, 0, 100 - h);
+        } else if (dragItem.type === "spotlightArr") {
+          const w = dragItem.initialW || 0;
+          const h = dragItem.initialH || 0;
+          updated.editorSpotlights = (stepAnn.editorSpotlights || []).map((r) =>
+            r.id === dragItem.id
+              ? { ...r, x: clamp(dragItem.initialX + deltaX, 0, 100 - w), y: clamp(dragItem.initialY + deltaY, 0, 100 - h) }
+              : r
+          );
         } else if (dragItem.type === "multizoom") {
           updated.editorMultiZooms = (stepAnn.editorMultiZooms || []).map((p) =>
             p.id === dragItem.id
@@ -646,6 +728,7 @@ export function StepEditorPanel() {
     if (dragItem) {
       pushHistory(annotations);
       setDragItem(null);
+      handleResizeRef.current = null;
       return;
     }
 
@@ -694,10 +777,12 @@ export function StepEditorPanel() {
       const h = Math.abs(dragCurrent.y - dragStart.y);
 
       if (w > 2 && h > 2) {
-        updatedAnn.editorBlurX = x;
-        updatedAnn.editorBlurY = y;
-        updatedAnn.editorBlurW = w;
-        updatedAnn.editorBlurH = h;
+        const existing = updatedAnn.editorBlurs || [];
+        updatedAnn.editorBlurs = [...existing, {
+          id: crypto.randomUUID(),
+          x, y, w, h,
+          intensity: updatedAnn.editorBlurIntensity ?? 20,
+        }];
         changed = true;
         setActiveTab("blur");
       }
@@ -726,10 +811,12 @@ export function StepEditorPanel() {
       const h = Math.abs(dragCurrent.y - dragStart.y);
 
       if (w > 2 && h > 2) {
-        updatedAnn.editorPixelateX = x;
-        updatedAnn.editorPixelateY = y;
-        updatedAnn.editorPixelateW = w;
-        updatedAnn.editorPixelateH = h;
+        const existing = updatedAnn.editorPixelates || [];
+        updatedAnn.editorPixelates = [...existing, {
+          id: crypto.randomUUID(),
+          x, y, w, h,
+          blockSize: updatedAnn.editorPixelateBlockSize ?? 20,
+        }];
         changed = true;
         setActiveTab("pixelate");
       }
@@ -742,10 +829,12 @@ export function StepEditorPanel() {
       const h = Math.abs(dragCurrent.y - dragStart.y);
 
       if (w > 2 && h > 2) {
-        updatedAnn.editorSpotlightX = x;
-        updatedAnn.editorSpotlightY = y;
-        updatedAnn.editorSpotlightW = w;
-        updatedAnn.editorSpotlightH = h;
+        const existing = updatedAnn.editorSpotlights || [];
+        updatedAnn.editorSpotlights = [...existing, {
+          id: crypto.randomUUID(),
+          x, y, w, h,
+          intensity: updatedAnn.editorSpotlightIntensity ?? 0.6,
+        }];
         changed = true;
         setActiveTab("spotlight");
       }
@@ -780,11 +869,14 @@ export function StepEditorPanel() {
       "editorOverlayColor", "editorOverlaySize",
       "editorCropX", "editorCropY", "editorCropW", "editorCropH",
       "editorBlurX", "editorBlurY", "editorBlurW", "editorBlurH", "editorBlurIntensity",
+      "editorBlurs",
       "editorRedactX", "editorRedactY", "editorRedactW", "editorRedactH", "editorRedactColor",
       "editorWatermarkText", "editorWatermarkPosition", "editorWatermarkSize",
       "editorWatermarkColor", "editorWatermarkOpacity",
       "editorPixelateX", "editorPixelateY", "editorPixelateW", "editorPixelateH", "editorPixelateBlockSize",
+      "editorPixelates",
       "editorSpotlightX", "editorSpotlightY", "editorSpotlightW", "editorSpotlightH", "editorSpotlightIntensity",
+      "editorSpotlights",
       "editorBadgeNumber", "editorBadgeX", "editorBadgeY", "editorBadgeColor",
       "editorMagnifyX", "editorMagnifyY", "editorMagnifyW", "editorMagnifyH", "editorMagnifyScale", "editorMagnifyCorner",
       "editorColorFilter",
@@ -814,11 +906,14 @@ export function StepEditorPanel() {
         "editorOverlayColor", "editorOverlaySize",
         "editorCropX", "editorCropY", "editorCropW", "editorCropH",
         "editorBlurX", "editorBlurY", "editorBlurW", "editorBlurH", "editorBlurIntensity",
+        "editorBlurs",
         "editorRedactX", "editorRedactY", "editorRedactW", "editorRedactH", "editorRedactColor",
         "editorWatermarkText", "editorWatermarkPosition", "editorWatermarkSize",
         "editorWatermarkColor", "editorWatermarkOpacity",
         "editorPixelateX", "editorPixelateY", "editorPixelateW", "editorPixelateH", "editorPixelateBlockSize",
+        "editorPixelates",
         "editorSpotlightX", "editorSpotlightY", "editorSpotlightW", "editorSpotlightH", "editorSpotlightIntensity",
+        "editorSpotlights",
         "editorBadgeNumber", "editorBadgeX", "editorBadgeY", "editorBadgeColor",
         "editorMagnifyX", "editorMagnifyY", "editorMagnifyW", "editorMagnifyH", "editorMagnifyScale", "editorMagnifyCorner",
         "editorColorFilter",
@@ -935,10 +1030,13 @@ export function StepEditorPanel() {
       ann.editorOverlayText != null ||
       ann.editorCropX != null ||
       ann.editorBlurX != null ||
+      (ann.editorBlurs != null && ann.editorBlurs.length > 0) ||
       ann.editorRedactX != null ||
       ann.editorWatermarkText != null ||
       ann.editorPixelateX != null ||
+      (ann.editorPixelates != null && ann.editorPixelates.length > 0) ||
       ann.editorSpotlightX != null ||
+      (ann.editorSpotlights != null && ann.editorSpotlights.length > 0) ||
       ann.editorBadgeNumber != null ||
       ann.editorMagnifyX != null ||
       (ann.editorColorFilter != null && ann.editorColorFilter !== "none") ||
@@ -987,7 +1085,26 @@ export function StepEditorPanel() {
           />
           <ToolButton
             active={mode === "crop"}
-            onClick={() => setMode("crop")}
+            onClick={() => {
+              // Canva-style: auto-initialize crop to full image if not already set
+              if (currentStep) {
+                const ann = annotations[currentStep.id] || {};
+                if (ann.editorCropX == null || ann.editorCropW == null) {
+                  const next = {
+                    ...annotations,
+                    [currentStep.id]: {
+                      ...ann,
+                      editorCropX: 0,
+                      editorCropY: 0,
+                      editorCropW: 100,
+                      editorCropH: 100,
+                    },
+                  };
+                  pushHistory(next);
+                }
+              }
+              setMode("crop");
+            }}
             icon={<Crop className="w-4 h-4" />}
             label="Crop"
           />
@@ -1232,10 +1349,10 @@ export function StepEditorPanel() {
                         Crop
                       </span>
                     )}
-                    {currentAnn?.editorBlurX != null && (
+                    {(currentAnn?.editorBlurX != null || (currentAnn?.editorBlurs != null && currentAnn.editorBlurs.length > 0)) && (
                       <span className="flex items-center gap-1 text-xs font-mono text-pink-600 bg-pink-50 px-2 py-0.5 rounded">
                         <Aperture className="w-3 h-3" />
-                        Blur
+                        Blur{currentAnn?.editorBlurs && currentAnn.editorBlurs.length > 1 ? ` (${currentAnn.editorBlurs.length})` : ""}
                       </span>
                     )}
                     {currentAnn?.editorRedactX != null && (
@@ -1250,16 +1367,16 @@ export function StepEditorPanel() {
                         Watermark
                       </span>
                     )}
-                    {currentAnn?.editorPixelateX != null && (
+                    {(currentAnn?.editorPixelateX != null || (currentAnn?.editorPixelates != null && currentAnn.editorPixelates.length > 0)) && (
                       <span className="flex items-center gap-1 text-xs font-mono text-cyan-600 bg-cyan-50 px-2 py-0.5 rounded">
                         <Grid3x3 className="w-3 h-3" />
-                        Pixelate
+                        Pixelate{currentAnn?.editorPixelates && currentAnn.editorPixelates.length > 1 ? ` (${currentAnn.editorPixelates.length})` : ""}
                       </span>
                     )}
-                    {currentAnn?.editorSpotlightX != null && (
+                    {(currentAnn?.editorSpotlightX != null || (currentAnn?.editorSpotlights != null && currentAnn.editorSpotlights.length > 0)) && (
                       <span className="flex items-center gap-1 text-xs font-mono text-orange-600 bg-orange-50 px-2 py-0.5 rounded">
                         <Sun className="w-3 h-3" />
-                        Spotlight
+                        Spotlight{currentAnn?.editorSpotlights && currentAnn.editorSpotlights.length > 1 ? ` (${currentAnn.editorSpotlights.length})` : ""}
                       </span>
                     )}
                     {currentAnn?.editorBadgeNumber != null && (
@@ -1411,51 +1528,105 @@ export function StepEditorPanel() {
                         />
                       )}
 
-                      {/* Crop overlay */}
-                      {cropRect && cropRect.x != null && (
-                        <div
-                          className="absolute pointer-events-auto cursor-move select-none"
-                          style={{
-                            left: `${cropRect.x}%`,
-                            top: `${cropRect.y}%`,
-                            width: `${cropRect.w}%`,
-                            height: `${cropRect.h}%`,
-                            border: "3px dashed #00E676",
-                            backgroundColor: "rgba(0,230,118,0.12)",
-                            boxShadow: "0 0 0 1px rgba(255,255,255,0.8), 0 4px 12px rgba(0,0,0,0.3)",
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setMode("crop");
-                            const coords = getCanvasCoords(e);
-                            if (!coords) return;
-                            setDragItem({
-                              type: "crop",
-                              startX: coords.x,
-                              startY: coords.y,
-                              initialX: currentAnn?.editorCropX ?? 0,
-                              initialY: currentAnn?.editorCropY ?? 0,
-                              initialW: currentAnn?.editorCropW ?? 0,
-                              initialH: currentAnn?.editorCropH ?? 0,
-                            });
-                          }}
-                        >
-                          <div className="absolute top-1 left-1 bg-[#00E676] text-black text-[10px] font-mono px-1 rounded font-bold">
-                            Crop
+                      {/* Crop overlay — Canva style with dimmed outside + edge handles */}
+                      {cropRect && cropRect.x != null && cropRect.w != null && cropRect.h != null && (
+                        <>
+                          {/* Dimmed area outside the crop (4 rectangles: top, bottom, left, right) */}
+                          <div className="absolute pointer-events-none" style={{ left: 0, top: 0, width: "100%", height: "100%", overflow: "hidden" }}>
+                            {/* Top */}
+                            <div style={{ position: "absolute", left: 0, top: 0, width: "100%", height: `${cropRect.y}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
+                            {/* Bottom */}
+                            <div style={{ position: "absolute", left: 0, top: `${cropRect.y + cropRect.h}%`, width: "100%", height: `${100 - cropRect.y - cropRect.h}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
+                            {/* Left */}
+                            <div style={{ position: "absolute", left: 0, top: `${cropRect.y}%`, width: `${cropRect.x}%`, height: `${cropRect.h}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
+                            {/* Right */}
+                            <div style={{ position: "absolute", left: `${cropRect.x + cropRect.w}%`, top: `${cropRect.y}%`, width: `${100 - cropRect.x - cropRect.w}%`, height: `${cropRect.h}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
                           </div>
-                        </div>
+
+                          {/* Crop selection rectangle — draggable to move, with edge handles to resize */}
+                          <div
+                            className="absolute pointer-events-auto cursor-move select-none"
+                            style={{
+                              left: `${cropRect.x}%`,
+                              top: `${cropRect.y}%`,
+                              width: `${cropRect.w}%`,
+                              height: `${cropRect.h}%`,
+                              border: "3px solid #00E676",
+                              boxShadow: "0 0 0 1px rgba(255,255,255,0.9)",
+                            }}
+                            onMouseDown={(e) => {
+                              // Only drag if clicking inside (not on handles)
+                              if ((e.target as HTMLElement).dataset.handle) return;
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setMode("crop");
+                              const coords = getCanvasCoords(e);
+                              if (!coords) return;
+                              setDragItem({
+                                type: "crop",
+                                startX: coords.x,
+                                startY: coords.y,
+                                initialX: currentAnn?.editorCropX ?? 0,
+                                initialY: currentAnn?.editorCropY ?? 0,
+                                initialW: currentAnn?.editorCropW ?? 0,
+                                initialH: currentAnn?.editorCropH ?? 0,
+                              });
+                            }}
+                          >
+                            <div className="absolute top-1 left-1 bg-[#00E676] text-black text-[10px] font-mono px-1 rounded font-bold">
+                              Crop — keep this area
+                            </div>
+
+                            {/* Edge handles — 8 resize handles (corners + midpoints) */}
+                            {[
+                              { name: "nw", style: { top: "-6px", left: "-6px", cursor: "nwse-resize" } },
+                              { name: "n", style: { top: "-6px", left: "50%", transform: "translateX(-50%)", cursor: "ns-resize" } },
+                              { name: "ne", style: { top: "-6px", right: "-6px", cursor: "nesw-resize" } },
+                              { name: "e", style: { top: "50%", right: "-6px", transform: "translateY(-50%)", cursor: "ew-resize" } },
+                              { name: "se", style: { bottom: "-6px", right: "-6px", cursor: "nwse-resize" } },
+                              { name: "s", style: { bottom: "-6px", left: "50%", transform: "translateX(-50%)", cursor: "ns-resize" } },
+                              { name: "sw", style: { bottom: "-6px", left: "-6px", cursor: "nesw-resize" } },
+                              { name: "w", style: { top: "50%", left: "-6px", transform: "translateY(-50%)", cursor: "ew-resize" } },
+                            ].map((h) => (
+                              <div
+                                key={h.name}
+                                data-handle={h.name}
+                                className="absolute w-3 h-3 bg-white border-2 border-[#00E676] rounded-sm pointer-events-auto"
+                                style={{ ...h.style, zIndex: 10 }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setMode("crop");
+                                  const coords = getCanvasCoords(e);
+                                  if (!coords) return;
+                                  setDragItem({
+                                    type: "crop",
+                                    startX: coords.x,
+                                    startY: coords.y,
+                                    initialX: currentAnn?.editorCropX ?? 0,
+                                    initialY: currentAnn?.editorCropY ?? 0,
+                                    initialW: currentAnn?.editorCropW ?? 0,
+                                    initialH: currentAnn?.editorCropH ?? 0,
+                                  });
+                                  // Store which handle is being dragged via a custom property
+                                  handleResizeRef.current = h.name;
+                                }}
+                              />
+                            ))}
+                          </div>
+                        </>
                       )}
 
-                      {/* Blur overlay */}
-                      {blurRect && blurRect.x != null && (
+                      {/* Blur overlays (multiple regions) */}
+                      {(currentAnn?.editorBlurs || []).map((blurRegion, idx) => (
                         <div
-                          className="absolute pointer-events-auto cursor-move overflow-hidden select-none"
+                          key={blurRegion.id}
+                          className="absolute pointer-events-auto cursor-move overflow-hidden select-none group"
                           style={{
-                            left: `${blurRect.x}%`,
-                            top: `${blurRect.y}%`,
-                            width: `${blurRect.w}%`,
-                            height: `${blurRect.h}%`,
+                            left: `${blurRegion.x}%`,
+                            top: `${blurRegion.y}%`,
+                            width: `${blurRegion.w}%`,
+                            height: `${blurRegion.h}%`,
                             border: "3px solid #FF4081",
                             boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
                           }}
@@ -1466,29 +1637,47 @@ export function StepEditorPanel() {
                             const coords = getCanvasCoords(e);
                             if (!coords) return;
                             setDragItem({
-                              type: "blur",
+                              type: "blurArr",
+                              id: blurRegion.id,
                               startX: coords.x,
                               startY: coords.y,
-                              initialX: currentAnn?.editorBlurX ?? 0,
-                              initialY: currentAnn?.editorBlurY ?? 0,
-                              initialW: currentAnn?.editorBlurW ?? 0,
-                              initialH: currentAnn?.editorBlurH ?? 0,
+                              initialX: blurRegion.x,
+                              initialY: blurRegion.y,
+                              initialW: blurRegion.w,
+                              initialH: blurRegion.h,
                             });
                           }}
                         >
                           <div
                             className="w-full h-full"
                             style={{
-                              backdropFilter: `blur(${currentAnn?.editorBlurIntensity || 20}px)`,
-                              WebkitBackdropFilter: `blur(${currentAnn?.editorBlurIntensity || 20}px)`,
+                              backdropFilter: `blur(${blurRegion.intensity ?? currentAnn?.editorBlurIntensity ?? 20}px)`,
+                              WebkitBackdropFilter: `blur(${blurRegion.intensity ?? currentAnn?.editorBlurIntensity ?? 20}px)`,
                               backgroundColor: "rgba(255,255,255,0.05)",
                             }}
                           />
                           <div className="absolute top-1 left-1 bg-[#FF4081] text-white text-[10px] font-mono px-1 rounded font-bold">
-                            Blur
+                            Blur {idx + 1}
                           </div>
+                          <button
+                            className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const next = {
+                                ...annotations,
+                                [currentStep.id]: {
+                                  ...(annotations[currentStep.id] || {}),
+                                  editorBlurs: (currentAnn?.editorBlurs || []).filter((r) => r.id !== blurRegion.id),
+                                },
+                              };
+                              pushHistory(next);
+                            }}
+                          >
+                            ×
+                          </button>
                         </div>
-                      )}
+                      ))}
 
                       {/* Redact overlay */}
                       {redactRect && redactRect.x != null && (
@@ -1561,15 +1750,16 @@ export function StepEditorPanel() {
                         </div>
                       )}
 
-                      {/* Pixelate overlay */}
-                      {pixelateRect && pixelateRect.x != null && (
+                      {/* Pixelate overlays (multiple regions) */}
+                      {(currentAnn?.editorPixelates || []).map((pixRegion, idx) => (
                         <div
-                          className="absolute pointer-events-auto cursor-move overflow-hidden select-none"
+                          key={pixRegion.id}
+                          className="absolute pointer-events-auto cursor-move overflow-hidden select-none group"
                           style={{
-                            left: `${pixelateRect.x}%`,
-                            top: `${pixelateRect.y}%`,
-                            width: `${pixelateRect.w}%`,
-                            height: `${pixelateRect.h}%`,
+                            left: `${pixRegion.x}%`,
+                            top: `${pixRegion.y}%`,
+                            width: `${pixRegion.w}%`,
+                            height: `${pixRegion.h}%`,
                             border: "3px solid #00BCD4",
                             boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
                           }}
@@ -1580,34 +1770,52 @@ export function StepEditorPanel() {
                             const coords = getCanvasCoords(e);
                             if (!coords) return;
                             setDragItem({
-                              type: "pixelate",
+                              type: "pixelateArr",
+                              id: pixRegion.id,
                               startX: coords.x,
                               startY: coords.y,
-                              initialX: currentAnn?.editorPixelateX ?? 0,
-                              initialY: currentAnn?.editorPixelateY ?? 0,
-                              initialW: currentAnn?.editorPixelateW ?? 0,
-                              initialH: currentAnn?.editorPixelateH ?? 0,
+                              initialX: pixRegion.x,
+                              initialY: pixRegion.y,
+                              initialW: pixRegion.w,
+                              initialH: pixRegion.h,
                             });
                           }}
                         >
                           <div
                             className="w-full h-full"
                             style={{
-                              backdropFilter: `blur(0px)`,
                               backgroundImage: `repeating-conic-gradient(#808080 0% 25%, #a0a0a0 0% 50%)`,
-                              backgroundSize: `${currentAnn?.editorPixelateBlockSize || 20}px ${currentAnn?.editorPixelateBlockSize || 20}px`,
+                              backgroundSize: `${pixRegion.blockSize ?? currentAnn?.editorPixelateBlockSize ?? 20}px ${pixRegion.blockSize ?? currentAnn?.editorPixelateBlockSize ?? 20}px`,
                               opacity: 0.7,
                             }}
                           />
                           <div className="absolute top-1 left-1 bg-[#00BCD4] text-white text-[10px] font-mono px-1 rounded font-bold">
-                            Pixelate
+                            Pixelate {idx + 1}
                           </div>
+                          <button
+                            className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              const next = {
+                                ...annotations,
+                                [currentStep.id]: {
+                                  ...(annotations[currentStep.id] || {}),
+                                  editorPixelates: (currentAnn?.editorPixelates || []).filter((r) => r.id !== pixRegion.id),
+                                },
+                              };
+                              pushHistory(next);
+                            }}
+                          >
+                            ×
+                          </button>
                         </div>
-                      )}
+                      ))}
 
-                      {/* Spotlight overlay */}
-                      {spotlightRect && spotlightRect.x != null && (
+                      {/* Spotlight overlays (multiple regions) */}
+                      {(currentAnn?.editorSpotlights || []).length > 0 && (
                         <>
+                          {/* Dark overlay covering everything */}
                           <div
                             className="absolute pointer-events-none"
                             style={{
@@ -1615,42 +1823,64 @@ export function StepEditorPanel() {
                               top: 0,
                               width: "100%",
                               height: "100%",
-                              backgroundColor: `rgba(0,0,0,${currentAnn?.editorSpotlightIntensity ?? 0.6})`,
+                              backgroundColor: `rgba(0,0,0,${Math.max(...(currentAnn?.editorSpotlights || []).map(s => s.intensity ?? currentAnn?.editorSpotlightIntensity ?? 0.6))})`,
                               mixBlendMode: "multiply",
                             }}
                           />
-                          <div
-                            className="absolute pointer-events-auto cursor-move select-none"
-                            style={{
-                              left: `${spotlightRect.x}%`,
-                              top: `${spotlightRect.y}%`,
-                              width: `${spotlightRect.w}%`,
-                              height: `${spotlightRect.h}%`,
-                              border: "3px solid #FF6D00",
-                              borderRadius: "4px",
-                              boxShadow: `0 0 0 9999px rgba(0,0,0,${currentAnn?.editorSpotlightIntensity ?? 0.6}), 0 0 0 1px rgba(255,255,255,0.9)`,
-                            }}
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setMode("spotlight");
-                              const coords = getCanvasCoords(e);
-                              if (!coords) return;
-                              setDragItem({
-                                type: "spotlight",
-                                startX: coords.x,
-                                startY: coords.y,
-                                initialX: currentAnn?.editorSpotlightX ?? 0,
-                                initialY: currentAnn?.editorSpotlightY ?? 0,
-                                initialW: currentAnn?.editorSpotlightW ?? 0,
-                                initialH: currentAnn?.editorSpotlightH ?? 0,
-                              });
-                            }}
-                          >
-                            <div className="absolute top-1 left-1 bg-[#FF6D00] text-white text-[10px] font-mono px-1 rounded font-bold">
-                              Spotlight
+                          {/* Each spotlight region "cuts out" the dark overlay */}
+                          {(currentAnn?.editorSpotlights || []).map((spotRegion, idx) => (
+                            <div
+                              key={spotRegion.id}
+                              className="absolute pointer-events-auto cursor-move select-none group"
+                              style={{
+                                left: `${spotRegion.x}%`,
+                                top: `${spotRegion.y}%`,
+                                width: `${spotRegion.w}%`,
+                                height: `${spotRegion.h}%`,
+                                border: "3px solid #FF6D00",
+                                borderRadius: "4px",
+                                boxShadow: `0 0 0 9999px rgba(0,0,0,${spotRegion.intensity ?? currentAnn?.editorSpotlightIntensity ?? 0.6}), 0 0 0 1px rgba(255,255,255,0.9)`,
+                              }}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setMode("spotlight");
+                                const coords = getCanvasCoords(e);
+                                if (!coords) return;
+                                setDragItem({
+                                  type: "spotlightArr",
+                                  id: spotRegion.id,
+                                  startX: coords.x,
+                                  startY: coords.y,
+                                  initialX: spotRegion.x,
+                                  initialY: spotRegion.y,
+                                  initialW: spotRegion.w,
+                                  initialH: spotRegion.h,
+                                });
+                              }}
+                            >
+                              <div className="absolute top-1 left-1 bg-[#FF6D00] text-white text-[10px] font-mono px-1 rounded font-bold">
+                                Spotlight {idx + 1}
+                              </div>
+                              <button
+                                className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  const next = {
+                                    ...annotations,
+                                    [currentStep.id]: {
+                                      ...(annotations[currentStep.id] || {}),
+                                      editorSpotlights: (currentAnn?.editorSpotlights || []).filter((r) => r.id !== spotRegion.id),
+                                    },
+                                  };
+                                  pushHistory(next);
+                                }}
+                              >
+                                ×
+                              </button>
                             </div>
-                          </div>
+                          ))}
                         </>
                       )}
 
@@ -1928,7 +2158,7 @@ export function StepEditorPanel() {
                   <><span className="font-semibold text-[var(--sketch-fg)]">Text Overlay:</span> Click on the canvas to place text. Edit the text, color, and size in the settings below.</>
                 )}
                 {mode === "crop" && (
-                  <><span className="font-semibold text-[var(--sketch-fg)]">Crop:</span> Drag to select the area you want to keep. Everything outside will be removed.</>
+                  <><span className="font-semibold text-[var(--sketch-fg)]">Crop:</span> Drag the green box edges to choose what to keep. Everything dimmed outside the box will be removed. Drag inside the box to move it.</>
                 )}
                 {mode === "blur" && (
                   <><span className="font-semibold text-[var(--sketch-fg)]">Blur:</span> Drag over sensitive information (emails, names, API keys) to blur it. Adjust intensity in the settings below.</>
@@ -2325,7 +2555,7 @@ export function StepEditorPanel() {
                 </div>
 
                 <p className="text-[10px] text-[var(--sketch-fg-muted)]">
-                  ≡ Select "Crop" tool and drag on canvas to define crop area
+                  ≡ The green box shows the area to keep. Drag the edges to resize, or drag inside to move. Everything dimmed will be removed.
                 </p>
 
                 {currentAnn?.editorCropX != null && (
@@ -2469,22 +2699,25 @@ export function StepEditorPanel() {
                 </div>
 
                 <p className="text-[10px] text-[var(--sketch-fg-muted)]">
-                  ≡ Select "Blur" tool and drag on canvas to define blur area
+                  ≡ Select "Blur" tool and drag on canvas to add a blur region. You can add multiple blur regions.
                 </p>
 
-                {currentAnn?.editorBlurX != null && (
+                {currentAnn?.editorBlurs && currentAnn.editorBlurs.length > 0 && (
                   <button
                     onClick={() => {
-                      handleClear("editorBlurX");
-                      handleClear("editorBlurY");
-                      handleClear("editorBlurW");
-                      handleClear("editorBlurH");
-                      handleClear("editorBlurIntensity");
+                      const next = {
+                        ...annotations,
+                        [currentStep.id]: {
+                          ...(annotations[currentStep.id] || {}),
+                          editorBlurs: [],
+                        },
+                      };
+                      pushHistory(next);
                     }}
                     className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
                   >
                     <Trash2 className="w-3 h-3" />
-                    Clear blur
+                    Clear all blurs ({currentAnn.editorBlurs.length})
                   </button>
                 )}
               </div>
@@ -2898,22 +3131,25 @@ export function StepEditorPanel() {
                 </div>
 
                 <p className="text-[10px] text-[var(--sketch-fg-muted)]">
-                  ≡ Select "Pixelate" tool and drag on canvas to mosaic sensitive UI
+                  ≡ Select "Pixelate" tool and drag on canvas to mosaic sensitive UI. You can add multiple pixelate regions.
                 </p>
 
-                {currentAnn?.editorPixelateX != null && (
+                {currentAnn?.editorPixelates && currentAnn.editorPixelates.length > 0 && (
                   <button
                     onClick={() => {
-                      handleClear("editorPixelateX");
-                      handleClear("editorPixelateY");
-                      handleClear("editorPixelateW");
-                      handleClear("editorPixelateH");
-                      handleClear("editorPixelateBlockSize");
+                      const next = {
+                        ...annotations,
+                        [currentStep.id]: {
+                          ...(annotations[currentStep.id] || {}),
+                          editorPixelates: [],
+                        },
+                      };
+                      pushHistory(next);
                     }}
                     className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
                   >
                     <Trash2 className="w-3 h-3" />
-                    Clear pixelate
+                    Clear all pixelate ({currentAnn.editorPixelates.length})
                   </button>
                 )}
               </div>
@@ -3043,22 +3279,25 @@ export function StepEditorPanel() {
                 </div>
 
                 <p className="text-[10px] text-[var(--sketch-fg-muted)]">
-                  ≡ Select "Spotlight" tool and drag to highlight a region while dimming everything else
+                  ≡ Select "Spotlight" tool and drag to highlight a region while dimming everything else. You can add multiple spotlight regions.
                 </p>
 
-                {currentAnn?.editorSpotlightX != null && (
+                {currentAnn?.editorSpotlights && currentAnn.editorSpotlights.length > 0 && (
                   <button
                     onClick={() => {
-                      handleClear("editorSpotlightX");
-                      handleClear("editorSpotlightY");
-                      handleClear("editorSpotlightW");
-                      handleClear("editorSpotlightH");
-                      handleClear("editorSpotlightIntensity");
+                      const next = {
+                        ...annotations,
+                        [currentStep.id]: {
+                          ...(annotations[currentStep.id] || {}),
+                          editorSpotlights: [],
+                        },
+                      };
+                      pushHistory(next);
                     }}
                     className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
                   >
                     <Trash2 className="w-3 h-3" />
-                    Clear spotlight
+                    Clear all spotlights ({currentAnn.editorSpotlights.length})
                   </button>
                 )}
               </div>

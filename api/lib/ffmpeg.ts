@@ -224,6 +224,164 @@ function buildAudioFilter(): string {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Shared filter builders for multi-region blur/pixelate/spotlight    */
+/* ------------------------------------------------------------------ */
+
+type EditorOpts = Parameters<typeof renderStepVideo>[0];
+
+/** Clamp a value between min and max. */
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+/** Clamp a region to stay within image bounds (avoids FFmpeg crop errors). */
+function clampRegion(x: number, y: number, w: number, h: number, imgW: number, imgH: number) {
+  const cx = Math.max(0, Math.min(x, imgW - 1));
+  const cy = Math.max(0, Math.min(y, imgH - 1));
+  const cw = Math.max(1, Math.min(w, imgW - cx));
+  const ch = Math.max(1, Math.min(h, imgH - cy));
+  return { x: cx, y: cy, w: cw, h: ch };
+}
+
+function buildBlurFilter(opts: EditorOpts, imgWidth: number, imgHeight: number): string {
+  const blurRegions: Array<{ x: number; y: number; w: number; h: number; intensity: number }> = [];
+  if (opts.editorBlurs && opts.editorBlurs.length > 0) {
+    for (const b of opts.editorBlurs) {
+      if (b.w > 0 && b.h > 0) {
+        const r = clampRegion(
+          Math.round((b.x / 100) * imgWidth),
+          Math.round((b.y / 100) * imgHeight),
+          Math.round((b.w / 100) * imgWidth),
+          Math.round((b.h / 100) * imgHeight),
+          imgWidth, imgHeight
+        );
+        blurRegions.push({ ...r, intensity: Math.max(2, Math.min(60, Math.round(b.intensity ?? 20))) });
+      }
+    }
+  } else if (
+    opts.editorBlurX !== undefined && opts.editorBlurY !== undefined &&
+    opts.editorBlurW !== undefined && opts.editorBlurH !== undefined &&
+    opts.editorBlurW > 0 && opts.editorBlurH > 0
+  ) {
+    const r = clampRegion(
+      Math.round((opts.editorBlurX / 100) * imgWidth),
+      Math.round((opts.editorBlurY / 100) * imgHeight),
+      Math.round((opts.editorBlurW / 100) * imgWidth),
+      Math.round((opts.editorBlurH / 100) * imgHeight),
+      imgWidth, imgHeight
+    );
+    blurRegions.push({ ...r, intensity: Math.max(2, Math.min(60, Math.round(opts.editorBlurIntensity ?? 20))) });
+  }
+  if (blurRegions.length === 0) return "";
+  const parts: string[] = [];
+  blurRegions.forEach((b, i) => {
+    const isLast = i === blurRegions.length - 1;
+    const origLabel = `blur_orig_${i}`;
+    const baseLabel = `blur_base_${i}`;
+    const cropLabel = `blur_crop_${i}`;
+    const outSuffix = isLast ? "" : `[blur_out_${i}]`;
+    const splitInput = i === 0 ? "" : `[blur_out_${i - 1}]`;
+    parts.push(`${splitInput}split[${origLabel}][${baseLabel}];[${baseLabel}]crop=${b.w}:${b.h}:${b.x}:${b.y},gblur=sigma=${b.intensity}[${cropLabel}];[${origLabel}][${cropLabel}]overlay=${b.x}:${b.y}${outSuffix}`);
+  });
+  return parts.join(";") + ",";
+}
+
+function buildPixelateFilter(opts: EditorOpts, imgWidth: number, imgHeight: number): string {
+  const regions: Array<{ x: number; y: number; w: number; h: number; blockSize: number }> = [];
+  if (opts.editorPixelates && opts.editorPixelates.length > 0) {
+    for (const p of opts.editorPixelates) {
+      if (p.w > 0 && p.h > 0) {
+        const r = clampRegion(
+          Math.round((p.x / 100) * imgWidth),
+          Math.round((p.y / 100) * imgHeight),
+          Math.round((p.w / 100) * imgWidth),
+          Math.round((p.h / 100) * imgHeight),
+          imgWidth, imgHeight
+        );
+        regions.push({ ...r, blockSize: Math.max(2, Math.min(60, Math.round(p.blockSize ?? 20))) });
+      }
+    }
+  } else if (
+    opts.editorPixelateX !== undefined && opts.editorPixelateY !== undefined &&
+    opts.editorPixelateW !== undefined && opts.editorPixelateH !== undefined &&
+    opts.editorPixelateW > 0 && opts.editorPixelateH > 0
+  ) {
+    const r = clampRegion(
+      Math.round((opts.editorPixelateX / 100) * imgWidth),
+      Math.round((opts.editorPixelateY / 100) * imgHeight),
+      Math.round((opts.editorPixelateW / 100) * imgWidth),
+      Math.round((opts.editorPixelateH / 100) * imgHeight),
+      imgWidth, imgHeight
+    );
+    regions.push({ ...r, blockSize: Math.max(2, Math.min(60, Math.round(opts.editorPixelateBlockSize ?? 20))) });
+  }
+  if (regions.length === 0) return "";
+  const parts: string[] = [];
+  regions.forEach((p, i) => {
+    const isLast = i === regions.length - 1;
+    const origLabel = `pix_orig_${i}`;
+    const baseLabel = `pix_base_${i}`;
+    const scaledLabel = `pix_scaled_${i}`;
+    const outSuffix = isLast ? "" : `[pix_out_${i}]`;
+    const splitInput = i === 0 ? "" : `[pix_out_${i - 1}]`;
+    parts.push(`${splitInput}split[${origLabel}][${baseLabel}];[${baseLabel}]crop=${p.w}:${p.h}:${p.x}:${p.y},scale=iw/${p.blockSize}:ih/${p.blockSize}:flags=neighbor,scale=${p.w}:${p.h}:flags=neighbor[${scaledLabel}];[${origLabel}][${scaledLabel}]overlay=${p.x}:${p.y}${outSuffix}`);
+  });
+  return parts.join(";") + ",";
+}
+
+function buildSpotlightFilter(opts: EditorOpts, imgWidth: number, imgHeight: number): string {
+  const regions: Array<{ x: number; y: number; w: number; h: number; intensity: number }> = [];
+  if (opts.editorSpotlights && opts.editorSpotlights.length > 0) {
+    for (const s of opts.editorSpotlights) {
+      if (s.w > 0 && s.h > 0) {
+        const r = clampRegion(
+          Math.round((s.x / 100) * imgWidth),
+          Math.round((s.y / 100) * imgHeight),
+          Math.round((s.w / 100) * imgWidth),
+          Math.round((s.h / 100) * imgHeight),
+          imgWidth, imgHeight
+        );
+        regions.push({ ...r, intensity: Math.max(0.1, Math.min(0.9, s.intensity ?? 0.6)) });
+      }
+    }
+  } else if (
+    opts.editorSpotlightX !== undefined && opts.editorSpotlightY !== undefined &&
+    opts.editorSpotlightW !== undefined && opts.editorSpotlightH !== undefined &&
+    opts.editorSpotlightW > 0 && opts.editorSpotlightH > 0
+  ) {
+    const r = clampRegion(
+      Math.round((opts.editorSpotlightX / 100) * imgWidth),
+      Math.round((opts.editorSpotlightY / 100) * imgHeight),
+      Math.round((opts.editorSpotlightW / 100) * imgWidth),
+      Math.round((opts.editorSpotlightH / 100) * imgHeight),
+      imgWidth, imgHeight
+    );
+    regions.push({ ...r, intensity: Math.max(0.1, Math.min(0.9, opts.editorSpotlightIntensity ?? 0.6)) });
+  }
+  if (regions.length === 0) return "";
+  if (regions.length === 1) {
+    const s = regions[0];
+    const intensity = s.intensity.toFixed(2);
+    return `drawbox=x=0:y=0:w=iw:h=${s.y}:color=black@${intensity}:t=fill,drawbox=x=0:y=${s.y + s.h}:w=iw:h=ih-(${s.y}+${s.h}):color=black@${intensity}:t=fill,drawbox=x=0:y=${s.y}:w=${s.x}:h=${s.h}:color=black@${intensity}:t=fill,drawbox=x=${s.x + s.w}:y=${s.y}:w=iw-(${s.x}+${s.w}):h=${s.h}:color=black@${intensity}:t=fill,`;
+  }
+  // Multiple spotlights: darken entire image, then overlay original crops
+  const maxIntensity = Math.max(...regions.map(s => s.intensity)).toFixed(2);
+  const parts: string[] = [];
+  parts.push(`split[spot_dark][spot_orig]`);
+  parts.push(`[spot_dark]drawbox=x=0:y=0:w=iw:h=ih:color=black@${maxIntensity}:t=fill[spot_darkened]`);
+  let prevLabel = "spot_darkened";
+  regions.forEach((s, i) => {
+    const isLast = i === regions.length - 1;
+    const cropLabel = `spot_crop_${i}`;
+    const outLabel = isLast ? "" : `spot_out_${i}`;
+    parts.push(`[spot_orig]crop=${s.w}:${s.h}:${s.x}:${s.y}[${cropLabel}]`);
+    parts.push(`[${prevLabel}][${cropLabel}]overlay=${s.x}:${s.y}${outLabel ? `[${outLabel}]` : ""}`);
+    if (!isLast) prevLabel = outLabel;
+  });
+  return parts.join(";") + ",";
+}
+
 /**
  * Render a single step: screenshot + audio → video segment with:
  * 1. Human-style zoom: hold wide → quick smooth zoom in → hold → zoom out
@@ -253,6 +411,14 @@ export async function renderStepVideo(opts: {
   editorBlurW?: number;
   editorBlurH?: number;
   editorBlurIntensity?: number;
+  editorBlurs?: Array<{
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    intensity?: number;
+  }>;
   editorZoomScale?: number;
   editorOverlayText?: string;
   editorOverlayX?: number;
@@ -282,6 +448,14 @@ export async function renderStepVideo(opts: {
   editorSpotlightW?: number;
   editorSpotlightH?: number;
   editorSpotlightIntensity?: number;
+  editorSpotlights?: Array<{
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    intensity?: number;
+  }>;
   // ── Badge ──
   editorBadgeNumber?: number;
   editorBadgeX?: number;
@@ -300,6 +474,14 @@ export async function renderStepVideo(opts: {
   editorPixelateW?: number;
   editorPixelateH?: number;
   editorPixelateBlockSize?: number;
+  editorPixelates?: Array<{
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    blockSize?: number;
+  }>;
   // ── Color Filter ──
   editorColorFilter?: string;
 }): Promise<string> {
@@ -345,6 +527,7 @@ export async function renderStepVideo(opts: {
 
   // ── Canvas editor: crop ──
   let cropFilter = "";
+  let cropX = 0, cropY = 0, cropW = imgWidth, cropH = imgHeight;
   if (
     opts.editorCropX !== undefined &&
     opts.editorCropY !== undefined &&
@@ -353,35 +536,19 @@ export async function renderStepVideo(opts: {
     opts.editorCropW > 0 &&
     opts.editorCropH > 0
   ) {
-    const cx = Math.round((opts.editorCropX / 100) * imgWidth);
-    const cy = Math.round((opts.editorCropY / 100) * imgHeight);
-    const cw = Math.round((opts.editorCropW / 100) * imgWidth);
-    const ch = Math.round((opts.editorCropH / 100) * imgHeight);
-    cropFilter = `crop=${cw}:${ch}:${cx}:${cy},`;
+    const r = clampRegion(
+      Math.round((opts.editorCropX / 100) * imgWidth),
+      Math.round((opts.editorCropY / 100) * imgHeight),
+      Math.round((opts.editorCropW / 100) * imgWidth),
+      Math.round((opts.editorCropH / 100) * imgHeight),
+      imgWidth, imgHeight
+    );
+    cropX = r.x; cropY = r.y; cropW = r.w; cropH = r.h;
+    cropFilter = `crop=${r.w}:${r.h}:${r.x}:${r.y},`;
   }
 
-  // ── Canvas editor: blur ──
-  let blurFilter = "";
-  if (
-    opts.editorBlurX !== undefined &&
-    opts.editorBlurY !== undefined &&
-    opts.editorBlurW !== undefined &&
-    opts.editorBlurH !== undefined &&
-    opts.editorBlurW > 0 &&
-    opts.editorBlurH > 0
-  ) {
-    const bx = Math.round((opts.editorBlurX / 100) * imgWidth);
-    const by = Math.round((opts.editorBlurY / 100) * imgHeight);
-    const bw = Math.round((opts.editorBlurW / 100) * imgWidth);
-    const bh = Math.round((opts.editorBlurH / 100) * imgHeight);
-    const intensity = Math.max(2, Math.min(60, Math.round(opts.editorBlurIntensity ?? 20)));
-    // Blur only the selected area and overlay it back onto the original image.
-    // Use gblur (Gaussian) to match the CSS `backdrop-filter: blur()` used in the
-    // canvas preview. NOTE: boxblur's 2nd arg is *power* (pass count), not radius —
-    // using `boxblur=N:N` applies N passes and turns the region into a flat solid
-    // patch (looks like a spotlight). gblur=sigma=N gives a single proper blur.
-    blurFilter = `split[orig][blurbase];[blurbase]crop=${bw}:${bh}:${bx}:${by},gblur=sigma=${intensity}[blurred_crop];[orig][blurred_crop]overlay=${bx}:${by},`;
-  }
+  // ── Canvas editor: blur (supports multiple regions) ──
+  const blurFilter = buildBlurFilter(opts, imgWidth, imgHeight);
 
   // ── Canvas editor: redaction ──
   let redactFilter = "";
@@ -424,47 +591,11 @@ export async function renderStepVideo(opts: {
     watermarkFilter = `,drawtext=fontfile='${fontFile}':text='${escapedWmText}':fontcolor=${wmColor}@${wmOpacity.toFixed(2)}:fontsize=${wmSize}:x=${wmX}:y=${wmY}:shadowcolor=0x000000:shadowx=1:shadowy=1`;
   }
 
-  // ── Canvas editor: pixelate ──
-  let pixelateFilter = "";
-  if (
-    opts.editorPixelateX !== undefined &&
-    opts.editorPixelateY !== undefined &&
-    opts.editorPixelateW !== undefined &&
-    opts.editorPixelateH !== undefined &&
-    opts.editorPixelateW > 0 &&
-    opts.editorPixelateH > 0
-  ) {
-    const px = Math.round((opts.editorPixelateX / 100) * imgWidth);
-    const py = Math.round((opts.editorPixelateY / 100) * imgHeight);
-    const pw = Math.round((opts.editorPixelateW / 100) * imgWidth);
-    const ph = Math.round((opts.editorPixelateH / 100) * imgHeight);
-    const blockSize = Math.max(2, Math.min(60, Math.round(opts.editorPixelateBlockSize ?? 20)));
-    // Scale down then back up to create pixelation effect
-    pixelateFilter = `split[orig][pixbase];[pixbase]crop=${pw}:${ph}:${px}:${py},scale=iw/${blockSize}:ih/${blockSize}:flags=neighbor,scale=${pw}:${ph}:flags=neighbor[pixed];[orig][pixed]overlay=${px}:${py},`;
-  }
+  // ── Canvas editor: pixelate (supports multiple regions) ──
+  const pixelateFilter = buildPixelateFilter(opts, imgWidth, imgHeight);
 
-  // ── Canvas editor: spotlight ──
-  let spotlightFilter = "";
-  if (
-    opts.editorSpotlightX !== undefined &&
-    opts.editorSpotlightY !== undefined &&
-    opts.editorSpotlightW !== undefined &&
-    opts.editorSpotlightH !== undefined &&
-    opts.editorSpotlightW > 0 &&
-    opts.editorSpotlightH > 0
-  ) {
-    const sx = Math.round((opts.editorSpotlightX / 100) * imgWidth);
-    const sy = Math.round((opts.editorSpotlightY / 100) * imgHeight);
-    const sw = Math.round((opts.editorSpotlightW / 100) * imgWidth);
-    const sh = Math.round((opts.editorSpotlightH / 100) * imgHeight);
-    const intensity = Math.max(0.1, Math.min(0.9, opts.editorSpotlightIntensity ?? 0.6));
-    // Darken the area OUTSIDE the spotlight rectangle by drawing 4 black bars
-    // (top, bottom, left, right) around the spotlight region.
-    // The previous approach used drawbox with black@0 to "cut a hole" — but
-    // drawing transparent black is a no-op, so the entire image was darkened
-    // uniformly and the spotlight effect was lost.
-    spotlightFilter = `drawbox=x=0:y=0:w=iw:h=${sy}:color=black@${intensity.toFixed(2)}:t=fill,drawbox=x=0:y=${sy + sh}:w=iw:h=ih-(${sy}+${sh}):color=black@${intensity.toFixed(2)}:t=fill,drawbox=x=0:y=${sy}:w=${sx}:h=${sh}:color=black@${intensity.toFixed(2)}:t=fill,drawbox=x=${sx + sw}:y=${sy}:w=iw-(${sx}+${sw}):h=${sh}:color=black@${intensity.toFixed(2)}:t=fill,`;
-  }
+  // ── Canvas editor: spotlight (supports multiple regions) ──
+  const spotlightFilter = buildSpotlightFilter(opts, imgWidth, imgHeight);
 
   // ── Canvas editor: badge ──
   let badgeFilter = "";
@@ -528,10 +659,29 @@ export async function renderStepVideo(opts: {
     }
   }
 
+  // Effective image dimensions after crop (for zoom/geometry calculations)
+  const effW = cropW;
+  const effH = cropH;
+
+  // Remap zoom target from original-image percentage to cropped-image percentage.
+  // The zoom target was set relative to the full screenshot, but after cropping
+  // only a sub-region remains. We need to translate the target into the cropped
+  // coordinate space. If the target falls outside the crop, clamp to center.
+  let zoomTargetX = opts.zoomTargetX;
+  let zoomTargetY = opts.zoomTargetY;
+  if (cropFilter) {
+    const targetOrigX = (opts.zoomTargetX / 100) * imgWidth;
+    const targetOrigY = (opts.zoomTargetY / 100) * imgHeight;
+    const localX = targetOrigX - cropX;
+    const localY = targetOrigY - cropY;
+    zoomTargetX = clamp((localX / effW) * 100, 0, 100);
+    zoomTargetY = clamp((localY / effH) * 100, 0, 100);
+  }
+
   // Zoom target in supersampled-canvas pixels
-  const geo = fitGeometry(imgWidth, imgHeight, ssW, ssH);
-  const targetXPx = geo.offsetX + (opts.zoomTargetX / 100) * geo.scaledW;
-  const targetYPx = geo.offsetY + (opts.zoomTargetY / 100) * geo.scaledH;
+  const geo = fitGeometry(effW, effH, ssW, ssH);
+  const targetXPx = geo.offsetX + (zoomTargetX / 100) * geo.scaledW;
+  const targetYPx = geo.offsetY + (zoomTargetY / 100) * geo.scaledH;
 
   const maxZoom = opts.editorZoomScale ?? 1.6;
   const zoomFilter = buildZoomFilter(targetXPx, targetYPx, paddedDuration, outputRes, maxZoom);
@@ -575,7 +725,7 @@ export async function renderStepVideo(opts: {
   }
 
   const filterComplex =
-    `[0:v]${drawboxFilter}${cropFilter}${blurFilter}${redactFilter}${pixelateFilter}${spotlightFilter}${colorFilter}split=2[bg][fg];` +
+    `[0:v]${drawboxFilter}${blurFilter}${redactFilter}${pixelateFilter}${spotlightFilter}${colorFilter}${cropFilter}split=2[bg][fg];` +
     `[bg]scale=${ssW}:${ssH}:force_original_aspect_ratio=increase:flags=lanczos,crop=${ssW}:${ssH},boxblur=40:40[bg_blurred];` +
     `[fg]scale=${ssW}:${ssH}:force_original_aspect_ratio=decrease:flags=lanczos[fg_scaled];` +
     `[bg_blurred][fg_scaled]overlay=(W-w)/2:(H-h)/2,` +
@@ -656,8 +806,9 @@ async function renderStepVideoFallback(
     drawboxFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=#f97316@0.95:thickness=5,`;
   }
 
-  // ── Canvas editor: crop ──
+  // ── Canvas editor: crop (fallback) ──
   let cropFilter = "";
+  let cropX = 0, cropY = 0, cropW = imgWidth, cropH = imgHeight;
   if (
     opts.editorCropX !== undefined &&
     opts.editorCropY !== undefined &&
@@ -666,32 +817,19 @@ async function renderStepVideoFallback(
     opts.editorCropW > 0 &&
     opts.editorCropH > 0
   ) {
-    const cx = Math.round((opts.editorCropX / 100) * imgWidth);
-    const cy = Math.round((opts.editorCropY / 100) * imgHeight);
-    const cw = Math.round((opts.editorCropW / 100) * imgWidth);
-    const ch = Math.round((opts.editorCropH / 100) * imgHeight);
-    cropFilter = `crop=${cw}:${ch}:${cx}:${cy},`;
+    const r = clampRegion(
+      Math.round((opts.editorCropX / 100) * imgWidth),
+      Math.round((opts.editorCropY / 100) * imgHeight),
+      Math.round((opts.editorCropW / 100) * imgWidth),
+      Math.round((opts.editorCropH / 100) * imgHeight),
+      imgWidth, imgHeight
+    );
+    cropX = r.x; cropY = r.y; cropW = r.w; cropH = r.h;
+    cropFilter = `crop=${r.w}:${r.h}:${r.x}:${r.y},`;
   }
 
-  // ── Canvas editor: blur (fallback) ──
-  let blurFilter = "";
-  if (
-    opts.editorBlurX !== undefined &&
-    opts.editorBlurY !== undefined &&
-    opts.editorBlurW !== undefined &&
-    opts.editorBlurH !== undefined &&
-    opts.editorBlurW > 0 &&
-    opts.editorBlurH > 0
-  ) {
-    const bx = Math.round((opts.editorBlurX / 100) * imgWidth);
-    const by = Math.round((opts.editorBlurY / 100) * imgHeight);
-    const bw = Math.round((opts.editorBlurW / 100) * imgWidth);
-    const bh = Math.round((opts.editorBlurH / 100) * imgHeight);
-    const intensity = Math.max(2, Math.min(60, Math.round(opts.editorBlurIntensity ?? 20)));
-    // Blur only the selected area and overlay it back onto the original image
-    // (gblur matches CSS backdrop-filter; see primary render for details)
-    blurFilter = `split[orig][blurbase];[blurbase]crop=${bw}:${bh}:${bx}:${by},gblur=sigma=${intensity}[blurred_crop];[orig][blurred_crop]overlay=${bx}:${by},`;
-  }
+  // ── Canvas editor: blur (fallback, supports multiple regions) ──
+  const blurFilter = buildBlurFilter(opts, imgWidth, imgHeight);
 
   // ── Canvas editor: redaction (fallback) ──
   let redactFilter = "";
@@ -734,42 +872,11 @@ async function renderStepVideoFallback(
     watermarkFilter = `,drawtext=fontfile='${fontFile}':text='${escapedWmText}':fontcolor=${wmColor}@${wmOpacity.toFixed(2)}:fontsize=${wmSize}:x=${wmX}:y=${wmY}:shadowcolor=0x000000:shadowx=1:shadowy=1`;
   }
 
-  // ── Canvas editor: pixelate (fallback) ──
-  let pixelateFilter = "";
-  if (
-    opts.editorPixelateX !== undefined &&
-    opts.editorPixelateY !== undefined &&
-    opts.editorPixelateW !== undefined &&
-    opts.editorPixelateH !== undefined &&
-    opts.editorPixelateW > 0 &&
-    opts.editorPixelateH > 0
-  ) {
-    const px = Math.round((opts.editorPixelateX / 100) * imgWidth);
-    const py = Math.round((opts.editorPixelateY / 100) * imgHeight);
-    const pw = Math.round((opts.editorPixelateW / 100) * imgWidth);
-    const ph = Math.round((opts.editorPixelateH / 100) * imgHeight);
-    const blockSize = Math.max(2, Math.min(60, Math.round(opts.editorPixelateBlockSize ?? 20)));
-    pixelateFilter = `split[orig][pixbase];[pixbase]crop=${pw}:${ph}:${px}:${py},scale=iw/${blockSize}:ih/${blockSize}:flags=neighbor,scale=${pw}:${ph}:flags=neighbor[pixed];[orig][pixed]overlay=${px}:${py},`;
-  }
+  // ── Canvas editor: pixelate (fallback, supports multiple regions) ──
+  const pixelateFilter = buildPixelateFilter(opts, imgWidth, imgHeight);
 
-  // ── Canvas editor: spotlight (fallback) ──
-  let spotlightFilter = "";
-  if (
-    opts.editorSpotlightX !== undefined &&
-    opts.editorSpotlightY !== undefined &&
-    opts.editorSpotlightW !== undefined &&
-    opts.editorSpotlightH !== undefined &&
-    opts.editorSpotlightW > 0 &&
-    opts.editorSpotlightH > 0
-  ) {
-    const sx = Math.round((opts.editorSpotlightX / 100) * imgWidth);
-    const sy = Math.round((opts.editorSpotlightY / 100) * imgHeight);
-    const sw = Math.round((opts.editorSpotlightW / 100) * imgWidth);
-    const sh = Math.round((opts.editorSpotlightH / 100) * imgHeight);
-    const intensity = Math.max(0.1, Math.min(0.9, opts.editorSpotlightIntensity ?? 0.6));
-    // Darken area outside spotlight with 4 bars (see primary render for details)
-    spotlightFilter = `drawbox=x=0:y=0:w=iw:h=${sy}:color=black@${intensity.toFixed(2)}:t=fill,drawbox=x=0:y=${sy + sh}:w=iw:h=ih-(${sy}+${sh}):color=black@${intensity.toFixed(2)}:t=fill,drawbox=x=0:y=${sy}:w=${sx}:h=${sh}:color=black@${intensity.toFixed(2)}:t=fill,drawbox=x=${sx + sw}:y=${sy}:w=iw-(${sx}+${sw}):h=${sh}:color=black@${intensity.toFixed(2)}:t=fill,`;
-  }
+  // ── Canvas editor: spotlight (fallback, supports multiple regions) ──
+  const spotlightFilter = buildSpotlightFilter(opts, imgWidth, imgHeight);
 
   // ── Canvas editor: badge (fallback) ──
   let badgeFilter = "";
@@ -833,11 +940,27 @@ async function renderStepVideoFallback(
     }
   }
 
+  // Effective image dimensions after crop (for zoom/geometry calculations)
+  const effW = cropW;
+  const effH = cropH;
+
+  // Remap zoom target from original-image percentage to cropped-image percentage
+  let zoomTargetX = opts.zoomTargetX;
+  let zoomTargetY = opts.zoomTargetY;
+  if (cropFilter) {
+    const targetOrigX = (opts.zoomTargetX / 100) * imgWidth;
+    const targetOrigY = (opts.zoomTargetY / 100) * imgHeight;
+    const localX = targetOrigX - cropX;
+    const localY = targetOrigY - cropY;
+    zoomTargetX = clamp((localX / effW) * 100, 0, 100);
+    zoomTargetY = clamp((localY / effH) * 100, 0, 100);
+  }
+
   // Fallback renders at output resolution (no supersampling), so compute
   // zoom target in output-resolution pixels directly.
-  const geo = fitGeometry(imgWidth, imgHeight, outW, outH);
-  const targetXPx = geo.offsetX + (opts.zoomTargetX / 100) * geo.scaledW;
-  const targetYPx = geo.offsetY + (opts.zoomTargetY / 100) * geo.scaledH;
+  const geo = fitGeometry(effW, effH, outW, outH);
+  const targetXPx = geo.offsetX + (zoomTargetX / 100) * geo.scaledW;
+  const targetYPx = geo.offsetY + (zoomTargetY / 100) * geo.scaledH;
 
   const maxZoom = opts.editorZoomScale ?? 1.6;
   const zoomFilter = buildZoomFilter(targetXPx, targetYPx, paddedDuration, outputRes, maxZoom);
@@ -887,7 +1010,7 @@ async function renderStepVideoFallback(
     "-i", opts.screenshotPath,
     "-i", opts.audioPath,
     "-filter_complex",
-    `[0:v]${drawboxFilter}${cropFilter}${blurFilter}${redactFilter}${pixelateFilter}${spotlightFilter}${colorFilter}scale=${outW}:${outH}:force_original_aspect_ratio=decrease,` +
+    `[0:v]${drawboxFilter}${blurFilter}${redactFilter}${pixelateFilter}${spotlightFilter}${colorFilter}${cropFilter}scale=${outW}:${outH}:force_original_aspect_ratio=decrease,` +
       `pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2,${zoomFilter}${overlayFilter}${watermarkFilter}${badgeFilter}${magnifyFilter}${captionsFilter},format=yuv420p[v];` +
       `[1:a]adelay=${delayMs}:all=1,apad=pad_dur=${AUDIO_TAIL}[a]`,
     "-map", "[v]",
@@ -1262,6 +1385,7 @@ export async function renderMultiZoomSegments(opts: {
   editorBlurW?: number;
   editorBlurH?: number;
   editorBlurIntensity?: number;
+  editorBlurs?: Array<{ id: string; x: number; y: number; w: number; h: number; intensity?: number }>;
   editorRedactX?: number;
   editorRedactY?: number;
   editorRedactW?: number;
@@ -1277,11 +1401,13 @@ export async function renderMultiZoomSegments(opts: {
   editorPixelateW?: number;
   editorPixelateH?: number;
   editorPixelateBlockSize?: number;
+  editorPixelates?: Array<{ id: string; x: number; y: number; w: number; h: number; blockSize?: number }>;
   editorSpotlightX?: number;
   editorSpotlightY?: number;
   editorSpotlightW?: number;
   editorSpotlightH?: number;
   editorSpotlightIntensity?: number;
+  editorSpotlights?: Array<{ id: string; x: number; y: number; w: number; h: number; intensity?: number }>;
   editorBadgeNumber?: number;
   editorBadgeX?: number;
   editorBadgeY?: number;
@@ -1340,6 +1466,7 @@ export async function renderMultiZoomSegments(opts: {
       editorBlurW: opts.editorBlurW,
       editorBlurH: opts.editorBlurH,
       editorBlurIntensity: opts.editorBlurIntensity,
+      editorBlurs: opts.editorBlurs,
       editorRedactX: opts.editorRedactX,
       editorRedactY: opts.editorRedactY,
       editorRedactW: opts.editorRedactW,
@@ -1355,11 +1482,13 @@ export async function renderMultiZoomSegments(opts: {
       editorPixelateW: opts.editorPixelateW,
       editorPixelateH: opts.editorPixelateH,
       editorPixelateBlockSize: opts.editorPixelateBlockSize,
+      editorPixelates: opts.editorPixelates,
       editorSpotlightX: opts.editorSpotlightX,
       editorSpotlightY: opts.editorSpotlightY,
       editorSpotlightW: opts.editorSpotlightW,
       editorSpotlightH: opts.editorSpotlightH,
       editorSpotlightIntensity: opts.editorSpotlightIntensity,
+      editorSpotlights: opts.editorSpotlights,
       editorBadgeNumber: opts.editorBadgeNumber,
       editorBadgeX: opts.editorBadgeX,
       editorBadgeY: opts.editorBadgeY,

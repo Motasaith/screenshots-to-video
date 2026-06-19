@@ -120,6 +120,18 @@ export const stepRouter = createRouter({
         editorBlurW: z.number().nullish(),
         editorBlurH: z.number().nullish(),
         editorBlurIntensity: z.number().nullish(),
+        editorBlurs: z
+          .array(
+            z.object({
+              id: z.string(),
+              x: z.number(),
+              y: z.number(),
+              w: z.number(),
+              h: z.number(),
+              intensity: z.number().optional(),
+            })
+          )
+          .nullish(),
         editorRedactX: z.number().nullish(),
         editorRedactY: z.number().nullish(),
         editorRedactW: z.number().nullish(),
@@ -135,11 +147,35 @@ export const stepRouter = createRouter({
         editorPixelateW: z.number().nullish(),
         editorPixelateH: z.number().nullish(),
         editorPixelateBlockSize: z.number().nullish(),
+        editorPixelates: z
+          .array(
+            z.object({
+              id: z.string(),
+              x: z.number(),
+              y: z.number(),
+              w: z.number(),
+              h: z.number(),
+              blockSize: z.number().optional(),
+            })
+          )
+          .nullish(),
         editorSpotlightX: z.number().nullish(),
         editorSpotlightY: z.number().nullish(),
         editorSpotlightW: z.number().nullish(),
         editorSpotlightH: z.number().nullish(),
         editorSpotlightIntensity: z.number().nullish(),
+        editorSpotlights: z
+          .array(
+            z.object({
+              id: z.string(),
+              x: z.number(),
+              y: z.number(),
+              w: z.number(),
+              h: z.number(),
+              intensity: z.number().optional(),
+            })
+          )
+          .nullish(),
         editorBadgeNumber: z.number().nullish(),
         editorBadgeX: z.number().nullish(),
         editorBadgeY: z.number().nullish(),
