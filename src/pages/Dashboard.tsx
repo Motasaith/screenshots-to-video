@@ -307,7 +307,7 @@ export default function Dashboard() {
 
       {/* New Project Type Selection Dialog */}
       <Dialog open={showNewProjectDialog} onOpenChange={setShowNewProjectDialog}>
-        <DialogContent className="glass-panel border border-[var(--space-border)] bg-[var(--space-card)]/95 max-w-lg rounded-2xl shadow-xl gap-6 p-6">
+        <DialogContent className="border border-[var(--space-border)] bg-[var(--space-card)] dark:bg-[#041715] max-w-lg rounded-2xl shadow-2xl gap-6 p-6">
           <DialogHeader>
             <DialogTitle className="text-[var(--space-text)] text-xl font-bold">
               Create New Project
@@ -322,7 +322,7 @@ export default function Dashboard() {
                 setShowNewProjectDialog(false);
                 navigate("/create/0/setup");
               }}
-              className="glass-panel p-5 text-left bg-[var(--space-card)] border border-[var(--space-border)] hover:border-teal-500 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 group flex items-start gap-4 cursor-pointer rounded-2xl"
+              className="p-5 text-left bg-[var(--space-card)] border border-[var(--space-border)] hover:border-teal-500 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 group flex items-start gap-4 cursor-pointer rounded-2xl shadow-sm"
             >
               <div className="w-12 h-12 flex items-center justify-center bg-teal-500/10 border border-teal-500/20 rounded-xl flex-shrink-0 group-hover:bg-teal-500/20 transition-colors">
                 <Camera className="w-6 h-6 text-teal-500" />
@@ -345,7 +345,7 @@ export default function Dashboard() {
                 setShowNewProjectDialog(false);
                 navigate("/studio/new");
               }}
-              className="glass-panel p-5 text-left bg-[var(--space-card)] border border-[var(--space-border)] hover:border-amber-500 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 group flex items-start gap-4 cursor-pointer rounded-2xl"
+              className="p-5 text-left bg-[var(--space-card)] border border-[var(--space-border)] hover:border-amber-500 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 group flex items-start gap-4 cursor-pointer rounded-2xl shadow-sm"
             >
               <div className="w-12 h-12 flex items-center justify-center bg-amber-500/10 border border-amber-500/20 rounded-xl flex-shrink-0 group-hover:bg-amber-500/20 transition-colors">
                 <Wand2 className="w-6 h-6 text-amber-500" />
