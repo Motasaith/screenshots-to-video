@@ -94,13 +94,13 @@ export default function Wizard() {
   };
 
   return (
-    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans flex flex-col">
+    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans flex flex-col pb-4">
       <SpaceBackground />
       <div className="relative z-10 flex-1 flex flex-col">
         {/* Header */}
-        <header className="border-b border-[var(--space-border)] bg-[var(--space-card)]/30 backdrop-blur-md relative">
-          <div className="w-full px-6 lg:px-12">
-            <div className="flex items-center justify-between h-16">
+        <header className="w-full px-4 pt-4">
+          <div className="max-w-6xl mx-auto rounded-full bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] shadow-[0_10px_35px_rgba(0,0,0,0.06)] px-6 py-1">
+            <div className="flex items-center justify-between h-14">
               <button
                 onClick={() => navigate("/dashboard")}
                 className="flex items-center gap-2 text-[var(--space-text-muted)] hover:text-[var(--space-text)] transition-colors group"
@@ -121,58 +121,61 @@ export default function Wizard() {
         </header>
 
         {/* Stepper */}
-        <div className="w-full px-6 lg:px-12 py-5 border-b border-[var(--space-border)] bg-[var(--space-card)]/10 backdrop-blur-sm">
-          <div className="flex items-center justify-between max-w-4xl mx-auto relative">
-            {/* Connecting line */}
-            <div className="absolute top-4 left-0 right-0 h-0.5 bg-[var(--space-border)] -z-10 mx-4" />
-            {stepOrder.map((s, i) => {
-              const isCompleted = i < currentStepIdx;
-              const isActive = i === currentStepIdx;
+        <div className="w-full px-4 mt-3">
+          <div className="max-w-6xl mx-auto rounded-2xl bg-[var(--space-card)]/20 backdrop-blur-md border border-[var(--space-border)] py-4 px-6">
+            <div className="flex items-center justify-between max-w-4xl mx-auto relative">
+              {/* Connecting line */}
+              <div className="absolute top-4 left-0 right-0 h-0.5 bg-[var(--space-border)] -z-10 mx-4" />
+              {stepOrder.map((s, i) => {
+                const isCompleted = i < currentStepIdx;
+                const isActive = i === currentStepIdx;
 
-              return (
-                <div
-                  key={s}
-                  className="flex flex-col items-center gap-2 cursor-pointer group"
-                  onClick={() => {
-                    if (isCompleted) goToStep(s);
-                  }}
-                >
+                return (
                   <div
-                    className={`w-9 h-9 flex items-center justify-center border transition-all rounded-full ${
-                      isCompleted
-                        ? "bg-teal-500 border-teal-500 text-white"
-                        : isActive
-                          ? "border-teal-500 bg-teal-500/10 text-teal-400"
-                          : "border-[var(--space-border)] bg-[var(--space-card)] text-[var(--space-text-subtle)]"
-                    } ${isCompleted ? "cursor-pointer hover:opacity-80" : ""}`}
+                    key={s}
+                    className="flex flex-col items-center gap-2 cursor-pointer group"
+                    onClick={() => {
+                      if (isCompleted) goToStep(s);
+                    }}
                   >
-                    {isCompleted ? (
-                      <CheckCircle className="w-4 h-4" />
-                    ) : isActive ? (
-                      <div className="w-2.5 h-2.5 bg-teal-400 rounded-full animate-pulse" />
-                    ) : (
-                      <Circle className="w-4 h-4" />
-                    )}
+                    <div
+                      className={`w-9 h-9 flex items-center justify-center border transition-all rounded-full ${
+                        isCompleted
+                          ? "bg-teal-500 border-teal-500 text-white"
+                          : isActive
+                            ? "border-teal-500 bg-teal-500/10 text-teal-400"
+                            : "border-[var(--space-border)] bg-[var(--space-card)] text-[var(--space-text-subtle)]"
+                      } ${isCompleted ? "cursor-pointer hover:opacity-80" : ""}`}
+                    >
+                      {isCompleted ? (
+                        <CheckCircle className="w-4 h-4" />
+                      ) : isActive ? (
+                        <div className="w-2.5 h-2.5 bg-teal-400 rounded-full animate-pulse" />
+                      ) : (
+                        <Circle className="w-4 h-4" />
+                      )}
+                    </div>
+                    <span
+                      className={`font-mono text-[10px] uppercase tracking-wider hidden sm:block ${
+                        isActive
+                          ? "text-[var(--space-text)] font-bold"
+                          : isCompleted
+                            ? "text-[var(--space-text-muted)]"
+                            : "text-[var(--space-text-subtle)]"
+                      }`}
+                    >
+                      {stepLabels[s]}
+                    </span>
                   </div>
-                  <span
-                    className={`font-mono text-[10px] uppercase tracking-wider hidden sm:block ${
-                      isActive
-                        ? "text-[var(--space-text)] font-bold"
-                        : isCompleted
-                          ? "text-[var(--space-text-muted)]"
-                          : "text-[var(--space-text-subtle)]"
-                    }`}
-                  >
-                    {stepLabels[s]}
-                  </span>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </div>
 
-        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-          <main className="flex-1 overflow-y-auto p-6 lg:p-8">
+        {/* Content Pane Layout */}
+        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden max-w-6xl w-full mx-auto px-4 mt-4 gap-4">
+          <main className="flex-1 overflow-y-auto p-6 glass-panel rounded-2xl border border-[var(--space-border)]">
             <AnimatePresence mode="wait">
               <motion.div
                 key={currentStep}
@@ -186,14 +189,14 @@ export default function Wizard() {
             </AnimatePresence>
           </main>
 
-          <aside className="w-full lg:w-80 border-l border-[var(--space-border)] bg-[var(--space-card)]/10 backdrop-blur-sm flex-shrink-0 overflow-y-auto">
+          <aside className="w-full lg:w-80 glass-panel rounded-2xl border border-[var(--space-border)] bg-[var(--space-card)]/10 backdrop-blur-sm flex-shrink-0 overflow-y-auto">
             <AIGuide />
           </aside>
         </div>
 
         {/* Footer */}
-        <footer className="border-t border-[var(--space-border)] bg-[var(--space-card)]/20 backdrop-blur-md px-6 lg:px-12 py-4 relative">
-          <div className="flex items-center justify-between max-w-4xl mx-auto">
+        <footer className="w-full px-4 pt-4 mt-auto">
+          <div className="max-w-6xl mx-auto rounded-full bg-[var(--space-card)]/80 backdrop-blur-lg border border-[var(--space-border)] px-6 py-3 flex items-center justify-between">
             <Button
               variant="ghost"
               onClick={() => {

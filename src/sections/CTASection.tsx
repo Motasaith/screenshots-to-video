@@ -150,7 +150,7 @@ export default function CTASection() {
               className="mt-8 flex justify-center"
             >
               <Link
-                to="/login"
+                to="/dashboard"
                 className="glass-btn glass-btn-primary px-8 py-4 text-sm font-semibold shadow-lg group relative animate-breathing-glow"
                 onClick={triggerConfetti}
               >

@@ -172,7 +172,7 @@ export default function HeroSection() {
               transition={{ delay: 1.6, duration: 0.5 }}
               className="mt-8 flex flex-wrap gap-4 items-center"
             >
-              <Link to="/login" className="glass-btn glass-btn-primary group relative animate-breathing-glow">
+              <Link to="/dashboard" className="glass-btn glass-btn-primary group relative animate-breathing-glow">
                 <span className="animate-ripple" />
                 Create Free Video
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />

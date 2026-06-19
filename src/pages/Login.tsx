@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Film, Sparkles, ArrowLeft } from "lucide-react";
-import { Link } from "react-router";
+import { Film, Sparkles, ArrowLeft, UserCircle } from "lucide-react";
+import { Link, useNavigate } from "react-router";
 import { SpaceBackground } from "@/components/shared/SpaceBackground";
 
 function getOAuthUrl() {
@@ -20,6 +20,8 @@ function getOAuthUrl() {
 }
 
 export default function Login() {
+  const navigate = useNavigate();
+
   return (
     <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans flex items-center justify-center px-4">
       <SpaceBackground />
@@ -37,7 +39,7 @@ export default function Login() {
               Welcome back
             </CardTitle>
             <p className="text-sm text-[var(--space-text-muted)] mt-1">
-              Sign in to continue creating
+              Sign in or explore as a guest
             </p>
           </CardHeader>
           <CardContent className="space-y-4 pt-4">
@@ -51,6 +53,23 @@ export default function Login() {
               <Sparkles className="w-4 h-4" />
               Sign in with Google
             </Button>
+
+            <div className="flex items-center gap-3 py-1">
+              <div className="flex-1 h-px bg-[var(--space-border)]" />
+              <span className="text-xs font-mono text-[var(--space-text-subtle)] uppercase tracking-wider">or</span>
+              <div className="flex-1 h-px bg-[var(--space-border)]" />
+            </div>
+
+            <Button
+              variant="outline"
+              className="w-full py-5 text-sm font-semibold rounded-xl border border-[var(--space-border)] bg-[var(--space-card)] text-[var(--space-text)] hover:bg-[var(--space-card-hover)] hover:border-[var(--space-border-hover)] transition-all duration-300"
+              size="lg"
+              onClick={() => navigate("/dashboard")}
+            >
+              <UserCircle className="w-4 h-4" />
+              Continue as Guest
+            </Button>
+
             <p className="text-center text-xs text-[var(--space-text-subtle)] pt-2 leading-relaxed">
               By signing in, you agree to our Terms & Privacy Policy
             </p>

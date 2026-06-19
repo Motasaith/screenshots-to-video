@@ -6,101 +6,140 @@
 
 @layer base {
   :root {
-    /* Sketchbook Palette - Aged paper, easy on eyes */
-    --background: 40 20% 90%;
-    --foreground: 243 60% 20%;
-    --card: 40 18% 92%;
-    --card-foreground: 243 60% 20%;
-    --popover: 40 18% 92%;
-    --popover-foreground: 243 60% 20%;
-    --primary: 243 60% 20%;
-    --primary-foreground: 40 18% 92%;
-    --secondary: 40 15% 88%;
-    --secondary-foreground: 243 60% 20%;
-    --muted: 40 12% 85%;
-    --muted-foreground: 243 20% 45%;
-    --accent: 45 91% 55%;
-    --accent-foreground: 243 60% 20%;
-    --destructive: 0 72% 51%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 243 60% 20%;
-    --input: 243 60% 20%;
-    --ring: 45 91% 55%;
-    --radius: 0.25rem;
-    --sidebar-background: 40 18% 92%;
-    --sidebar-foreground: 243 60% 20%;
-    --sidebar-primary: 243 60% 20%;
-    --sidebar-primary-foreground: 40 18% 92%;
-    --sidebar-accent: 40 15% 88%;
-    --sidebar-accent-foreground: 243 60% 20%;
-    --sidebar-border: 243 60% 20%;
-    --sidebar-ring: 45 91% 55%;
+    /* Premium Sand/Cyprus Theme - Default */
+    --background: 43 20% 92%;
+    --foreground: 175 75% 8%;
+    --card: 0 0% 100%;
+    --card-foreground: 175 75% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 175 75% 8%;
+    --primary: 175 100% 14%;
+    --primary-foreground: 43 20% 92%;
+    --secondary: 175 100% 17%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 175 20% 90%;
+    --muted-foreground: 175 20% 35%;
+    --accent: 175 100% 17%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 175 75% 8% / 0.08;
+    --input: 175 75% 8% / 0.08;
+    --ring: 175 100% 17%;
+    --radius: 0.75rem;
+    --sidebar-background: 43 20% 92%;
+    --sidebar-foreground: 175 75% 8%;
+    --sidebar-primary: 175 100% 14%;
+    --sidebar-primary-foreground: 43 20% 92%;
+    --sidebar-accent: 175 20% 90%;
+    --sidebar-accent-foreground: 175 75% 8%;
+    --sidebar-border: 175 75% 8% / 0.08;
+    --sidebar-ring: 175 100% 17%;
 
-    /* Sketchbook-specific custom properties */
-    --sketch-bg: #EDE8DD;
-    --sketch-fg: #1E1B4B;
-    --sketch-accent: #FBBF24;
-    --sketch-fg-muted: rgba(30, 27, 75, 0.6);
-    --sketch-fg-subtle: rgba(30, 27, 75, 0.4);
-    --sketch-border-color: #1E1B4B;
-    --sketch-card-bg: #EDE8DD;
-    --sketch-input-bg: #EDE8DD;
-    --sketch-doodle-stroke: %231E1B4B;
-    --sketch-doodle-bg: %23EDE8DD;
-    --sketch-doodle-accent: %23FBBF24;
-    --sketch-doodle-opacity: 0.22;
-    --sketch-navbar-bg: rgba(237, 232, 221, 0.9);
-    --sketch-navbar-border: rgba(30, 27, 75, 0.1);
-    --sketch-line-color: rgba(30, 27, 75, 0.03);
-    --sketch-margin-line: rgba(251, 191, 36, 0.25);
+    /* Space Theme Custom Variables */
+    --space-bg: #F0EDE4;
+    --space-card: #ffffff;
+    --space-card-hover: #ffffff;
+    --space-border: rgba(0, 71, 65, 0.08);
+    --space-border-hover: rgba(0, 71, 65, 0.16);
+    --space-text: #052421;
+    --space-text-muted: #3f5653;
+    --space-text-subtle: #6b827f;
+    --mesh-dot-color: rgba(0, 71, 65, 0.03);
+    --particle-color: rgba(0, 71, 65, 0.04);
+    --orb-opacity: 0.08;
+    
+    --neon-indigo: #004741;
+    --neon-cyan: #005952;
+    --neon-violet: #004741;
+    --neon-pink: #004741;
+    --btn-glow-rgb: 0, 71, 65;
+
+    /* Sketchbook-specific custom properties adapted to space colors */
+    --sketch-bg: #F0EDE4;
+    --sketch-fg: #052421;
+    --sketch-accent: #005952;
+    --sketch-fg-muted: rgba(5, 36, 33, 0.6);
+    --sketch-fg-subtle: rgba(5, 36, 33, 0.4);
+    --sketch-border-color: rgba(0, 71, 65, 0.08);
+    --sketch-card-bg: #ffffff;
+    --sketch-input-bg: #ffffff;
+    --sketch-doodle-stroke: %23004741;
+    --sketch-doodle-bg: %23ffffff;
+    --sketch-doodle-accent: %23005952;
+    --sketch-doodle-opacity: 0.08;
+    --sketch-navbar-bg: rgba(240, 237, 228, 0.9);
+    --sketch-navbar-border: rgba(0, 71, 65, 0.08);
+    --sketch-line-color: rgba(0, 71, 65, 0.03);
+    --sketch-margin-line: rgba(0, 89, 82, 0.15);
   }
 
   .dark {
-    --background: 243 35% 8%;
-    --foreground: 43 40% 92%;
-    --card: 243 30% 14%;
-    --card-foreground: 43 40% 92%;
-    --popover: 243 30% 14%;
-    --popover-foreground: 43 40% 92%;
-    --primary: 45 91% 55%;
-    --primary-foreground: 243 60% 20%;
-    --secondary: 243 25% 18%;
-    --secondary-foreground: 43 40% 92%;
-    --muted: 243 20% 16%;
-    --muted-foreground: 43 20% 60%;
-    --accent: 45 91% 55%;
-    --accent-foreground: 243 60% 20%;
-    --destructive: 0 62% 40%;
-    --destructive-foreground: 0 0% 98%;
-    --border: 243 20% 30%;
-    --input: 243 20% 30%;
-    --ring: 45 91% 55%;
-    --sidebar-background: 243 35% 8%;
-    --sidebar-foreground: 43 40% 92%;
-    --sidebar-primary: 45 91% 55%;
-    --sidebar-primary-foreground: 243 60% 20%;
-    --sidebar-accent: 243 20% 16%;
-    --sidebar-accent-foreground: 43 40% 92%;
-    --sidebar-border: 243 20% 25%;
-    --sidebar-ring: 45 91% 55%;
+    /* Deep Obsidian Pine Green Theme */
+    --background: 172 69% 5%;
+    --foreground: 43 20% 92%;
+    --card: 172 71% 8% / 0.45;
+    --card-foreground: 43 20% 92%;
+    --popover: 172 71% 8% / 0.95;
+    --popover-foreground: 43 20% 92%;
+    --primary: 172 66% 50%;
+    --primary-foreground: 172 75% 8%;
+    --secondary: 172 71% 8% / 0.45;
+    --secondary-foreground: 43 20% 92%;
+    --muted: 172 30% 15%;
+    --muted-foreground: 172 15% 70%;
+    --accent: 172 66% 50%;
+    --accent-foreground: 172 75% 8%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 172 66% 50% / 0.08;
+    --input: 172 66% 50% / 0.08;
+    --ring: 172 66% 50%;
+    --sidebar-background: 172 69% 5%;
+    --sidebar-foreground: 43 20% 92%;
+    --sidebar-primary: 172 66% 50%;
+    --sidebar-primary-foreground: 172 75% 8%;
+    --sidebar-accent: 172 30% 15%;
+    --sidebar-accent-foreground: 43 20% 92%;
+    --sidebar-border: 172 66% 50% / 0.08;
+    --sidebar-ring: 172 66% 50%;
 
-    /* Dark sketchbook properties */
-    --sketch-bg: #0E0E1A;
-    --sketch-fg: #E0DDF0;
-    --sketch-accent: #FBBF24;
-    --sketch-fg-muted: rgba(224, 221, 240, 0.6);
-    --sketch-fg-subtle: rgba(224, 221, 240, 0.35);
-    --sketch-border-color: #8B7EC8;
-    --sketch-card-bg: #16162A;
-    --sketch-input-bg: #16162A;
-    --sketch-doodle-stroke: %23C4B5FD;
-    --sketch-doodle-bg: %230E0E1A;
-    --sketch-doodle-accent: %23FBBF24;
-    --sketch-doodle-opacity: 0.18;
-    --sketch-navbar-bg: rgba(14, 14, 26, 0.92);
-    --sketch-navbar-border: rgba(196, 181, 253, 0.15);
-    --sketch-line-color: rgba(196, 181, 253, 0.04);
-    --sketch-margin-line: rgba(251, 191, 36, 0.2);
+    /* Dark Space Theme Custom Variables */
+    --space-bg: #041715;
+    --space-card: rgba(6, 36, 33, 0.45);
+    --space-card-hover: rgba(6, 36, 33, 0.65);
+    --space-border: rgba(45, 212, 191, 0.08);
+    --space-border-hover: rgba(45, 212, 191, 0.18);
+    --space-text: #F0EDE4;
+    --space-text-muted: #a5bcba;
+    --space-text-subtle: #678a86;
+    --mesh-dot-color: rgba(45, 212, 191, 0.04);
+    --particle-color: rgba(255, 255, 255, 0.2);
+    --orb-opacity: 0.12;
+
+    --neon-indigo: #2dd4bf;
+    --neon-cyan: #2dd4bf;
+    --neon-violet: #2dd4bf;
+    --neon-pink: #2dd4bf;
+    --btn-glow-rgb: 45, 212, 191;
+
+    /* Dark sketchbook properties adapted to space colors */
+    --sketch-bg: #041715;
+    --sketch-fg: #F0EDE4;
+    --sketch-accent: #2dd4bf;
+    --sketch-fg-muted: rgba(240, 237, 228, 0.6);
+    --sketch-fg-subtle: rgba(240, 237, 228, 0.4);
+    --sketch-border-color: rgba(45, 212, 191, 0.08);
+    --sketch-card-bg: rgba(6, 36, 33, 0.45);
+    --sketch-input-bg: rgba(6, 36, 33, 0.45);
+    --sketch-doodle-stroke: %232dd4bf;
+    --sketch-doodle-bg: %23041715;
+    --sketch-doodle-accent: %232dd4bf;
+    --sketch-doodle-opacity: 0.12;
+    --sketch-navbar-bg: rgba(4, 23, 21, 0.92);
+    --sketch-navbar-border: rgba(45, 212, 191, 0.08);
+    --sketch-line-color: rgba(45, 212, 191, 0.04);
+    --sketch-margin-line: rgba(45, 212, 191, 0.15);
   }
 }
 
@@ -113,7 +152,7 @@
     font-family: 'Inter', sans-serif;
   }
   h1, h2, h3, h4, h5, h6 {
-    font-family: 'Lora', Georgia, serif;
+    font-family: 'Inter', sans-serif;
     font-weight: 600;
   }
   code, pre, .mono {
@@ -1109,4 +1148,44 @@
 .theme-3d-immersive .font-hand,
 .theme-3d-immersive .font-body {
   font-family: 'Inter', sans-serif !important;
+}
+
+/* Hide absolute positioned sketchbook floating notes/doodles */
+.theme-3d-immersive .font-hand.absolute {
+  display: none !important;
+}
+
+/* Clean up hardcoded inline sketchy border radii */
+.theme-3d-immersive [style*="255px"],
+.theme-3d-immersive [style*="15px 255px"],
+.theme-3d-immersive [style*="225px"],
+.theme-3d-immersive [style*="12px 4px"] {
+  border-radius: 0.75rem !important;
+}
+
+/* Override compiled tailwind yellow and amber utility classes to match Cyprus/Mint theme */
+.theme-3d-immersive [class*="bg-[#FBBF24]"],
+.theme-3d-immersive [class*="bg-amber-500"] {
+  background-color: rgba(var(--btn-glow-rgb), 0.08) !important;
+}
+
+.theme-3d-immersive [class*="border-[#FBBF24]"],
+.theme-3d-immersive [class*="border-amber-500"] {
+  border-color: var(--space-border) !important;
+}
+
+.theme-3d-immersive [class*="shadow-"][class*="#FBBF24"],
+.theme-3d-immersive [class*="shadow-"][class*="FBBF24"] {
+  box-shadow: 0 4px 15px rgba(var(--btn-glow-rgb), 0.15) !important;
+  background-color: rgba(var(--btn-glow-rgb), 0.08) !important;
+  border-color: var(--teal-500) !important;
+}
+
+.theme-3d-immersive [class*="text-[#FBBF24]"],
+.theme-3d-immersive [class*="text-amber-500"] {
+  color: var(--teal-400) !important;
+}
+
+.theme-3d-immersive [class*="accent-[#FBBF24]"] {
+  accent-color: var(--teal-550) !important;
 }
