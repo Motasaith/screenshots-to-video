@@ -375,8 +375,12 @@ export async function renderStepVideo(opts: {
     const bw = Math.round((opts.editorBlurW / 100) * imgWidth);
     const bh = Math.round((opts.editorBlurH / 100) * imgHeight);
     const intensity = Math.max(2, Math.min(60, Math.round(opts.editorBlurIntensity ?? 20)));
-    // Apply boxblur on the full image, then overlay the original unblurred portion using a mask
-    blurFilter = `split[orig][blurbase];[blurbase]boxblur=${intensity}:${intensity}[blurred];[orig]crop=${bw}:${bh}:${bx}:${by}[orig_crop];[blurred][orig_crop]overlay=${bx}:${by},`;
+    // Blur only the selected area and overlay it back onto the original image.
+    // Use gblur (Gaussian) to match the CSS `backdrop-filter: blur()` used in the
+    // canvas preview. NOTE: boxblur's 2nd arg is *power* (pass count), not radius —
+    // using `boxblur=N:N` applies N passes and turns the region into a flat solid
+    // patch (looks like a spotlight). gblur=sigma=N gives a single proper blur.
+    blurFilter = `split[orig][blurbase];[blurbase]crop=${bw}:${bh}:${bx}:${by},gblur=sigma=${intensity}[blurred_crop];[orig][blurred_crop]overlay=${bx}:${by},`;
   }
 
   // ── Canvas editor: redaction ──
@@ -454,8 +458,12 @@ export async function renderStepVideo(opts: {
     const sw = Math.round((opts.editorSpotlightW / 100) * imgWidth);
     const sh = Math.round((opts.editorSpotlightH / 100) * imgHeight);
     const intensity = Math.max(0.1, Math.min(0.9, opts.editorSpotlightIntensity ?? 0.6));
-    // Create a dark overlay with a transparent cutout
-    spotlightFilter = `split[orig][dark];[dark]drawbox=x=0:y=0:w=iw:h=ih:color=black@${intensity.toFixed(2)}:t=fill[mask];[mask]drawbox=x=${sx}:y=${sy}:w=${sw}:h=${sh}:color=black@0:t=fill[cutout];[orig][cutout]overlay=0:0:format=auto,`;
+    // Darken the area OUTSIDE the spotlight rectangle by drawing 4 black bars
+    // (top, bottom, left, right) around the spotlight region.
+    // The previous approach used drawbox with black@0 to "cut a hole" — but
+    // drawing transparent black is a no-op, so the entire image was darkened
+    // uniformly and the spotlight effect was lost.
+    spotlightFilter = `drawbox=x=0:y=0:w=iw:h=${sy}:color=black@${intensity.toFixed(2)}:t=fill,drawbox=x=0:y=${sy + sh}:w=iw:h=ih-(${sy}+${sh}):color=black@${intensity.toFixed(2)}:t=fill,drawbox=x=0:y=${sy}:w=${sx}:h=${sh}:color=black@${intensity.toFixed(2)}:t=fill,drawbox=x=${sx + sw}:y=${sy}:w=iw-(${sx}+${sw}):h=${sh}:color=black@${intensity.toFixed(2)}:t=fill,`;
   }
 
   // ── Canvas editor: badge ──
@@ -680,7 +688,9 @@ async function renderStepVideoFallback(
     const bw = Math.round((opts.editorBlurW / 100) * imgWidth);
     const bh = Math.round((opts.editorBlurH / 100) * imgHeight);
     const intensity = Math.max(2, Math.min(60, Math.round(opts.editorBlurIntensity ?? 20)));
-    blurFilter = `split[orig][blurbase];[blurbase]boxblur=${intensity}:${intensity}[blurred];[orig]crop=${bw}:${bh}:${bx}:${by}[orig_crop];[blurred][orig_crop]overlay=${bx}:${by},`;
+    // Blur only the selected area and overlay it back onto the original image
+    // (gblur matches CSS backdrop-filter; see primary render for details)
+    blurFilter = `split[orig][blurbase];[blurbase]crop=${bw}:${bh}:${bx}:${by},gblur=sigma=${intensity}[blurred_crop];[orig][blurred_crop]overlay=${bx}:${by},`;
   }
 
   // ── Canvas editor: redaction (fallback) ──
@@ -757,7 +767,8 @@ async function renderStepVideoFallback(
     const sw = Math.round((opts.editorSpotlightW / 100) * imgWidth);
     const sh = Math.round((opts.editorSpotlightH / 100) * imgHeight);
     const intensity = Math.max(0.1, Math.min(0.9, opts.editorSpotlightIntensity ?? 0.6));
-    spotlightFilter = `split[orig][dark];[dark]drawbox=x=0:y=0:w=iw:h=ih:color=black@${intensity.toFixed(2)}:t=fill[mask];[mask]drawbox=x=${sx}:y=${sy}:w=${sw}:h=${sh}:color=black@0:t=fill[cutout];[orig][cutout]overlay=0:0:format=auto,`;
+    // Darken area outside spotlight with 4 bars (see primary render for details)
+    spotlightFilter = `drawbox=x=0:y=0:w=iw:h=${sy}:color=black@${intensity.toFixed(2)}:t=fill,drawbox=x=0:y=${sy + sh}:w=iw:h=ih-(${sy}+${sh}):color=black@${intensity.toFixed(2)}:t=fill,drawbox=x=0:y=${sy}:w=${sx}:h=${sh}:color=black@${intensity.toFixed(2)}:t=fill,drawbox=x=${sx + sw}:y=${sy}:w=iw-(${sx}+${sw}):h=${sh}:color=black@${intensity.toFixed(2)}:t=fill,`;
   }
 
   // ── Canvas editor: badge (fallback) ──

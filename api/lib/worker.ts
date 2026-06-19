@@ -3,13 +3,23 @@ import { projects, steps, renderJobs, users, studioProjects, studioScenes, studi
 import { eq, and, desc } from "drizzle-orm";
 import { uploadToR2, downloadFromR2 } from "./r2";
 import { generateTTSAudio, speedToRate, probeAudioDuration } from "./tts";
-import { renderStepVideo, concatenateSegments, concatenateSegmentsWithTransitions, renderTextSegment, resolutionToSize, cleanupTempFiles, mixBackgroundMusic } from "./ffmpeg";
+import {
+  renderStepVideo,
+  concatenateSegments,
+  concatenateSegmentsWithTransitions,
+  renderTextSegment,
+  resolutionToSize,
+  cleanupTempFiles,
+  mixBackgroundMusic,
+  probeMediaDuration
+} from "./ffmpeg";
 import { renderSceneWithImage, renderSceneWithVideo } from "./studioRenderer";
 import { downloadMedia } from "./pexels";
 import { cleanupExpiredProjects } from "./cleanup";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { nanoid } from "nanoid";
 
 const POLL_INTERVAL_MS = 5000;
 let isRunning = false;

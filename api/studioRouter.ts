@@ -570,7 +570,7 @@ export const studioRouter = createRouter({
   checkMediaSafety: authedQuery
     .use(rateLimitByUser(60_000, 10))
     .input(z.object({ sceneId: z.number(), mediaUrl: z.string() }))
-    .mutation(async ({ ctx, input }) => {
+    .mutation(async ({ input }) => {
       // Send to Vision LLM for check
       const result = await checkMediaSafety(input.mediaUrl);
 

@@ -1362,12 +1362,15 @@ export function StepEditorPanel() {
                       {/* Highlight box */}
                       {rect && rect.x != null && rect.y != null && rect.w != null && rect.h != null && (
                         <div
-                          className="absolute border-2 border-[#FBBF24] bg-[#FBBF24]/10 pointer-events-auto cursor-move select-none"
+                          className="absolute pointer-events-auto cursor-move select-none"
                           style={{
                             left: `${rect.x}%`,
                             top: `${rect.y}%`,
                             width: `${rect.w}%`,
                             height: `${rect.h}%`,
+                            border: "3px solid #FF0099",
+                            backgroundColor: "rgba(255,0,153,0.12)",
+                            boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
                           }}
                           onMouseDown={(e) => {
                             e.preventDefault();
@@ -1386,7 +1389,7 @@ export function StepEditorPanel() {
                             });
                           }}
                         >
-                          <div className="absolute top-1 left-1 bg-[#FBBF24] text-black text-[10px] font-mono px-1 rounded">
+                          <div className="absolute top-1 left-1 bg-[#FF0099] text-white text-[10px] font-mono px-1 rounded font-bold">
                             Highlight
                           </div>
                         </div>
@@ -1395,12 +1398,15 @@ export function StepEditorPanel() {
                       {/* Temp drag rect */}
                       {tempRect && (
                         <div
-                          className="absolute border-2 border-dashed border-[var(--sketch-fg)]/50 pointer-events-none select-none"
+                          className="absolute pointer-events-none select-none"
                           style={{
                             left: `${tempRect.x}%`,
                             top: `${tempRect.y}%`,
                             width: `${tempRect.w}%`,
                             height: `${tempRect.h}%`,
+                            border: "3px dashed #00E5FF",
+                            backgroundColor: "rgba(0,229,255,0.10)",
+                            boxShadow: "0 0 0 1px rgba(255,255,255,0.7)",
                           }}
                         />
                       )}
@@ -1408,12 +1414,15 @@ export function StepEditorPanel() {
                       {/* Crop overlay */}
                       {cropRect && cropRect.x != null && (
                         <div
-                          className="absolute border-2 border-dashed border-emerald-400 bg-emerald-400/10 pointer-events-auto cursor-move select-none"
+                          className="absolute pointer-events-auto cursor-move select-none"
                           style={{
                             left: `${cropRect.x}%`,
                             top: `${cropRect.y}%`,
                             width: `${cropRect.w}%`,
                             height: `${cropRect.h}%`,
+                            border: "3px dashed #00E676",
+                            backgroundColor: "rgba(0,230,118,0.12)",
+                            boxShadow: "0 0 0 1px rgba(255,255,255,0.8), 0 4px 12px rgba(0,0,0,0.3)",
                           }}
                           onMouseDown={(e) => {
                             e.preventDefault();
@@ -1432,7 +1441,7 @@ export function StepEditorPanel() {
                             });
                           }}
                         >
-                          <div className="absolute top-1 left-1 bg-emerald-500 text-white text-[10px] font-mono px-1 rounded">
+                          <div className="absolute top-1 left-1 bg-[#00E676] text-black text-[10px] font-mono px-1 rounded font-bold">
                             Crop
                           </div>
                         </div>
@@ -1447,6 +1456,8 @@ export function StepEditorPanel() {
                             top: `${blurRect.y}%`,
                             width: `${blurRect.w}%`,
                             height: `${blurRect.h}%`,
+                            border: "3px solid #FF4081",
+                            boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
                           }}
                           onMouseDown={(e) => {
                             e.preventDefault();
@@ -1473,7 +1484,7 @@ export function StepEditorPanel() {
                               backgroundColor: "rgba(255,255,255,0.05)",
                             }}
                           />
-                          <div className="absolute top-1 left-1 bg-pink-500 text-white text-[10px] font-mono px-1 rounded">
+                          <div className="absolute top-1 left-1 bg-[#FF4081] text-white text-[10px] font-mono px-1 rounded font-bold">
                             Blur
                           </div>
                         </div>
@@ -1489,6 +1500,8 @@ export function StepEditorPanel() {
                             width: `${redactRect.w}%`,
                             height: `${redactRect.h}%`,
                             backgroundColor: currentAnn?.editorRedactColor || "#000000",
+                            border: "3px solid #FFFFFF",
+                            boxShadow: "0 0 0 1px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.4)",
                           }}
                           onMouseDown={(e) => {
                             e.preventDefault();
@@ -1507,7 +1520,7 @@ export function StepEditorPanel() {
                             });
                           }}
                         >
-                          <div className="absolute top-1 left-1 bg-gray-700 text-white text-[10px] font-mono px-1 rounded">
+                          <div className="absolute top-1 left-1 bg-gray-900 text-white text-[10px] font-mono px-1 rounded font-bold border border-white/50">
                             Redacted
                           </div>
                         </div>
@@ -1557,6 +1570,8 @@ export function StepEditorPanel() {
                             top: `${pixelateRect.y}%`,
                             width: `${pixelateRect.w}%`,
                             height: `${pixelateRect.h}%`,
+                            border: "3px solid #00BCD4",
+                            boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
                           }}
                           onMouseDown={(e) => {
                             e.preventDefault();
@@ -1584,7 +1599,7 @@ export function StepEditorPanel() {
                               opacity: 0.7,
                             }}
                           />
-                          <div className="absolute top-1 left-1 bg-cyan-500 text-white text-[10px] font-mono px-1 rounded">
+                          <div className="absolute top-1 left-1 bg-[#00BCD4] text-white text-[10px] font-mono px-1 rounded font-bold">
                             Pixelate
                           </div>
                         </div>
@@ -1611,8 +1626,9 @@ export function StepEditorPanel() {
                               top: `${spotlightRect.y}%`,
                               width: `${spotlightRect.w}%`,
                               height: `${spotlightRect.h}%`,
-                              boxShadow: `0 0 0 9999px rgba(0,0,0,${currentAnn?.editorSpotlightIntensity ?? 0.6})`,
+                              border: "3px solid #FF6D00",
                               borderRadius: "4px",
+                              boxShadow: `0 0 0 9999px rgba(0,0,0,${currentAnn?.editorSpotlightIntensity ?? 0.6}), 0 0 0 1px rgba(255,255,255,0.9)`,
                             }}
                             onMouseDown={(e) => {
                               e.preventDefault();
@@ -1631,7 +1647,7 @@ export function StepEditorPanel() {
                               });
                             }}
                           >
-                            <div className="absolute top-1 left-1 bg-orange-500 text-white text-[10px] font-mono px-1 rounded">
+                            <div className="absolute top-1 left-1 bg-[#FF6D00] text-white text-[10px] font-mono px-1 rounded font-bold">
                               Spotlight
                             </div>
                           </div>
@@ -1800,7 +1816,7 @@ export function StepEditorPanel() {
                             });
                           }}
                         >
-                          <div className="w-full h-full rounded-full border-2 border-[#FBBF24] bg-[#FBBF24]/30 animate-pulse" />
+                          <div className="w-full h-full rounded-full border-2 border-[#FF0099] bg-[#FF0099]/40 animate-pulse" style={{ boxShadow: "0 0 0 2px rgba(255,255,255,0.9), 0 2px 8px rgba(0,0,0,0.5)" }} />
                         </div>
                       )}
 

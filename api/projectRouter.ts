@@ -127,10 +127,11 @@ export const projectRouter = createRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
-      const { id, randomize, ...data } = input;
+      const { id, randomize, captionsEnabled, ...data } = input;
       const updateData = {
         ...data,
         ...(randomize !== undefined ? { randomize: randomize ? 1 : 0 } : {}),
+        ...(captionsEnabled !== undefined ? { captionsEnabled: captionsEnabled ? 1 : 0 } : {}),
       };
 
       // Free tier enforcement

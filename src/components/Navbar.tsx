@@ -52,7 +52,6 @@ export default function Navbar() {
     }
   };
 
-  const isHomepage = location.pathname === "/";
 
   return (
     <nav
