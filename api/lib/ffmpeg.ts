@@ -294,6 +294,12 @@ export async function renderStepVideo(opts: {
   editorMagnifyH?: number;
   editorMagnifyScale?: number;
   editorMagnifyCorner?: string;
+  // ── Pixelation ──
+  editorPixelateX?: number;
+  editorPixelateY?: number;
+  editorPixelateW?: number;
+  editorPixelateH?: number;
+  editorPixelateBlockSize?: number;
   // ── Color Filter ──
   editorColorFilter?: string;
 }): Promise<string> {
@@ -449,7 +455,7 @@ export async function renderStepVideo(opts: {
     const sh = Math.round((opts.editorSpotlightH / 100) * imgHeight);
     const intensity = Math.max(0.1, Math.min(0.9, opts.editorSpotlightIntensity ?? 0.6));
     // Create a dark overlay with a transparent cutout
-    spotlightFilter = `split[orig][dark];[dark]color=c=black@${intensity.toFixed(2)}:s=${imgWidth}x${imgHeight}[mask];[mask]drawbox=x=${sx}:y=${sy}:w=${sw}:h=${sh}:color=black@0:t=fill[cutout];[orig][cutout]overlay=0:0:format=auto,`;
+    spotlightFilter = `split[orig][dark];[dark]drawbox=x=0:y=0:w=iw:h=ih:color=black@${intensity.toFixed(2)}:t=fill[mask];[mask]drawbox=x=${sx}:y=${sy}:w=${sw}:h=${sh}:color=black@0:t=fill[cutout];[orig][cutout]overlay=0:0:format=auto,`;
   }
 
   // ── Canvas editor: badge ──
@@ -751,7 +757,7 @@ async function renderStepVideoFallback(
     const sw = Math.round((opts.editorSpotlightW / 100) * imgWidth);
     const sh = Math.round((opts.editorSpotlightH / 100) * imgHeight);
     const intensity = Math.max(0.1, Math.min(0.9, opts.editorSpotlightIntensity ?? 0.6));
-    spotlightFilter = `split[orig][dark];[dark]color=c=black@${intensity.toFixed(2)}:s=${imgWidth}x${imgHeight}[mask];[mask]drawbox=x=${sx}:y=${sy}:w=${sw}:h=${sh}:color=black@0:t=fill[cutout];[orig][cutout]overlay=0:0:format=auto,`;
+    spotlightFilter = `split[orig][dark];[dark]drawbox=x=0:y=0:w=iw:h=ih:color=black@${intensity.toFixed(2)}:t=fill[mask];[mask]drawbox=x=${sx}:y=${sy}:w=${sw}:h=${sh}:color=black@0:t=fill[cutout];[orig][cutout]overlay=0:0:format=auto,`;
   }
 
   // ── Canvas editor: badge (fallback) ──

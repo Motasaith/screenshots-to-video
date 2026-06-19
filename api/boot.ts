@@ -3,7 +3,7 @@ import { bodyLimit } from "hono/body-limit";
 import type { HttpBindings } from "@hono/node-server";
 import { fetchRequestHandler } from "@trpc/server/adapters/fetch";
 import { appRouter } from "./router";
-import { createContext } from "./context";
+import { createContext, GUEST_USER } from "./context";
 import { env } from "./lib/env";
 import { createOAuthCallbackHandler } from "./kimi/auth";
 import { Paths } from "@contracts/constants";
@@ -38,7 +38,8 @@ app.post("/api/upload", async (c) => {
   try {
     user = await authenticateRequest(c.req.raw.headers);
   } catch {
-    return c.json({ error: "Unauthorized" }, 401);
+    // Fallback to guest user for the testing phase
+    user = GUEST_USER;
   }
 
   // Rate limit by user
@@ -114,7 +115,8 @@ app.get("/api/signed-url", async (c) => {
   try {
     user = await authenticateRequest(c.req.raw.headers);
   } catch {
-    return c.json({ error: "Unauthorized" }, 401);
+    // Fallback to guest user for the testing phase
+    user = GUEST_USER;
   }
 
   const key = c.req.query("key");

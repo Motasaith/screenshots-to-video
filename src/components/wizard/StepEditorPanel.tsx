@@ -6,7 +6,6 @@ import {
   ChevronLeft,
   ChevronRight as ChevronRightIcon,
   Target,
-  Sparkles,
   Check,
   MousePointer,
   Square,
@@ -14,11 +13,9 @@ import {
   Type,
   Image as ImageIcon,
   Crop,
-  ZoomIn,
   Palette,
   Trash2,
   Save,
-  Play,
   Settings2,
   Move,
   Aperture,
@@ -179,12 +176,11 @@ export function StepEditorPanel() {
 
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [annotations, setAnnotations] = useState<Record<number, StepAnnotation>>({});
-  const [mode, setMode] = useState<ToolMode>("select");
+  const [mode, setMode] = useState<ToolMode>("pan");
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragCurrent, setDragCurrent] = useState<{ x: number; y: number } | null>(null);
   const [activeTab, setActiveTab] = useState("select");
-  const [showPreview, setShowPreview] = useState(false);
 
   const [canvasScale, setCanvasScale] = useState(1.0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -195,7 +191,7 @@ export function StepEditorPanel() {
   const [history, setHistory] = useState<Record<number, StepAnnotation>[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [dragItem, setDragItem] = useState<{
-    type: "overlay" | "badge" | "magnify" | "zoomTarget" | "zoomRect" | "blur" | "redact" | "pixelate" | "spotlight" | "multizoom";
+    type: "overlay" | "badge" | "magnify" | "zoomTarget" | "zoomRect" | "blur" | "redact" | "pixelate" | "spotlight" | "multizoom" | "crop";
     id?: string;
     startX: number;
     startY: number;
@@ -222,7 +218,6 @@ export function StepEditorPanel() {
     { enabled: projectIdNum > 0 }
   );
 
-  const suggestZooms = trpc.ai.suggestZooms.useMutation();
   const updateStep = trpc.step.update.useMutation();
   const utils = trpc.useUtils();
 
@@ -275,6 +270,61 @@ export function StepEditorPanel() {
     window.addEventListener("resize", updateBounds);
     return () => window.removeEventListener("resize", updateBounds);
   }, [currentStepIndex, project, updateBounds, canvasScale]);
+
+  const canvasScaleRef = useRef(canvasScale);
+  useEffect(() => {
+    canvasScaleRef.current = canvasScale;
+  }, [canvasScale]);
+
+  const targetScrollRef = useRef<{ left: number; top: number } | null>(null);
+
+  useEffect(() => {
+    if (targetScrollRef.current && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollLeft = targetScrollRef.current.left;
+      scrollContainerRef.current.scrollTop = targetScrollRef.current.top;
+      targetScrollRef.current = null;
+    }
+  }, [canvasScale]);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const handleWheelNative = (e: WheelEvent) => {
+      e.preventDefault();
+
+      const containerRect = container.getBoundingClientRect();
+      const mouseX = e.clientX - containerRect.left;
+      const mouseY = e.clientY - containerRect.top;
+
+      const currentScale = canvasScaleRef.current;
+      const zoomFactor = 1.08;
+      let nextScale = currentScale;
+
+      if (e.deltaY < 0) {
+        nextScale = Math.min(3.0, currentScale * zoomFactor);
+      } else {
+        nextScale = Math.max(1.0, currentScale / zoomFactor);
+      }
+
+      if (nextScale === currentScale) return;
+
+      const scrollLeft = container.scrollLeft;
+      const scrollTop = container.scrollTop;
+
+      const scaleRatio = nextScale / currentScale;
+      const newScrollLeft = (scrollLeft + mouseX) * scaleRatio - mouseX;
+      const newScrollTop = (scrollTop + mouseY) * scaleRatio - mouseY;
+
+      targetScrollRef.current = { left: newScrollLeft, top: newScrollTop };
+      setCanvasScale(nextScale);
+    };
+
+    container.addEventListener("wheel", handleWheelNative, { passive: false });
+    return () => {
+      container.removeEventListener("wheel", handleWheelNative);
+    };
+  }, [currentStep?.id, isLoading]);
 
   /* Load existing annotations */
   useEffect(() => {
@@ -525,6 +575,11 @@ export function StepEditorPanel() {
         if (dragItem.type === "overlay") {
           updated.editorOverlayX = clamp(dragItem.initialX + deltaX, 0, 100);
           updated.editorOverlayY = clamp(dragItem.initialY + deltaY, 0, 100);
+        } else if (dragItem.type === "crop") {
+          const w = dragItem.initialW || 0;
+          const h = dragItem.initialH || 0;
+          updated.editorCropX = clamp(dragItem.initialX + deltaX, 0, 100 - w);
+          updated.editorCropY = clamp(dragItem.initialY + deltaY, 0, 100 - h);
         } else if (dragItem.type === "badge") {
           updated.editorBadgeX = clamp(dragItem.initialX + deltaX, 0, 100);
           updated.editorBadgeY = clamp(dragItem.initialY + deltaY, 0, 100);
@@ -708,11 +763,7 @@ export function StepEditorPanel() {
     setDragCurrent(null);
   };
 
-  /* Î“Ã¶Ã‡Î“Ã¶Ã‡ Actions Î“Ã¶Ã‡Î“Ã¶Ã‡ */
-  const handleSuggestAll = async () => {
-    await suggestZooms.mutateAsync({ projectId: projectIdNum });
-    utils.project.getById.invalidate({ id: projectIdNum });
-  };
+  /* Actions */
 
   const handleSaveStep = async () => {
     if (!currentStep) return;
@@ -1251,7 +1302,13 @@ export function StepEditorPanel() {
                   >
                     <div
                       ref={canvasRef}
-                      className={`relative w-full ${aspectClass} overflow-hidden sketch-border-sm cursor-crosshair`}
+                      className={`relative w-full ${aspectClass} overflow-hidden sketch-border-sm ${
+                        mode === "pan"
+                          ? "cursor-grab active:cursor-grabbing"
+                          : mode === "select"
+                          ? "cursor-default"
+                          : "cursor-crosshair"
+                      }`}
                       onMouseDown={handleMouseDown}
                       onMouseMove={handleMouseMove}
                       onMouseUp={handleMouseUp}
