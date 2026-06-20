@@ -348,7 +348,7 @@ export default function StudioMedia() {
 
             {searchMedia.data && searchMedia.data.length > 0 && (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {searchMedia.data.map((media: any, i: number) => (
+                {searchMedia.data.map((media, i: number) => (
                   <button
                     key={`${media.id}-${i}`}
                     onClick={() => selectMedia(media)}

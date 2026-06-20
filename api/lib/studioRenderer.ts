@@ -14,7 +14,6 @@ import {
   RENDER_FPS,
   AUDIO_LEAD_IN,
   AUDIO_TAIL,
-  getFontPath,
   buildCaptionsFilter,
 } from "./ffmpeg";
 
@@ -43,7 +42,8 @@ async function probeVideoDuration(filePath: string): Promise<number> {
     const duration = parseFloat(stdout.trim());
     if (isNaN(duration)) throw new Error("Non-numeric");
     return duration;
-  } catch {
+  } catch (err) {
+    console.warn(`[studioRenderer] probeVideoDuration failed for ${filePath}, falling back to 10s:`, err instanceof Error ? err.message : err);
     return 10; // Fallback
   }
 }

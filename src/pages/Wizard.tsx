@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
-import { useWizardStore, stepOrder, stepIndex, stepLabels } from "@/hooks/useWizardStore";
+import { useWizardStore, stepOrder, stepIndex, stepLabels, type WizardStep } from "@/hooks/useWizardStore";
 import { motion, AnimatePresence } from "framer-motion";
 import { trpc } from "@/providers/trpc";
 import {
@@ -52,9 +52,9 @@ export default function Wizard() {
   useEffect(() => {
     if (
       step &&
-      stepOrder.includes(step as any)
+      stepOrder.includes(step as WizardStep)
     ) {
-      setCurrentStep(step as any);
+      setCurrentStep(step as WizardStep);
     }
   }, [step, setCurrentStep]);
 

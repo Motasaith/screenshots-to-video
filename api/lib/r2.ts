@@ -72,8 +72,9 @@ export async function uploadToR2(
  */
 export async function getSignedDownloadUrl(
   key: string,
-  _expiresIn = 3600
+  _expiresIn = 3600,
 ): Promise<string> {
+  void _expiresIn; // UploadThing URLs don't support custom expiry; kept for API compatibility
   if (!key) return "";
 
   // If the key is already a full URL, return it
@@ -104,7 +105,8 @@ export async function existsInR2(key: string): Promise<boolean> {
   try {
     const res = await fetch(url, { method: "HEAD" });
     return res.ok;
-  } catch {
+  } catch (err) {
+    console.warn(`[r2] existsInR2 HEAD failed for ${key}:`, err instanceof Error ? err.message : err);
     return false;
   }
 }

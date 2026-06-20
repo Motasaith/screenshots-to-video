@@ -1,8 +1,8 @@
 import { getDb } from "../queries/connection";
 import { projects, steps, renderJobs, users, studioProjects, studioScenes, studioRenderJobs } from "@db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { uploadToR2, downloadFromR2 } from "./r2";
-import { generateTTSAudio, speedToRate, probeAudioDuration } from "./tts";
+import { generateTTSAudio, speedToRate } from "./tts";
 import {
   renderStepVideo,
   concatenateSegments,

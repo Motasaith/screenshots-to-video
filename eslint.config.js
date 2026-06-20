@@ -6,7 +6,7 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores(['dist', 'fix.cjs', 'fix.js', 'fix_blog.js']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -18,6 +18,26 @@ export default defineConfig([
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
+    },
+  },
+  // Server-side code (api/, db/) deals with dynamic JSON payloads, external
+  // library types, and ffmpeg/ffprobe shells where `any` is often the most
+  // honest type. Relax no-explicit-any there while keeping the frontend strict.
+  {
+    files: ['api/**/*.{ts,tsx}', 'db/**/*.{ts,tsx}'],
+    languageOptions: {
+      globals: globals.node,
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
+  // shadcn/ui primitives are generated and routinely co-export variants and
+  // helper constants alongside components; fast-refresh warnings are noise here.
+  {
+    files: ['src/components/ui/**/*.{ts,tsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
     },
   },
 ])

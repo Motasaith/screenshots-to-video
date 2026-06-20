@@ -79,6 +79,7 @@ function createPngBuffer(width: number, height: number, pixels: Buffer): Buffer 
 export async function getCursorPng(size = 32): Promise<string> {
   await ensureOverlayDir();
   // We only support size 32 for our native pixel grid
+  void size;
   const pngPath = path.join(OVERLAY_DIR, `cursor_32.png`);
 
   // Use cached version if available
@@ -259,6 +260,7 @@ export function buildCursorOverlayExpr(
   fps: number,
 ): { x: string; y: string; enable: string } {
   // Cursor travels during the first 40% of frames
+  void fps; // reserved for future frame-rate-aware easing
   const travelFrames = Math.floor(totalFrames * 0.4);
 
   // Smoothstep: t = clamp(n/travelFrames, 0, 1); eased = 3*t^2 - 2*t^3
@@ -326,11 +328,11 @@ export function buildClickRippleFilter(
 
   const progressExpr = `(n-${arrivalFrame})/${rippleDurationFrames}`;
   const radiusExpr = `5+40*${progressExpr}`;
-  const innerRadiusExpr = `(${radiusExpr})-3`;
-  const alphaExpr = `180*(1-${progressExpr})`;
+  void radiusExpr; // reserved for future geq-based ring rendering
 
   // Distance from target for each pixel
   const distExpr = `sqrt((X-${tX})*(X-${tX})+(Y-${tY})*(Y-${tY}))`;
+  void distExpr; // reserved for future geq-based ring rendering
 
   return JSON.stringify({
     arrivalFrame,

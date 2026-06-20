@@ -56,7 +56,7 @@ export default function StudioScript() {
       const result = await generateScript.mutateAsync({ projectId });
       if (result.scenes) {
         setScenes(
-          result.scenes.map((s: any) => ({
+          result.scenes.map((s) => ({
             id: s.id,
             order: s.order,
             narration: s.narration,

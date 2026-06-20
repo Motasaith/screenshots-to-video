@@ -37,8 +37,9 @@ app.post("/api/upload", async (c) => {
   let user;
   try {
     user = await authenticateRequest(c.req.raw.headers);
-  } catch {
+  } catch (err) {
     // Fallback to guest user for the testing phase
+    console.debug("[upload] No valid session, falling back to guest:", err instanceof Error ? err.message : err);
     user = GUEST_USER;
   }
 
@@ -102,21 +103,21 @@ app.post("/api/upload", async (c) => {
     const url = await getSignedDownloadUrl(key);
 
     return c.json({ key, url });
-  } catch (err: any) {
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Upload failed";
     console.error("Upload error:", err);
-    return c.json({ error: err.message || "Upload failed" }, 500);
+    return c.json({ error: message }, 500);
   }
 });
 
 // ── Signed URL Endpoint ──
 // Generate a fresh signed URL for an existing R2 key
 app.get("/api/signed-url", async (c) => {
-  let user;
+  // Authenticate the request (best-effort; guests allowed during testing phase)
   try {
-    user = await authenticateRequest(c.req.raw.headers);
+    await authenticateRequest(c.req.raw.headers);
   } catch {
-    // Fallback to guest user for the testing phase
-    user = GUEST_USER;
+    // Fall back to guest user for the testing phase
   }
 
   const key = c.req.query("key");
@@ -125,8 +126,10 @@ app.get("/api/signed-url", async (c) => {
   try {
     const url = await getSignedDownloadUrl(key);
     return c.json({ url });
-  } catch (err: any) {
-    return c.json({ error: err.message }, 500);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to generate signed URL";
+    console.error("Signed URL error:", err);
+    return c.json({ error: message }, 500);
   }
 });
 

@@ -5,22 +5,27 @@ import superjson from "superjson";
 import type { AppRouter } from "../../api/router";
 import type { ReactNode } from "react";
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const trpc = createTRPCReact<AppRouter>();
+
+interface TrpcError {
+  data?: { code?: string };
+}
+
+// tRPC's retry callback receives an Error; widen our check to accept it.
+function shouldRetry(failureCount: number, error: unknown): boolean {
+  const code = (error as TrpcError)?.data?.code;
+  if (code === "TOO_MANY_REQUESTS") return false;
+  return failureCount < 3;
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      retry: (failureCount, error: any) => {
-        // Don't retry on rate limit
-        if (error?.data?.code === "TOO_MANY_REQUESTS") return false;
-        return failureCount < 3;
-      },
+      retry: shouldRetry,
     },
     mutations: {
-      retry: (failureCount, error: any) => {
-        if (error?.data?.code === "TOO_MANY_REQUESTS") return false;
-        return failureCount < 3;
-      },
+      retry: shouldRetry,
     },
   },
 });

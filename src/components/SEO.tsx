@@ -1,5 +1,9 @@
 import { Helmet } from "react-helmet-async";
 
+/** JSON-LD structured data object (loosely typed by design). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type JsonLd = Record<string, any>;
+
 interface SEOProps {
   title: string;
   description: string;
@@ -8,7 +12,7 @@ interface SEOProps {
   ogImage?: string;
   ogType?: "website" | "article" | "product";
   noindex?: boolean;
-  jsonLd?: any;
+  jsonLd?: JsonLd;
 }
 
 export function SEO({
@@ -60,6 +64,7 @@ export function SEO({
 }
 
 /* Pre-built JSON-LD schemas */
+/* eslint-disable react-refresh/only-export-components */
 export const organizationSchema = {
   "@context": "https://schema.org",
   "@type": "Organization",

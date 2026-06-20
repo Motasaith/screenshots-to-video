@@ -87,7 +87,8 @@ export async function probeMediaDuration(filePath: string): Promise<number> {
     const duration = parseFloat(stdout.trim());
     if (isNaN(duration)) throw new Error("Non-numeric duration");
     return duration;
-  } catch {
+  } catch (err) {
+    console.warn(`[ffmpeg] probeMediaDuration failed for ${filePath}, falling back to 10s:`, err instanceof Error ? err.message : err);
     return 10; // Fallback
   }
 }
@@ -119,7 +120,7 @@ export function computeZoomPhases(duration: number): {
 } {
   let holdStart = 0.7;
   let zoomInDur = 1.1;
-  let zoomOutDur = 0.9;
+  const zoomOutDur = 0.9;
 
   // Very short clip: tighten everything, skip the zoom-out
   if (duration < 4.2) {
@@ -626,7 +627,6 @@ export async function renderStepVideo(opts: {
     const my = Math.round((opts.editorMagnifyY / 100) * imgHeight);
     const mw = Math.round((opts.editorMagnifyW / 100) * imgWidth);
     const mh = Math.round((opts.editorMagnifyH / 100) * imgHeight);
-    const scale = Math.max(1.5, Math.min(5, opts.editorMagnifyScale ?? 2));
     const corner = opts.editorMagnifyCorner || "bottom-right";
     const insetW = Math.round(Math.min(imgWidth, imgHeight) * 0.15);
     const insetH = insetW;
@@ -907,7 +907,6 @@ async function renderStepVideoFallback(
     const my = Math.round((opts.editorMagnifyY / 100) * imgHeight);
     const mw = Math.round((opts.editorMagnifyW / 100) * imgWidth);
     const mh = Math.round((opts.editorMagnifyH / 100) * imgHeight);
-    const scale = Math.max(1.5, Math.min(5, opts.editorMagnifyScale ?? 2));
     const corner = opts.editorMagnifyCorner || "bottom-right";
     const insetW = Math.round(Math.min(imgWidth, imgHeight) * 0.15);
     const insetH = insetW;
@@ -1053,6 +1052,7 @@ export async function concatenateSegments(
   segmentPaths: string[],
   _segmentDurations?: number[],
 ): Promise<string> {
+  void _segmentDurations; // kept for call-site compatibility (unused)
   await ensureWorkDir();
 
   if (segmentPaths.length === 0) throw new Error("No segments to concatenate");
@@ -1170,7 +1170,7 @@ export async function renderTextSegment(
 ): Promise<string> {
   await ensureWorkDir();
   const outputPath = path.join(WORK_DIR, `text_${nanoid(12)}.mp4`);
-  const [outW, outH] = outputRes.split("x").map(Number);
+  const [, outH] = outputRes.split("x").map(Number);
 
   // Windows FFmpeg needs 0xRRGGBB instead of #RRGGBB
   let color1 = "0x1e3a8a"; // blue-900
@@ -1186,13 +1186,6 @@ export async function renderTextSegment(
   const escapedText = text.replace(/'/g, "’").replace(/:/g, "\\:").replace(/%/g, "\\%");
 
   const fontSize = Math.round(outH * 0.07);
-
-  // Build filter_complex: color source -> drawtext -> fps normalize, plus silent audio
-  const filterComplex = [
-    `color=c=${color1}:s=${outputRes}:d=${durationSec}:r=30[bg]`,
-    `[bg]drawtext=fontfile=${fontFile}:text='${escapedText}':fontcolor=white:fontsize=${fontSize}:x=(w-text_w)/2:y=(h-text_h)/2:shadowcolor=0x000000:shadowx=2:shadowy=2[v]`,
-    `anullsrc=r=44100:cl=stereo[a]`,
-  ].join(";");
 
   const args = [
     "-y",

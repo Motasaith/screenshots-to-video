@@ -242,13 +242,13 @@ function SortableStep({
       }
     };
 
-    node.addEventListener("paste", handlePaste as any);
+    node.addEventListener("paste", handlePaste as EventListener);
     node.addEventListener("dragover", handleDragOver);
     node.addEventListener("dragleave", handleDragLeave);
     node.addEventListener("drop", handleDrop);
 
     return () => {
-      node.removeEventListener("paste", handlePaste as any);
+      node.removeEventListener("paste", handlePaste as EventListener);
       node.removeEventListener("dragover", handleDragOver);
       node.removeEventListener("dragleave", handleDragLeave);
       node.removeEventListener("drop", handleDrop);
@@ -463,7 +463,7 @@ export default function StepUpload() {
       // Load from wizard store (in-progress local state)
       const storeSteps = stepData.upload.steps.map((s) => ({
         ...s,
-        localId: (s as any).localId || nanoid(8),
+        localId: (s as { localId?: string }).localId || nanoid(8),
       }));
       setSteps(storeSteps);
       setInitialized(true);
@@ -643,18 +643,19 @@ export default function StepUpload() {
           }));
         });
 
-    } catch (err: any) {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Upload failed";
       setSteps(currentSteps => currentSteps.map(s => {
         if (s.localId === localId) {
           return {
             ...s,
             isUploading: false,
-            uploadError: err.message,
+            uploadError: message,
           };
         }
         return s;
       }));
-      console.warn("Upload failed:", err.message);
+      console.warn("Upload failed:", err);
     }
   };
 

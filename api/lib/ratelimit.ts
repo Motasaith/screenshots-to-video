@@ -57,11 +57,18 @@ export function checkRateLimit(
   };
 }
 
-/** Get client IP from request headers */
+/**
+ * Get client IP from request headers.
+ * Takes the left-most entry from x-forwarded-for (set by the first proxy)
+ * and falls back to x-real-ip. On Vercel/Cloudflare the platform sets these
+ * headers and strips any client-supplied value, so they are safe to trust.
+ * For self-hosted deployments behind a known proxy, ensure the proxy
+ * overwrites (not appends to) x-forwarded-for so clients can't spoof it.
+ */
 export function getClientIP(headers: Headers): string {
   const forwarded = headers.get("x-forwarded-for");
   if (forwarded) return forwarded.split(",")[0].trim();
   const realIP = headers.get("x-real-ip");
-  if (realIP) return realIP;
+  if (realIP) return realIP.trim();
   return "unknown";
 }

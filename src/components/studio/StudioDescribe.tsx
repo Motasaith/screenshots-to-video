@@ -90,8 +90,9 @@ export default function StudioDescribe() {
       });
       setProjectId(result.id);
       navigate(`/studio/${result.id}/script`);
-    } catch (err: any) {
-      setErrors({ submit: err.message || "Failed to create project" });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to create project";
+      setErrors({ submit: message });
     }
   };
 

@@ -11,16 +11,20 @@ const cycleTexts = [
 
 const confettiColors = ["#0d9488", "#14b8a6", "#2dd4bf", "#0f766e", "#64748b", "#334155"];
 
+interface ConfettiParticle {
+  id: number;
+  x: number;
+  y: number;
+  color: string;
+  angle: number;
+  distance: number;
+}
+
 export default function CTASection() {
   const ref = useRef(null);
   const isInView = useInView(ref, { once: true, margin: "-100px" });
   const [cycleIndex, setCycleIndex] = useState(0);
-  const [confettiParticles, setConfettiParticles] = useState<Array<{
-    id: number;
-    x: number;
-    y: number;
-    color: string;
-  }>>([]);
+  const [confettiParticles, setConfettiParticles] = useState<ConfettiParticle[]>([]);
 
   // Text cycling timer
   useEffect(() => {
@@ -41,6 +45,8 @@ export default function CTASection() {
       x: cx,
       y: cy,
       color: confettiColors[i % confettiColors.length],
+      angle: Math.random() * Math.PI * 2,
+      distance: 40 + Math.random() * 60,
     }));
 
     setConfettiParticles(particles);
@@ -162,8 +168,6 @@ export default function CTASection() {
 
                 {/* Confetti particles */}
                 {confettiParticles.map((p) => {
-                  const angle = Math.random() * Math.PI * 2;
-                  const distance = 40 + Math.random() * 60;
                   return (
                     <span
                       key={p.id}
@@ -172,8 +176,8 @@ export default function CTASection() {
                         left: p.x,
                         top: p.y,
                         backgroundColor: p.color,
-                        "--confetti-x": `${Math.cos(angle) * distance}px`,
-                        "--confetti-y": `${Math.sin(angle) * distance}px`,
+                        "--confetti-x": `${Math.cos(p.angle) * p.distance}px`,
+                        "--confetti-y": `${Math.sin(p.angle) * p.distance}px`,
                       } as React.CSSProperties}
                     />
                   );

@@ -106,9 +106,10 @@ export default function StudioVoice() {
         randomize: voice.randomize,
       });
       navigate(`/studio/${projectId}/render`);
-    } catch (err: any) {
+    } catch (err) {
       console.error("Failed to save voice settings:", err);
-      toast.error(err.message || "Failed to save settings. Please try again.");
+      const message = err instanceof Error ? err.message : "Failed to save settings. Please try again.";
+      toast.error(message);
     }
   };
 

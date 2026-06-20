@@ -8,6 +8,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { SpaceBackground } from "@/components/shared/SpaceBackground";
 
+/** Compute whole days remaining until expiry relative to a reference timestamp. */
+function daysUntilExpiry(expiresAt: string | number | Date, now: number): number {
+  return Math.max(0, Math.ceil((new Date(expiresAt).getTime() - now) / (1000 * 60 * 60 * 24)));
+}
+
 export default function Videos() {
   const { user, logout, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -145,7 +150,8 @@ export default function Videos() {
                       {project.expiresAt && (
                         <div>
                           <span className="font-mono text-[9px] px-2 py-0.5 bg-amber-500/10 text-amber-600 border border-amber-500/20 rounded inline-block mb-3">
-                            Expires in {Math.max(0, Math.ceil((new Date(project.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))}d
+                            {/* eslint-disable-next-line react-hooks/purity -- display-only relative time */}
+                            Expires in {daysUntilExpiry(project.expiresAt, Date.now())}d
                           </span>
                         </div>
                       )}

@@ -282,6 +282,8 @@ export function StepEditorPanel() {
     }
   };
 
+  // Sync the active tab to the current editing mode. This is the documented
+  // "adjust state when a prop changes" pattern.
   useEffect(() => {
     if (mode === "rect" || mode === "point") {
       setActiveTab("zoom");
@@ -352,10 +354,12 @@ export function StepEditorPanel() {
   }, [currentStep?.id, isLoading]);
 
   /* Load existing annotations */
+  // Sync project step data into local annotation state. This is the documented
+  // "adjust state when external data arrives" pattern.
   useEffect(() => {
     if (project?.steps) {
       const initial: Record<number, StepAnnotation> = {};
-      project.steps.forEach((s: any) => {
+      project.steps.forEach((s) => {
         initial[s.id] = {
           zoomTargetX: s.zoomTargetX,
           zoomTargetY: s.zoomTargetY,
@@ -427,6 +431,7 @@ export function StepEditorPanel() {
         setHistoryIndex(0);
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project]);
 
   /* Coordinate mapping */
@@ -734,7 +739,7 @@ export function StepEditorPanel() {
 
     if (!isDragging || !dragStart || !dragCurrent || !currentStep) return;
 
-    let updatedAnn = { ...(annotations[currentStep.id] || {}) };
+    const updatedAnn = { ...(annotations[currentStep.id] || {}) };
     let changed = false;
 
     if (mode === "rect") {
@@ -859,7 +864,7 @@ export function StepEditorPanel() {
     const ann = annotations[currentStep.id];
     if (!ann) return;
 
-    const payload: Record<string, any> = {};
+    const payload: Record<string, unknown> = {};
     const fields = [
       "zoomTargetX", "zoomTargetY", "zoomRectX", "zoomRectY",
       "zoomRectWidth", "zoomRectHeight",
@@ -884,11 +889,11 @@ export function StepEditorPanel() {
     ];
 
     fields.forEach((f) => {
-      const v = (ann as any)[f];
+      const v = ann[f as keyof StepAnnotation];
       if (v !== undefined) payload[f] = v;
     });
 
-    await updateStep.mutateAsync({ id: currentStep.id, ...payload });
+    await updateStep.mutateAsync({ id: currentStep.id, ...payload } as Parameters<typeof updateStep.mutateAsync>[0]);
     utils.project.getById.invalidate({ id: projectIdNum });
   };
 
@@ -896,7 +901,7 @@ export function StepEditorPanel() {
     // Save all annotation changes for all steps but do NOT navigate.
     // The parent (StepPreview) owns navigation; this panel only persists edits.
     for (const [stepId, ann] of Object.entries(annotations)) {
-      const payload: Record<string, any> = {};
+      const payload: Record<string, unknown> = {};
       const fields = [
         "zoomTargetX", "zoomTargetY", "zoomRectX", "zoomRectY",
         "zoomRectWidth", "zoomRectHeight",
@@ -920,12 +925,12 @@ export function StepEditorPanel() {
         "editorZoomScale", "editorDuration", "editorMultiZooms",
       ];
       fields.forEach((f) => {
-        const v = (ann as any)[f];
+        const v = ann[f as keyof StepAnnotation];
         if (v !== undefined) payload[f] = v;
       });
 
       if (Object.keys(payload).length > 0) {
-        await updateStep.mutateAsync({ id: Number(stepId), ...payload });
+        await updateStep.mutateAsync({ id: Number(stepId), ...payload } as Parameters<typeof updateStep.mutateAsync>[0]);
       }
     }
     // Stay on the parent page; do not navigate from the embedded editor.
@@ -981,39 +986,12 @@ export function StepEditorPanel() {
       }
     : null;
 
-  const blurRect = currentAnn
-    ? {
-        x: currentAnn.editorBlurX,
-        y: currentAnn.editorBlurY,
-        w: currentAnn.editorBlurW,
-        h: currentAnn.editorBlurH,
-      }
-    : null;
-
   const redactRect = currentAnn
     ? {
         x: currentAnn.editorRedactX,
         y: currentAnn.editorRedactY,
         w: currentAnn.editorRedactW,
         h: currentAnn.editorRedactH,
-      }
-    : null;
-
-  const pixelateRect = currentAnn
-    ? {
-        x: currentAnn.editorPixelateX,
-        y: currentAnn.editorPixelateY,
-        w: currentAnn.editorPixelateW,
-        h: currentAnn.editorPixelateH,
-      }
-    : null;
-
-  const spotlightRect = currentAnn
-    ? {
-        x: currentAnn.editorSpotlightX,
-        y: currentAnn.editorSpotlightY,
-        w: currentAnn.editorSpotlightW,
-        h: currentAnn.editorSpotlightH,
       }
     : null;
 
@@ -1220,7 +1198,7 @@ export function StepEditorPanel() {
               Steps
             </h3>
             <div className="space-y-1.5">
-              {steps.map((step: any, idx: number) => {
+              {steps.map((step, idx: number) => {
                 const ann = annotations[step.id];
                 const isActive = idx === currentStepIndex;
                 const edited = hasAnyEdit(ann);
@@ -1529,7 +1507,7 @@ export function StepEditorPanel() {
                       )}
 
                       {/* Crop overlay — Canva style with dimmed outside + edge handles */}
-                      {cropRect && cropRect.x != null && cropRect.w != null && cropRect.h != null && (
+                      {cropRect && cropRect.x != null && cropRect.y != null && cropRect.w != null && cropRect.h != null && (
                         <>
                           {/* Dimmed area outside the crop (4 rectangles: top, bottom, left, right) */}
                           <div className="absolute pointer-events-none" style={{ left: 0, top: 0, width: "100%", height: "100%", overflow: "hidden" }}>

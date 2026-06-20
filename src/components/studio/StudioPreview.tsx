@@ -206,7 +206,7 @@ export default function StudioPreview() {
                     <label className="font-body text-sm font-semibold mb-1 block text-[var(--sketch-fg)]">Preview</label>
                     <div className="relative w-full aspect-video bg-gray-900 overflow-hidden border-2 border-[var(--sketch-border-color)] rounded-md flex justify-center">
                       {(() => {
-                        const firstMedia = scenes?.find((s: any) => s.mediaUrl)?.mediaUrl;
+                        const firstMedia = scenes?.find((s) => s.mediaUrl)?.mediaUrl;
                         return firstMedia ? (
                           <img src={firstMedia} alt="Your media" className="w-full h-full object-cover opacity-70" />
                         ) : (

@@ -128,9 +128,10 @@ export function createOAuthCallbackHandler() {
       });
 
       return c.redirect("/dashboard", 302);
-    } catch (error: any) {
+    } catch (error) {
       console.error("[OAuth] Callback failed", error);
-      return c.json({ error: "OAuth callback failed", details: error.message, stack: error.stack }, 500);
+      const message = error instanceof Error ? error.message : "Unknown error";
+      return c.json({ error: "OAuth callback failed", details: message }, 500);
     }
   };
 }

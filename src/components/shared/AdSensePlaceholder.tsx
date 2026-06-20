@@ -4,6 +4,7 @@ interface AdSensePlaceholderProps {
 }
 
 export function AdSensePlaceholder(_props: AdSensePlaceholderProps) {
+  void _props;
   // Return null to hide placeholders globally when there are no active ads.
   return null;
 }

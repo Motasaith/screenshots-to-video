@@ -107,26 +107,26 @@ export const adminRouter = createRouter({
   }),
 
   listUsers: adminQuery
-    .input(z.object({ limit: z.number().default(50), offset: z.number().default(0) }).optional())
+    .input(z.object({ limit: z.number().max(200).default(50), offset: z.number().default(0) }).optional())
     .query(async ({ input }) => {
       const db = getDb();
       return db
         .select()
         .from(users)
         .orderBy(desc(users.createdAt))
-        .limit(input?.limit || 50)
-        .offset(input?.offset || 0);
+        .limit(input?.limit ?? 50)
+        .offset(input?.offset ?? 0);
     }),
 
   listJobs: adminQuery
-    .input(z.object({ limit: z.number().default(50), offset: z.number().default(0) }).optional())
+    .input(z.object({ limit: z.number().max(200).default(50), offset: z.number().default(0) }).optional())
     .query(async ({ input }) => {
       const db = getDb();
       return db
         .select()
         .from(renderJobs)
         .orderBy(desc(renderJobs.createdAt))
-        .limit(input?.limit || 50)
-        .offset(input?.offset || 0);
+        .limit(input?.limit ?? 50)
+        .offset(input?.offset ?? 0);
     }),
 });

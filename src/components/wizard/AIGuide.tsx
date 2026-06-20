@@ -78,7 +78,7 @@ export default function AIGuide() {
             ];
           });
         }
-      } catch (err) {
+      } catch {
         // Ignore proactive errors silently
       }
     }, 3000);
@@ -87,8 +87,8 @@ export default function AIGuide() {
   }, [
     stepData.setup.title,
     stepData.setup.description,
-    (currentStepData as any)?.description,
-    (currentStepData as any)?.narration,
+    (currentStepData as { description?: string })?.description,
+    (currentStepData as { narration?: string })?.narration,
     step
   ]);
 

@@ -141,7 +141,7 @@ async function generateEdgeAudio(
       pitch: pitchStr,
     });
     await tts.ttsPromise(text, outputPath);
-  } catch (err: any) {
+  } catch {
     // Retry once without pitch (older node-edge-tts versions may reject it)
     try {
       const tts = new EdgeTTS({ voice, rate: rateStr });
@@ -209,7 +209,7 @@ export async function probeAudioDuration(filePath: string): Promise<number> {
       throw new Error(`ffprobe returned non-numeric duration: ${stdout}`);
     }
     return duration;
-  } catch (err: any) {
+  } catch {
     // Fallback: estimate duration from file size based on file type
     try {
       const stat = await fs.stat(filePath);

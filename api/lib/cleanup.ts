@@ -51,13 +51,13 @@ export async function deleteProjectFiles(projectId: number) {
 
   for (const step of projectSteps) {
     if (step.screenshotPath) {
-      await deleteFromR2(step.screenshotPath).catch(() => {});
+      await deleteFromR2(step.screenshotPath).catch((e) => console.warn(`[cleanup] Failed to delete screenshot ${step.screenshotPath}:`, e instanceof Error ? e.message : e));
     }
     if (step.audioPath) {
-      await deleteFromR2(step.audioPath).catch(() => {});
+      await deleteFromR2(step.audioPath).catch((e) => console.warn(`[cleanup] Failed to delete audio ${step.audioPath}:`, e instanceof Error ? e.message : e));
     }
     if (step.videoSegmentPath) {
-      await deleteFromR2(step.videoSegmentPath).catch(() => {});
+      await deleteFromR2(step.videoSegmentPath).catch((e) => console.warn(`[cleanup] Failed to delete video segment ${step.videoSegmentPath}:`, e instanceof Error ? e.message : e));
     }
   }
 
@@ -68,7 +68,7 @@ export async function deleteProjectFiles(projectId: number) {
     .limit(1);
 
   if (project?.finalVideoPath) {
-    await deleteFromR2(project.finalVideoPath).catch(() => {});
+    await deleteFromR2(project.finalVideoPath).catch((e) => console.warn(`[cleanup] Failed to delete final video ${project.finalVideoPath}:`, e instanceof Error ? e.message : e));
   }
 }
 
@@ -125,13 +125,17 @@ export async function cleanupExpiredProjects(): Promise<number> {
       await deleteProjectFiles(project.id);
       await purgeProjectData(project.id);
       cleaned++;
-    } catch (err: any) {
-      console.error(`[Cleanup] Failed to purge project #${project.id}:`, err.message);
+    } catch (err) {
+      console.error(`[Cleanup] Failed to purge project #${project.id}:`, err instanceof Error ? err.message : err);
     }
   }
 
-  // Also reset monthly counters
-  await resetMonthlyCounters();
+  // Also reset monthly counters (wrapped so a failure doesn't lose the cleaned count)
+  try {
+    await resetMonthlyCounters();
+  } catch (err) {
+    console.error("[Cleanup] Failed to reset monthly counters:", err instanceof Error ? err.message : err);
+  }
 
   return cleaned;
 }

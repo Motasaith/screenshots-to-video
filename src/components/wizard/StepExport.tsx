@@ -94,6 +94,7 @@ export default function StepExport() {
   const isFreeUser = user?.plan === "free";
   const expiresAt = project?.expiresAt ? new Date(project.expiresAt) : null;
   const daysLeft = expiresAt
+    // eslint-disable-next-line react-hooks/purity -- display-only relative time
     ? Math.max(0, Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : null;
 

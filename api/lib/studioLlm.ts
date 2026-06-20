@@ -129,7 +129,8 @@ Return ONLY a JSON object with this exact format:
           })),
         };
       }
-    } catch {
+    } catch (err) {
+      console.warn("[StudioLLM] Failed to parse extracted JSON:", err instanceof Error ? err.message : err);
       // Continue to fallback
     }
   }

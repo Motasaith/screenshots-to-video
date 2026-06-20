@@ -37,8 +37,10 @@ export async function createContext(
   try {
     ctx.user = await authenticateRequest(opts.req.headers);
     ctx.isGuest = false;
-  } catch {
-    // No valid session — fall back to guest user for testing phase
+  } catch (err) {
+    // No valid session — fall back to guest user for testing phase.
+    // Log at debug level so auth failures are traceable without spamming.
+    console.debug("[context] No valid session, falling back to guest:", err instanceof Error ? err.message : err);
     ctx.user = GUEST_USER;
     ctx.isGuest = true;
   }

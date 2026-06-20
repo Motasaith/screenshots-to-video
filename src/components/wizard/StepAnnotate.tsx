@@ -74,6 +74,7 @@ export default function StepAnnotate() {
   const [dragCurrent, setDragCurrent] = useState<{ x: number; y: number } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
+  const [bounds, setBounds] = useState<ReturnType<typeof getImageBounds>>(null);
 
   const { data: project, isLoading } = trpc.project.getById.useQuery(
     { id: projectIdNum },
@@ -87,6 +88,8 @@ export default function StepAnnotate() {
   const steps = project?.steps || [];
   const currentStep = steps[currentStepIndex];
 
+  // Sync project step data into local annotation state (documented "adjust
+  // state when external data arrives" pattern).
   useEffect(() => {
     if (project?.steps) {
       const initial: typeof annotations = {};
@@ -102,9 +105,25 @@ export default function StepAnnotate() {
           };
         }
       });
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAnnotations(initial);
     }
   }, [project]);
+
+  // Keep the cached image bounds in state so overlays can be positioned without
+  // reading refs during render (which React's purity rules forbid).
+  const refreshBounds = useCallback(() => {
+    const container = canvasRef.current;
+    const img = imageRef.current;
+    setBounds(container && img ? getImageBounds(container, img) : null);
+  }, []);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- initial bounds measurement on mount
+    refreshBounds();
+    window.addEventListener("resize", refreshBounds);
+    return () => window.removeEventListener("resize", refreshBounds);
+  }, [refreshBounds]);
 
   /**
    * Convert a mouse event to image-relative percentage coordinates (0-100).
@@ -341,6 +360,7 @@ export default function StepAnnotate() {
                       alt={`Step ${currentStepIndex + 1}`}
                       className="w-full h-full object-contain"
                       draggable={false}
+                      onLoad={refreshBounds}
                     />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
@@ -355,10 +375,6 @@ export default function StepAnnotate() {
 
                   {/* Annotation overlays — positioned relative to image bounds, not container */}
                   {(() => {
-                    const container = canvasRef.current;
-                    const img = imageRef.current;
-                    const bounds = container && img ? getImageBounds(container, img) : null;
-
                     // Convert image-relative percentages to container pixel positions
                     const toContainerPx = (imgPct: number, axis: "x" | "y") => {
                       if (!bounds) return `${imgPct}%`; // Fallback

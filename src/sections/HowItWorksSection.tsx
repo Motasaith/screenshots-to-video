@@ -21,7 +21,7 @@ interface StepConfig {
   title: string;
   tag: string;
   description: string;
-  icon: React.ComponentType<any>;
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   imagePath: string;
   accentColor: string;
   accentClass: string;

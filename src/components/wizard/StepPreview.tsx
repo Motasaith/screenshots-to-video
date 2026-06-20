@@ -230,7 +230,7 @@ export default function StepPreview() {
                     <label className="font-body text-sm font-semibold mb-1 block text-[var(--sketch-fg)]">Preview</label>
                     <div className="relative w-full aspect-video bg-gray-900 overflow-hidden border-2 border-[var(--sketch-border-color)] rounded-md flex justify-center">
                       {(() => {
-                        const firstScreenshot = steps?.find((s: any) => s.screenshotPath)?.screenshotPath;
+                        const firstScreenshot = steps?.find((s) => s.screenshotPath)?.screenshotPath;
                         return firstScreenshot ? (
                           <img src={firstScreenshot} alt="Your screenshot" className="w-full h-full object-cover opacity-70" />
                         ) : (
@@ -324,7 +324,7 @@ export default function StepPreview() {
                         if (!res.ok) throw new Error("Upload failed");
                         const data = await res.json();
                         setIntroVideoPath(data.url);
-                      } catch (err) {
+                      } catch {
                         alert("Failed to upload intro video");
                       } finally {
                         setIsUploadingIntro(false);
@@ -426,7 +426,7 @@ export default function StepPreview() {
                         if (!res.ok) throw new Error("Upload failed");
                         const data = await res.json();
                         setOutroVideoPath(data.url);
-                      } catch (err) {
+                      } catch {
                         alert("Failed to upload outro video");
                       } finally {
                         setIsUploadingOutro(false);

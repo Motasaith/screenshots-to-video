@@ -104,13 +104,13 @@ export default function StudioWizard() {
   };
 
   return (
-    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans flex flex-col pb-4">
+    <div className="theme-3d-immersive h-screen relative overflow-hidden font-sans flex flex-col">
       <SpaceBackground />
-      <div className="relative z-10 flex-1 flex flex-col">
-        {/* Header */}
-        <header className="w-full px-4 pt-4">
-          <div className="max-w-6xl mx-auto rounded-full bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] shadow-[0_10px_35px_rgba(0,0,0,0.06)] px-6 py-1">
-            <div className="flex items-center justify-between h-14">
+      <div className="relative z-10 flex-1 flex flex-col min-h-0">
+        {/* Header — full width */}
+        <header className="w-full px-4 pt-3 flex-shrink-0">
+          <div className="rounded-full bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] shadow-[0_10px_35px_rgba(0,0,0,0.06)] px-6 py-1">
+            <div className="flex items-center justify-between h-12">
               <button
                 onClick={() => navigate("/dashboard")}
                 className="flex items-center gap-2 text-[var(--space-text-muted)] hover:text-[var(--space-text)] transition-colors group"
@@ -131,10 +131,10 @@ export default function StudioWizard() {
           </div>
         </header>
 
-        {/* Stepper */}
-        <div className="w-full px-4 mt-3">
-          <div className="max-w-6xl mx-auto rounded-2xl bg-[var(--space-card)]/20 backdrop-blur-md border border-[var(--space-border)] py-4 px-6">
-            <div className="flex items-center justify-between max-w-4xl mx-auto relative">
+        {/* Stepper — full width */}
+        <div className="w-full px-4 mt-2 flex-shrink-0">
+          <div className="rounded-2xl bg-[var(--space-card)]/20 backdrop-blur-md border border-[var(--space-border)] py-3 px-6">
+            <div className="flex items-center justify-between max-w-5xl mx-auto relative">
               <div className="absolute top-4 left-0 right-0 h-0.5 bg-[var(--space-border)] -z-10 mx-4" />
               {studioStepOrder.map((s, i) => {
                 const isCompleted = i < currentStepIdx;
@@ -183,9 +183,9 @@ export default function StudioWizard() {
           </div>
         </div>
 
-        {/* Content Pane Layout */}
-        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden max-w-6xl w-full mx-auto px-4 mt-4 gap-4">
-          <main className="flex-1 overflow-y-auto p-6 glass-panel rounded-2xl border border-[var(--space-border)]">
+        {/* Content Pane — full width, fills remaining height */}
+        <div className="flex-1 w-full px-4 mt-2 min-h-0">
+          <div className="h-full glass-panel rounded-2xl border border-[var(--space-border)] overflow-hidden">
             <AnimatePresence mode="wait">
               <motion.div
                 key={currentStep}
@@ -193,16 +193,17 @@ export default function StudioWizard() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.2 }}
+                className="h-full"
               >
                 {stepComponents[currentStep] || <StudioDescribe />}
               </motion.div>
             </AnimatePresence>
-          </main>
+          </div>
         </div>
 
-        {/* Footer */}
-        <footer className="w-full px-4 pt-4 mt-auto">
-          <div className="max-w-6xl mx-auto rounded-full bg-[var(--space-card)]/80 backdrop-blur-lg border border-[var(--space-border)] px-6 py-3 flex items-center justify-between">
+        {/* Footer — full width, fixed height */}
+        <footer className="w-full px-4 py-2 flex-shrink-0">
+          <div className="rounded-full bg-[var(--space-card)]/80 backdrop-blur-lg border border-[var(--space-border)] px-6 py-2 flex items-center justify-between">
             <Button
               variant="ghost"
               onClick={() => {

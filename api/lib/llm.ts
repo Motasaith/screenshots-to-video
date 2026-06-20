@@ -154,7 +154,7 @@ The array MUST have exactly ${steps.length} entries, in the same order as the st
   const lines = cleanResponse
     .split("\n")
     .filter((l) => l.trim().length > 0 && !l.trim().startsWith("{") && !l.trim().startsWith("}") && !l.trim().startsWith('"scripts"'))
-    .map((l) => l.replace(/^[\d]+[\.)\-]\s*/, "").replace(/^"/, "").replace(/"[,]?\s*$/, "").trim())
+    .map((l) => l.replace(/^[\d]+[.)-]\s*/, "").replace(/^"/, "").replace(/"[,]?\s*$/, "").trim())
     .filter((l) => l.length > 10); // Filter out fragments
 
   return lines.length >= steps.length
@@ -322,6 +322,11 @@ async function extractVideoFrames(videoUrl: string, maxFrames = 3): Promise<Buff
     ]);
   } catch (err) {
     console.warn("[extractVideoFrames] ffmpeg extraction failed:", err);
+    // Clean up any frames that were written before the failure.
+    for (let i = 1; i <= maxFrames; i++) {
+      const framePath = path.join(tmpDir, `frame_${sessionId}_${i.toString().padStart(3, "0")}.jpg`);
+      await fs.unlink(framePath).catch(() => {});
+    }
     throw err;
   }
 
@@ -332,7 +337,7 @@ async function extractVideoFrames(videoUrl: string, maxFrames = 3): Promise<Buff
       const buf = await fs.readFile(framePath);
       buffers.push(buf);
       await fs.unlink(framePath).catch(() => {});
-    } catch (e) {
+    } catch {
       break; // Video might be shorter than maxFrames
     }
   }
@@ -435,13 +440,15 @@ If there is ANY safety violation, set isSafe to false. If there is a copyright v
         isClear: result.isClear ?? true,
         reason: result.reason || (result.isClear && result.isSafe ? "Media appears safe and clear." : "Flagged by AI review."),
       };
-    } catch (parseError) {
+    } catch {
       console.warn("[SafetyCheck] Failed to parse JSON response:", response);
-      return { isSafe: true, isClear: true, reason: "Check bypassed due to unparseable response." };
+      // Fail closed: if we can't parse the safety verdict, treat as unsafe.
+      return { isSafe: false, isClear: false, reason: "Safety check failed: unparseable response." };
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error("Vision API Error during safety check:", error);
-    return { isSafe: true, isClear: true, reason: "Check bypassed due to API error." };
+    // Fail closed: if the API itself errors, treat as unsafe.
+    return { isSafe: false, isClear: false, reason: "Safety check failed: API error." };
   }
 }
 
@@ -458,7 +465,7 @@ export async function getChatMessageResponse(
 Current step: ${currentStep}
 Context: ${JSON.stringify(context)}`;
 
-  let chatHistory: ChatMessage[] = history.map((m) => ({
+  const chatHistory: ChatMessage[] = history.map((m) => ({
     role: m.role === "ai" ? "assistant" : "user",
     content: m.content,
   }));

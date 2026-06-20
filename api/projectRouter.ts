@@ -168,6 +168,14 @@ export const projectRouter = createRouter({
     .use(rateLimitByUser(60_000, 20))
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
+      // Verify ownership BEFORE deleting children to prevent IDOR data loss.
+      const [owned] = await getDb()
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(eq(projects.id, input.id), eq(projects.userId, ctx.user!.id)));
+      if (!owned) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
       await getDb()
         .delete(renderJobs)
         .where(eq(renderJobs.projectId, input.id));
@@ -185,7 +193,16 @@ export const projectRouter = createRouter({
   startRender: authedQuery
     .use(rateLimitByUser(600_000, 2))
     .input(z.object({ projectId: z.number() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
+      // Verify the project belongs to the caller before rendering.
+      const [owned] = await getDb()
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(eq(projects.id, input.projectId), eq(projects.userId, ctx.user!.id)));
+      if (!owned) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
+
       await getDb()
         .update(projects)
         .set({ status: "processing" })
@@ -210,7 +227,16 @@ export const projectRouter = createRouter({
   getRenderStatus: authedQuery
     .use(rateLimitByUser(60_000, 60))
     .input(z.object({ projectId: z.number() }))
-    .query(async ({ input }) => {
+    .query(async ({ ctx, input }) => {
+      // Verify the project belongs to the caller before returning render status.
+      const [owned] = await getDb()
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(eq(projects.id, input.projectId), eq(projects.userId, ctx.user!.id)));
+      if (!owned) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
+
       const [job] = await getDb()
         .select()
         .from(renderJobs)

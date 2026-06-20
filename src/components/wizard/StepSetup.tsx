@@ -48,11 +48,6 @@ export default function StepSetup() {
   useEffect(() => {
     setStepData("setup", { title, description, platform, aspectRatio });
   }, [title, description, platform, aspectRatio, setStepData]);
-  const [aiFeedback, setAiFeedback] = useState<{
-    titleQuality: string;
-    descriptionQuality: string;
-    suggestions: string[];
-  } | null>(null);
 
   const createProject = trpc.project.create.useMutation();
   const updateProject = trpc.project.update.useMutation();
@@ -61,15 +56,14 @@ export default function StepSetup() {
     { enabled: title.length >= 5 && description.length >= 20 }
   );
 
-  useEffect(() => {
-    if (validateQuery.data) {
-      setAiFeedback({
+  // Derive AI feedback directly from the query data instead of syncing via effect.
+  const aiFeedback = validateQuery.data
+    ? {
         titleQuality: validateQuery.data.titleQuality,
         descriptionQuality: validateQuery.data.descriptionQuality,
         suggestions: validateQuery.data.suggestions,
-      });
-    }
-  }, [validateQuery.data]);
+      }
+    : null;
 
   const validate = useCallback(() => {
     const errs: Record<string, string> = {};
@@ -104,7 +98,7 @@ export default function StepSetup() {
         });
       }
       navigate(`/create/${id}/upload`);
-    } catch (err) {
+    } catch {
       setErrors({ submit: "Failed to save project. Please try again." });
     }
   };

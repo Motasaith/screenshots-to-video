@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-type WizardStep =
+export type WizardStep =
   | "setup"
   | "upload"
   | "script"
