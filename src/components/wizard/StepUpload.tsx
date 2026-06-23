@@ -8,6 +8,7 @@ import {
   GripVertical,
   Plus,
   ChevronRight,
+  ChevronLeft,
   AlertTriangle,
   Loader2,
   Upload,
@@ -767,7 +768,7 @@ export default function StepUpload() {
           Each step needs a screenshot and description. Drag the handle to reorder them.
         </p>
 
-        <div className="mt-8 space-y-4">
+        <div id="upload-list" className="mt-8 space-y-4 scroll-mt-6">
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -808,7 +809,7 @@ export default function StepUpload() {
           </DndContext>
 
           {steps.length < 20 && (
-            <div className="flex gap-3">
+            <div id="upload-add" className="flex gap-3 scroll-mt-6">
               <button
                 onClick={addStep}
                 className="flex-1 py-4 border-2 border-dashed border-[var(--sketch-fg-subtle)] hover:border-[var(--sketch-border-color)] hover:bg-[#FBBF24]/5 transition-all flex items-center justify-center gap-2"
@@ -857,28 +858,39 @@ export default function StepUpload() {
             <p className="font-body text-sm text-red-600">{errors.submit}</p>
           )}
 
-          <Button
-            onClick={handleContinue}
-            disabled={isSaving || anyUploading}
-            className="sketch-btn-primary w-full mt-4"
-          >
-            {isSaving ? (
-              <span className="flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Saving...
-              </span>
-            ) : anyUploading ? (
-              <span className="flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Uploading...
-              </span>
-            ) : (
-              <span className="flex items-center gap-2">
-                Continue
-                <ChevronRight className="w-4 h-4" />
-              </span>
-            )}
-          </Button>
+          <div className="flex gap-4 mt-4">
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={() => navigate(`/create/${projectIdNum}/setup`)}
+              className="sketch-btn-ghost flex-1"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Back
+            </Button>
+            <Button
+              onClick={handleContinue}
+              disabled={isSaving || anyUploading}
+              className="sketch-btn-primary flex-[2]"
+            >
+              {isSaving ? (
+                <span className="flex items-center gap-2 justify-center">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving...
+                </span>
+              ) : anyUploading ? (
+                <span className="flex items-center gap-2 justify-center">
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Uploading...
+                </span>
+              ) : (
+                <span className="flex items-center gap-2 justify-center">
+                  Continue
+                  <ChevronRight className="w-4 h-4" />
+                </span>
+              )}
+            </Button>
+          </div>
         </div>
       </motion.div>
     </div>

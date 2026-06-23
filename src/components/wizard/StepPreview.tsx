@@ -5,6 +5,7 @@ import { trpc } from "@/providers/trpc";
 import { motion } from "framer-motion";
 import {
   ChevronRight,
+  ChevronLeft,
   MonitorPlay,
   Film,
   CheckCircle2,
@@ -131,14 +132,14 @@ export default function StepPreview() {
         </p>
 
         {/* Full canvas editor with all 14 tools */}
-        <div className="mt-6">
+        <div id="preview-editor" className="mt-6 scroll-mt-6">
           <StepEditorPanel />
         </div>
 
         <div className="mt-10 space-y-8">
           
           {/* Transitions */}
-          <div className="sketch-card p-5 bg-[var(--sketch-card-bg)]">
+          <div id="preview-transitions" className="sketch-card p-5 bg-[var(--sketch-card-bg)] scroll-mt-6">
             <h3 className="font-body font-semibold text-lg flex items-center gap-2 mb-4 text-[var(--sketch-fg)]">
               <Film className="w-5 h-5 text-[#FBBF24]" />
               Slide Transitions
@@ -166,7 +167,7 @@ export default function StepPreview() {
             </div>
 
             {/* Captions Options */}
-            <div className="mt-8 border-t border-[var(--sketch-fg-subtle)] pt-6">
+            <div id="preview-captions" className="mt-8 border-t border-[var(--sketch-fg-subtle)] pt-6 scroll-mt-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-body font-semibold text-lg flex items-center gap-2 text-[var(--sketch-fg)]">
                   <Film className="w-5 h-5 text-[#FBBF24]" />
@@ -487,16 +488,27 @@ export default function StepPreview() {
 
           {/* Safety/Copyright is now checked per-screenshot during upload */}
 
-          <Button
-            onClick={handleContinue}
-            disabled={updateProject.isPending || updateStep.isPending}
-            className="sketch-btn-primary w-full mt-6"
-          >
-            <span className="flex items-center gap-2">
-              Continue
-              <ChevronRight className="w-4 h-4" />
-            </span>
-          </Button>
+          <div className="flex gap-4 mt-6">
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={() => navigate(`/create/${projectIdNum}/script`)}
+              className="sketch-btn-ghost flex-1"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Back
+            </Button>
+            <Button
+              onClick={handleContinue}
+              disabled={updateProject.isPending || updateStep.isPending}
+              className="sketch-btn-primary flex-[2]"
+            >
+              <span className="flex items-center gap-2 justify-center">
+                Continue
+                <ChevronRight className="w-4 h-4" />
+              </span>
+            </Button>
+          </div>
 
         </div>
       </motion.div>

@@ -123,7 +123,7 @@ export default function StepRender() {
         )}
 
         {!startError && (
-          <div className="mt-8">
+          <div id="render-progress" className="mt-8 scroll-mt-6">
             {/* Progress bar */}
             <div className="sketch-card p-1 mb-8 bg-[var(--sketch-card-bg)]">
               <div

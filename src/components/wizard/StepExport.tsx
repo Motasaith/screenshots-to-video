@@ -16,6 +16,7 @@ import {
   Plus,
   LayoutDashboard,
   Loader2,
+  ChevronLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -122,7 +123,7 @@ export default function StepExport() {
         </h2>
 
         {/* Video player - sketched frame */}
-        <div className="mt-6 sketch-card p-6 bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]">
+        <div id="export-player" className="mt-6 sketch-card p-6 bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)] scroll-mt-6">
           <div className="flex items-center gap-3 mb-4">
             <div className="w-12 h-12 bg-[#FBBF24]/10 border-2 border-[#FBBF24] flex items-center justify-center sketch-border-sm">
               <Film className="w-6 h-6 text-[var(--sketch-fg)]" />
@@ -223,7 +224,7 @@ export default function StepExport() {
         </div>
 
         {/* Step breakdown */}
-        <div className="mt-8">
+        <div id="export-breakdown" className="mt-8 scroll-mt-6">
           <h3 className="font-body font-semibold text-lg mb-4 text-[var(--sketch-fg)]">
             Step Breakdown
           </h3>
@@ -346,6 +347,15 @@ export default function StepExport() {
         </div>
 
         <div className="mt-8 flex gap-3">
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={() => navigate(`/create/${projectIdNum}/voice`)}
+            className="sketch-btn-ghost flex-1"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back
+          </Button>
           <Button
             variant="ghost"
             className="sketch-btn-ghost flex-1"

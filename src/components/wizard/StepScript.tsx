@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import {
   Sparkles,
   ChevronRight,
+  ChevronLeft,
   RefreshCw,
   Check,
   AlertTriangle,
@@ -191,7 +192,7 @@ export default function StepScript() {
           </div>
         )}
 
-        <div className="mt-6 space-y-4">
+        <div id="script-timeline" className="mt-6 space-y-4 scroll-mt-6">
           {project?.steps?.map((step, index) => {
             const script = scripts[step.id] || "";
             const wordCount = script.split(/\s+/).filter(Boolean).length;
@@ -299,17 +300,26 @@ export default function StepScript() {
         <div className="mt-6 flex gap-3">
           <Button
             variant="ghost"
+            type="button"
+            onClick={() => navigate(`/create/${projectIdNum}/upload`)}
+            className="sketch-btn-ghost flex-1"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back
+          </Button>
+          <Button
+            variant="ghost"
             onClick={handleGenerate}
             disabled={isGenerating}
             className="sketch-btn-ghost flex-1"
           >
             {isGenerating ? (
-              <span className="flex items-center gap-2">
+              <span className="flex items-center gap-2 justify-center">
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Generating...
               </span>
             ) : (
-              <span className="flex items-center gap-2">
+              <span className="flex items-center gap-2 justify-center">
                 <Sparkles className="w-4 h-4" />
                 Regenerate All
               </span>
@@ -320,7 +330,7 @@ export default function StepScript() {
             disabled={updateStep.isPending}
             className="sketch-btn-primary flex-[2]"
           >
-            <span className="flex items-center gap-2">
+            <span className="flex items-center gap-2 justify-center">
               These look good
               <ChevronRight className="w-4 h-4" />
             </span>

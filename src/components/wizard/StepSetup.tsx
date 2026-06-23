@@ -10,6 +10,7 @@ import {
   Linkedin,
   Sparkles,
   ChevronRight,
+  ChevronLeft,
   AlertTriangle,
   Check,
 } from "lucide-react";
@@ -126,7 +127,7 @@ export default function StepSetup() {
         </p>
 
         <div className="mt-8 space-y-6">
-          <div className="relative">
+          <div id="setup-title" className="relative scroll-mt-6">
             <label className="font-body text-sm font-semibold mb-2 block text-[var(--sketch-fg)]">
               Video Title
             </label>
@@ -151,7 +152,7 @@ export default function StepSetup() {
             )}
           </div>
 
-          <div className="relative">
+          <div id="setup-description" className="relative scroll-mt-6">
             <label className="font-body text-sm font-semibold mb-2 block text-[var(--sketch-fg)]">
               Topic Description
             </label>
@@ -170,7 +171,7 @@ export default function StepSetup() {
             )}
           </div>
 
-          <div>
+          <div id="setup-platform" className="scroll-mt-6">
             <label className="font-body text-sm font-semibold mb-3 block text-[var(--sketch-fg)]">
               Target Platform
             </label>
@@ -212,7 +213,7 @@ export default function StepSetup() {
             </div>
           </div>
 
-          <div>
+          <div id="setup-aspect" className="scroll-mt-6">
             <label className="font-body text-sm font-semibold mb-3 block text-[var(--sketch-fg)]">
               Aspect Ratio
             </label>
@@ -266,23 +267,34 @@ export default function StepSetup() {
             <p className="font-body text-xs text-red-600">{errors.submit}</p>
           )}
 
-          <Button
-            onClick={handleContinue}
-            disabled={createProject.isPending}
-            className="sketch-btn-primary w-full"
-          >
-            {createProject.isPending ? (
-              <span className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 animate-spin" />
-                Creating...
-              </span>
-            ) : (
-              <span className="flex items-center gap-2">
-                Continue
-                <ChevronRight className="w-4 h-4" />
-              </span>
-            )}
-          </Button>
+          <div className="flex gap-4">
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={() => navigate("/dashboard")}
+              className="sketch-btn-ghost flex-1"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Dashboard
+            </Button>
+            <Button
+              onClick={handleContinue}
+              disabled={createProject.isPending}
+              className="sketch-btn-primary flex-[2]"
+            >
+              {createProject.isPending ? (
+                <span className="flex items-center gap-2 justify-center">
+                  <Sparkles className="w-4 h-4 animate-spin" />
+                  Creating...
+                </span>
+              ) : (
+                <span className="flex items-center gap-2 justify-center">
+                  Continue
+                  <ChevronRight className="w-4 h-4" />
+                </span>
+              )}
+            </Button>
+          </div>
         </div>
       </motion.div>
     </div>

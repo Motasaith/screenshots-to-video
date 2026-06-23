@@ -4,6 +4,7 @@ import { trpc } from "@/providers/trpc";
 import { motion } from "framer-motion";
 import {
   ChevronRight,
+  ChevronLeft,
   Music,
   Gauge,
   Monitor,
@@ -160,7 +161,7 @@ export default function StepVoice() {
         </p>
 
         <div className="mt-8 space-y-8">
-          <div>
+          <div id="voice-standard" className="scroll-mt-6">
             <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
               <Volume2 className="w-5 h-5 text-[#FBBF24]" />
               Voice
@@ -213,7 +214,7 @@ export default function StepVoice() {
             </div>
 
             {/* ElevenLabs Premium Voices Section */}
-            <div className="mt-6 border-2 border-amber-500/20 bg-amber-500/5 p-4" style={{ borderRadius: "12px" }}>
+            <div id="voice-elevenlabs" className="mt-6 border-2 border-amber-500/20 bg-amber-500/5 p-4 scroll-mt-6" style={{ borderRadius: "12px" }}>
               <div className="flex items-center justify-between mb-3">
                 <h4 className="font-body font-semibold text-sm flex items-center gap-2 text-[var(--sketch-fg)]">
                   <Crown className="w-4 h-4 text-amber-500" />
@@ -303,7 +304,7 @@ export default function StepVoice() {
             </div>
           </div>
 
-          <div className="border-t border-[var(--sketch-fg-subtle)] pt-6">
+          <div id="voice-speed" className="border-t border-[var(--sketch-fg-subtle)] pt-6 scroll-mt-6">
             <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
               <Gauge className="w-5 h-5 text-[#FBBF24]" />
               Speaking Speed
@@ -334,7 +335,7 @@ export default function StepVoice() {
             </div>
           </div>
 
-          <div className="border-t border-[var(--sketch-fg-subtle)] pt-6">
+          <div id="voice-resolution" className="border-t border-[var(--sketch-fg-subtle)] pt-6 scroll-mt-6">
             <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
               <Monitor className="w-5 h-5 text-[#FBBF24]" />
               Resolution
@@ -378,7 +379,7 @@ export default function StepVoice() {
             </div>
           </div>
 
-          <div className="border-t border-[var(--sketch-fg-subtle)] pt-6">
+          <div id="voice-music" className="border-t border-[var(--sketch-fg-subtle)] pt-6 scroll-mt-6">
             <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
               <Music className="w-5 h-5 text-[#FBBF24]" />
               Background Music
@@ -435,7 +436,7 @@ export default function StepVoice() {
             </div>
           </div>
 
-          <div className="border-t border-[var(--sketch-fg-subtle)] pt-6">
+          <div id="voice-randomize" className="border-t border-[var(--sketch-fg-subtle)] pt-6 scroll-mt-6">
             <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
               <Sparkles className="w-5 h-5 text-[#FBBF24]" />
               Randomize Generation
@@ -462,17 +463,28 @@ export default function StepVoice() {
             </div>
           </div>
 
-          <Button
-            onClick={handleContinue}
-            disabled={updateProject.isPending}
-            className="sketch-btn-primary w-full"
-          >
-            <span className="flex items-center gap-2">
-              <Zap className="w-4 h-4" />
-              Start Rendering
-              <ChevronRight className="w-4 h-4" />
-            </span>
-          </Button>
+          <div className="flex gap-4">
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={() => navigate(`/create/${projectIdNum}/preview`)}
+              className="sketch-btn-ghost flex-1"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Back
+            </Button>
+            <Button
+              onClick={handleContinue}
+              disabled={updateProject.isPending}
+              className="sketch-btn-primary flex-[2]"
+            >
+              <span className="flex items-center gap-2 justify-center">
+                <Zap className="w-4 h-4" />
+                Start Rendering
+                <ChevronRight className="w-4 h-4" />
+              </span>
+            </Button>
+          </div>
         </div>
       </motion.div>
     </div>
