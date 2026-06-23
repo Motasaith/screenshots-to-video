@@ -9,6 +9,7 @@ import {
   Circle,
   Loader2,
   ChevronLeft,
+  ChevronRight,
   ArrowLeft,
   Sparkles,
 } from "lucide-react";
@@ -80,6 +81,7 @@ export default function Wizard() {
   const mainScrollRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<any>(null);
   const scrollEndTimerRef = useRef<any>(null);
+  const [isGuideExpanded, setIsGuideExpanded] = useState<boolean>(true);
 
   useEffect(() => {
     const sections = stepSections[currentStep] || [];
@@ -403,7 +405,11 @@ export default function Wizard() {
               </AnimatePresence>
             </main>
 
-            <aside className="w-full lg:w-80 flex flex-col gap-4 flex-shrink-0 lg:overflow-hidden lg:h-full">
+            <aside className={`w-full flex flex-col gap-4 flex-shrink-0 lg:overflow-hidden lg:h-full transition-all duration-300 ${
+              isGuideExpanded 
+                ? "lg:w-80" 
+                : "xl:w-14 lg:w-80"
+            }`}>
               {/* Stepper container (Desktop, below XL only) */}
               <div className="hidden lg:block xl:hidden glass-panel rounded-2xl border border-[var(--space-border)] bg-[var(--space-card)]/15 backdrop-blur-sm p-5 flex-shrink-0">
                 <div className="flex flex-col gap-4 relative z-0">
@@ -470,16 +476,64 @@ export default function Wizard() {
               </div>
 
               {/* AI Guide container */}
-              <div className="flex-1 glass-panel rounded-2xl border border-[var(--space-border)] bg-[var(--space-card)]/10 backdrop-blur-sm flex flex-col overflow-hidden">
-                <AIGuide />
+              <div className={`flex-grow glass-panel rounded-2xl border border-[var(--space-border)] bg-[var(--space-card)]/10 backdrop-blur-sm flex flex-col overflow-hidden relative ${
+                isGuideExpanded ? "" : "hidden"
+              }`}>
+                <AIGuide onCollapse={() => setIsGuideExpanded(false)} />
               </div>
+
+              {!isGuideExpanded && (
+                <>
+                  {/* On XL (stepper outside), aside is w-14, show a nice vertical collapsed strip */}
+                  <div 
+                    className="hidden xl:flex flex-1 glass-panel rounded-2xl border border-[var(--space-border)] bg-[var(--space-card)]/10 backdrop-blur-sm flex-col items-center py-6 gap-6 cursor-pointer hover:bg-[var(--space-card)]/15 transition-colors"
+                    onClick={() => setIsGuideExpanded(true)}
+                  >
+                    <div className="w-7 h-7 bg-[#FBBF24]/10 border border-[#FBBF24]/30 flex items-center justify-center rounded-lg">
+                      <Sparkles className="w-4 h-4 text-teal-400" />
+                    </div>
+                    <div className="flex-1 flex items-center justify-center py-4">
+                      <span className="font-mono text-xs uppercase tracking-widest text-[var(--space-text-muted)] font-bold select-none whitespace-nowrap rotate-90 my-8">
+                        AI Guide
+                      </span>
+                    </div>
+                    <button
+                      className="p-1 rounded-lg hover:bg-[var(--space-border)]/20 transition-colors"
+                      title="Expand AI Guide"
+                    >
+                      <ChevronLeft className="w-4 h-4 text-[var(--space-text)]" />
+                    </button>
+                  </div>
+
+                  {/* On LG (stepper inside, aside is w-80), show a collapsed horizontal bar below the stepper */}
+                  <div 
+                    className="flex xl:hidden h-14 glass-panel rounded-2xl border border-[var(--space-border)] bg-[var(--space-card)]/10 backdrop-blur-sm items-center justify-between px-5 cursor-pointer hover:bg-[var(--space-card)]/15 transition-colors"
+                    onClick={() => setIsGuideExpanded(true)}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 bg-[#FBBF24]/10 border border-[#FBBF24]/30 flex items-center justify-center rounded-lg">
+                        <Sparkles className="w-4 h-4 text-teal-400" />
+                      </div>
+                      <span className="font-mono text-xs uppercase tracking-widest text-[var(--space-text)] font-semibold select-none">
+                        AI Guide
+                      </span>
+                    </div>
+                    <button
+                      className="p-1 rounded-lg hover:bg-[var(--space-border)]/20 transition-colors animate-pulse"
+                      title="Expand AI Guide"
+                    >
+                      <ChevronLeft className="w-4 h-4 text-[var(--space-text)] rotate-90" />
+                    </button>
+                  </div>
+                </>
+              )}
             </aside>
           </div>
         </div> {/* Closes Centered Main Content Wrapper */}
 
         {/* Floating Stepper in Right Blank Space - Desktop XL only */}
         <div className="hidden xl:flex flex-col justify-center py-2 flex-shrink-0 z-20">
-          <div className="rounded-full bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] py-10 px-2 flex flex-col items-center justify-between shadow-[0_10px_35px_rgba(0,0,0,0.06)] relative h-[calc(100vh-160px)] min-h-[500px] max-h-[720px] w-18 z-0">
+          <div className="rounded-full bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] py-10 px-4 flex flex-col items-center justify-between shadow-[0_10px_35px_rgba(0,0,0,0.06)] relative h-[calc(100vh-160px)] min-h-[500px] max-h-[720px] w-24 z-0">
             {/* Connecting line container */}
             <div className="absolute top-[58px] bottom-[58px] w-0.5 left-1/2 -translate-x-1/2 z-0">
               {/* Background track */}
