@@ -158,6 +158,26 @@
   code, pre, .mono {
     font-family: 'JetBrains Mono', monospace;
   }
+
+  /* Custom pill scrollbar styles */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--space-text-subtle);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--space-text-muted);
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--space-text-subtle) transparent;
+  }
 }
 
 @layer components {

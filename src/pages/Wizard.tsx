@@ -94,11 +94,13 @@ export default function Wizard() {
   };
 
   return (
-    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans flex flex-col pb-4">
+    <div className="theme-3d-immersive min-h-screen lg:h-screen relative overflow-x-hidden lg:overflow-hidden font-sans flex flex-col items-center">
       <SpaceBackground />
-      <div className="relative z-10 flex-1 flex flex-col">
+      <div className="relative z-10 flex-1 flex flex-row items-stretch justify-center h-full w-full lg:overflow-hidden">
+        {/* Centered Main Content Wrapper */}
+        <div className="flex flex-col lg:overflow-hidden h-full w-full max-w-6xl">
         {/* Header */}
-        <header className="w-full px-4 pt-4">
+        <header className="w-full px-4 pt-4 flex-shrink-0">
           <div className="max-w-6xl mx-auto rounded-full bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] shadow-[0_10px_35px_rgba(0,0,0,0.06)] px-6 py-1">
             <div className="flex items-center justify-between h-14">
               <button
@@ -120,8 +122,8 @@ export default function Wizard() {
           </div>
         </header>
 
-        {/* Stepper */}
-        <div className="w-full px-4 mt-3">
+        {/* Stepper (Mobile only) */}
+        <div className="w-full px-4 mt-3 lg:hidden flex-shrink-0">
           <div className="max-w-6xl mx-auto rounded-2xl bg-[var(--space-card)]/20 backdrop-blur-md border border-[var(--space-border)] py-4 px-6">
             <div className="flex items-center justify-between max-w-4xl mx-auto relative">
               {/* Connecting line */}
@@ -174,8 +176,8 @@ export default function Wizard() {
         </div>
 
         {/* Content Pane Layout */}
-        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden max-w-6xl w-full mx-auto px-4 mt-4 gap-4">
-          <main className="flex-1 overflow-y-auto p-6 glass-panel rounded-2xl border border-[var(--space-border)]">
+        <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden max-w-6xl w-full mx-auto px-4 mt-4 gap-4">
+          <main className="flex-1 lg:overflow-y-auto p-6 glass-panel rounded-2xl border border-[var(--space-border)]">
             <AnimatePresence mode="wait">
               <motion.div
                 key={currentStep}
@@ -189,13 +191,67 @@ export default function Wizard() {
             </AnimatePresence>
           </main>
 
-          <aside className="w-full lg:w-80 glass-panel rounded-2xl border border-[var(--space-border)] bg-[var(--space-card)]/10 backdrop-blur-sm flex-shrink-0 overflow-y-auto">
-            <AIGuide />
+          <aside className="w-full lg:w-80 flex flex-col gap-4 flex-shrink-0 lg:overflow-hidden lg:h-full">
+            {/* Stepper container (Desktop, below XL only) */}
+            <div className="hidden lg:block xl:hidden glass-panel rounded-2xl border border-[var(--space-border)] bg-[var(--space-card)]/15 backdrop-blur-sm p-5 flex-shrink-0">
+              <div className="flex flex-col gap-4 relative">
+                {/* Connecting line */}
+                <div className="absolute left-[18px] top-4 bottom-4 w-0.5 bg-[var(--space-border)]/50 -z-10" />
+                {stepOrder.map((s, i) => {
+                  const isCompleted = i < currentStepIdx;
+                  const isActive = i === currentStepIdx;
+
+                  return (
+                    <div
+                      key={s}
+                      className="flex items-center gap-3 cursor-pointer group"
+                      onClick={() => {
+                        if (isCompleted) goToStep(s);
+                      }}
+                    >
+                      <div
+                        className={`w-9 h-9 flex items-center justify-center border transition-all rounded-full flex-shrink-0 ${
+                          isCompleted
+                            ? "bg-teal-500 border-teal-500 text-white"
+                            : isActive
+                              ? "border-teal-500 bg-teal-500/10 text-teal-400"
+                              : "border-[var(--space-border)] bg-[var(--space-card)] text-[var(--space-text-subtle)]"
+                        } ${isCompleted ? "cursor-pointer hover:opacity-80" : ""}`}
+                      >
+                        {isCompleted ? (
+                          <CheckCircle className="w-4 h-4" />
+                        ) : isActive ? (
+                          <div className="w-2.5 h-2.5 bg-teal-400 rounded-full animate-pulse" />
+                        ) : (
+                          <Circle className="w-4 h-4" />
+                        )}
+                      </div>
+                      <span
+                        className={`font-mono text-xs uppercase tracking-wider ${
+                          isActive
+                            ? "text-[var(--space-text)] font-bold"
+                            : isCompleted
+                              ? "text-[var(--space-text-muted)]"
+                              : "text-[var(--space-text-subtle)]"
+                        }`}
+                      >
+                        {stepLabels[s]}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* AI Guide container */}
+            <div className="flex-1 glass-panel rounded-2xl border border-[var(--space-border)] bg-[var(--space-card)]/10 backdrop-blur-sm flex flex-col overflow-hidden">
+              <AIGuide />
+            </div>
           </aside>
         </div>
 
         {/* Footer */}
-        <footer className="w-full px-4 pt-4 mt-auto">
+        <footer className="w-full px-4 pt-4 pb-4 mt-auto flex-shrink-0">
           <div className="max-w-6xl mx-auto rounded-full bg-[var(--space-card)]/80 backdrop-blur-lg border border-[var(--space-border)] px-6 py-3 flex items-center justify-between">
             <Button
               variant="ghost"
@@ -219,7 +275,60 @@ export default function Wizard() {
             </div>
           </div>
         </footer>
-      </div>
+        </div> {/* Closes Centered Main Content Wrapper */}
+
+        {/* Floating Stepper in Right Blank Space - Desktop XL only */}
+        <div className="hidden xl:flex flex-col justify-center py-4 pl-4 flex-shrink-0 z-20">
+          <div className="rounded-full bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] py-10 px-3 flex flex-col items-center justify-between shadow-[0_10px_35px_rgba(0,0,0,0.06)] relative min-h-[520px] w-20">
+            {/* Connecting line */}
+            <div className="absolute top-14 bottom-14 w-0.5 bg-[var(--space-border)]/50 -z-10" />
+            {stepOrder.map((s, i) => {
+              const isCompleted = i < currentStepIdx;
+              const isActive = i === currentStepIdx;
+
+              return (
+                <div
+                  key={s}
+                  className="flex flex-col items-center gap-1.5 cursor-pointer group"
+                  onClick={() => {
+                    if (isCompleted) goToStep(s);
+                  }}
+                >
+                  <div
+                    className={`w-9 h-9 flex items-center justify-center border transition-all rounded-full flex-shrink-0 ${
+                      isCompleted
+                        ? "bg-teal-500 border-teal-500 text-white"
+                        : isActive
+                          ? "border-teal-500 bg-teal-500/10 text-teal-400"
+                          : "border-[var(--space-border)] bg-[var(--space-card)] text-[var(--space-text-subtle)]"
+                    } ${isCompleted ? "cursor-pointer hover:opacity-80" : ""}`}
+                  >
+                    {isCompleted ? (
+                      <CheckCircle className="w-4 h-4" />
+                    ) : isActive ? (
+                      <div className="w-2.5 h-2.5 bg-teal-400 rounded-full animate-pulse" />
+                    ) : (
+                      <Circle className="w-4 h-4" />
+                    )}
+                  </div>
+                  <span
+                    className={`font-mono text-[9px] uppercase tracking-wider text-center select-none ${
+                      isActive
+                        ? "text-[var(--space-text)] font-bold"
+                        : isCompleted
+                          ? "text-[var(--space-text-muted)]"
+                          : "text-[var(--space-text-subtle)]"
+                    }`}
+                  >
+                    {stepLabels[s]}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+      </div> {/* Closes relative z-10 flex-1 flex flex-row ... */}
     </div>
   );
 }

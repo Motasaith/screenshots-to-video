@@ -8,6 +8,7 @@ import { nanoid } from "nanoid";
 const execFileAsync = promisify(execFile);
 
 import { EdgeTTS } from "node-edge-tts";
+import { env } from "./env";
 
 /**
  * ──────────────────────────────────────────────────────────────────
@@ -85,8 +86,96 @@ function humanVariation(text: string): { ratePct: number; pitchHz: number } {
 }
 
 /**
- * Generate TTS audio. Routes to Kokoro for "kokoro:*" voice IDs,
- * otherwise uses Edge TTS. Falls back to Edge if Kokoro fails.
+ * ElevenLabs TTS generation (premium-quality voices via API).
+ * Voice IDs are prefixed "elevenlabs:", e.g. "elevenlabs:pNInz6obpgDQGcFmaJgB".
+ * Falls back to Edge TTS if the API key is missing or the request fails.
+ */
+async function generateElevenLabsAudio(
+  text: string,
+  voiceId: string,
+  rate: string | undefined,
+  outDir: string
+): Promise<{ filePath: string; duration: number }> {
+  if (!env.elevenlabsApiKey) {
+    throw new Error("ElevenLabs API key not configured");
+  }
+
+  // Map "+10%" style rate to ElevenLabs speed multiplier (0.7 - 1.2)
+  const ratePct = rate ? parseInt(rate.replace(/[^-\d]/g, ""), 10) || 0 : 0;
+  const speed = Math.max(0.7, Math.min(1.2, 1 + ratePct / 100));
+
+  const outputPath = path.join(outDir, `tts_${nanoid(12)}.mp3`);
+
+  const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+    method: "POST",
+    headers: {
+      "xi-api-key": env.elevenlabsApiKey,
+      "Content-Type": "application/json",
+      "Accept": "audio/mpeg",
+    },
+    body: JSON.stringify({
+      text,
+      model_id: "eleven_turbo_v2_5",
+      voice_settings: {
+        stability: 0.5,
+        similarity_boost: 0.75,
+        speed,
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text().catch(() => "");
+    throw new Error(`ElevenLabs API error ${response.status}: ${errBody.slice(0, 200)}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  await fs.writeFile(outputPath, Buffer.from(arrayBuffer));
+
+  const stat = await fs.stat(outputPath);
+  if (stat.size === 0) throw new Error("ElevenLabs generated an empty audio file");
+
+  const duration = await probeAudioDuration(outputPath);
+  return { filePath: outputPath, duration };
+}
+
+/**
+ * Get remaining ElevenLabs character credits for the configured API key.
+ * Returns null if the key is not configured.
+ */
+export async function getElevenLabsCredits(): Promise<{
+  used: number;
+  limit: number;
+  remaining: number;
+  tier: string;
+} | null> {
+  if (!env.elevenlabsApiKey) return null;
+
+  try {
+    const response = await fetch("https://api.elevenlabs.io/v1/user", {
+      headers: { "xi-api-key": env.elevenlabsApiKey },
+    });
+    if (!response.ok) return null;
+
+    const data: any = await response.json();
+    const used = data.subscription?.character_count ?? 0;
+    const limit = data.subscription?.character_limit ?? 0;
+    return {
+      used,
+      limit,
+      remaining: Math.max(0, limit - used),
+      tier: data.subscription?.tier ?? "unknown",
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Generate TTS audio. Routes to:
+ *  - "elevenlabs:<voiceId>" → ElevenLabs API (falls back to Edge on failure)
+ *  - "kokoro:<voice>"       → Kokoro local model (falls back to Edge on failure)
+ *  - everything else         → Edge TTS (Microsoft neural voices)
  *
  * Returns the path to the generated audio file in a temp directory.
  */
@@ -103,6 +192,15 @@ export async function generateTTSAudio(
   await fs.mkdir(outDir, { recursive: true });
 
   const cleanText = prepareTextForTTS(text);
+
+  if (voice.startsWith("elevenlabs:")) {
+    try {
+      return await generateElevenLabsAudio(cleanText, voice.slice("elevenlabs:".length), opts?.rate, outDir);
+    } catch (err: any) {
+      console.warn("[TTS] ElevenLabs failed, falling back to Edge TTS:", err.message);
+      return generateEdgeAudio(cleanText, DEFAULT_EDGE_VOICE, opts?.rate, outDir);
+    }
+  }
 
   if (voice.startsWith("kokoro:")) {
     try {

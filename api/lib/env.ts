@@ -38,4 +38,7 @@ export const env = {
 
   // ── Pexels (Stock Media) ──
   pexelsApiKey: optional("PEXELS_API_KEY"),
+
+  // ── ElevenLabs (Premium TTS voices) ──
+  elevenlabsApiKey: optional("ELEVENLABS_API_KEY"),
 };

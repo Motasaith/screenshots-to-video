@@ -12,7 +12,7 @@ import {
   getProactiveFeedback,
   checkMediaSafety,
 } from "./lib/llm";
-import { generateTTSAudio, speedToRate } from "./lib/tts";
+import { generateTTSAudio, speedToRate, getElevenLabsCredits } from "./lib/tts";
 import { detectGibberish } from "./lib/gibberish";
 import fs from "fs/promises";
 
@@ -539,5 +539,13 @@ export const aiRouter = createRouter({
       } catch (err: any) {
         throw new Error(`Failed to generate voice preview: ${err.message}`);
       }
+    }),
+
+  // ── ElevenLabs remaining credits ──
+  elevenLabsCredits: authedQuery
+    .use(rateLimitByUser(60_000, 30))
+    .input(z.object({}).optional())
+    .query(async () => {
+      return await getElevenLabsCredits();
     }),
 });

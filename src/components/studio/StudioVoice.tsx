@@ -15,6 +15,7 @@ import {
   Gauge,
   Zap,
   Sparkles,
+  Crown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/useAuth";
@@ -36,6 +37,32 @@ const voices = [
   { id: "kokoro:am_michael", name: "Michael", accent: "US", gender: "Male", tag: "Ultra-real" },
   { id: "kokoro:bf_emma", name: "Emma B.", accent: "UK", gender: "Female", tag: "Ultra-real" },
   { id: "kokoro:af_bella", name: "Bella", accent: "US", gender: "Female", tag: "Ultra-real" },
+];
+
+// ── ElevenLabs premium voices (22 available on the free API tier) ──
+const elevenLabsVoices = [
+  { id: "elevenlabs:pNInz6obpgDQGcFmaJgB", name: "Adam", accent: "US", gender: "Male", desc: "Dominant, Firm" },
+  { id: "elevenlabs:EXAVITQu4vr4xnSDxMaL", name: "Sarah", accent: "US", gender: "Female", desc: "Mature, Confident" },
+  { id: "elevenlabs:TX3LPaxmHKxFdv7VOQHJ", name: "Liam", accent: "US", gender: "Male", desc: "Energetic Creator" },
+  { id: "elevenlabs:cgSgspJ2msm6clMCkdW9", name: "Jessica", accent: "US", gender: "Female", desc: "Playful, Warm" },
+  { id: "elevenlabs:cjVigY5qzO86Huf0OWal", name: "Eric", accent: "US", gender: "Male", desc: "Smooth, Trustworthy" },
+  { id: "elevenlabs:hpp4J3VqNfWAUOO0d1Us", name: "Bella", accent: "US", gender: "Female", desc: "Professional, Bright" },
+  { id: "elevenlabs:iP95p4xoKVk53GoZ742B", name: "Chris", accent: "US", gender: "Male", desc: "Charming, Down-to-Earth" },
+  { id: "elevenlabs:nPczCjzI2devNBz1zQrb", name: "Brian", accent: "US", gender: "Male", desc: "Deep, Resonant" },
+  { id: "elevenlabs:onwK4e9ZLuTAKqWW03F9", name: "Daniel", accent: "US", gender: "Male", desc: "Steady Broadcaster" },
+  { id: "elevenlabs:pFZP5JQG7iQjIQuC4Bku", name: "Lily", accent: "US", gender: "Female", desc: "Velvety Actress" },
+  { id: "elevenlabs:pqHfZKP75CvOlQylNhV4", name: "Bill", accent: "US", gender: "Male", desc: "Wise, Mature" },
+  { id: "elevenlabs:Xb7hH8MSUJpSbSDYk0k2", name: "Alice", accent: "US", gender: "Female", desc: "Clear Educator" },
+  { id: "elevenlabs:JBFqnCBsd6RMkjVDRZzb", name: "George", accent: "US", gender: "Male", desc: "Warm Storyteller" },
+  { id: "elevenlabs:XrExE9yKIg1WjnnlVkGX", name: "Matilda", accent: "US", gender: "Female", desc: "Professional" },
+  { id: "elevenlabs:bIHbv24MWmeRgasZH58o", name: "Will", accent: "US", gender: "Male", desc: "Relaxed Optimist" },
+  { id: "elevenlabs:FGY2WhTYpPnrIDTdsKH5", name: "Laura", accent: "US", gender: "Female", desc: "Quirky Attitude" },
+  { id: "elevenlabs:CwhRBWXzGAHq8TQ4Fs17", name: "Roger", accent: "US", gender: "Male", desc: "Laid-Back, Casual" },
+  { id: "elevenlabs:SOYHLrjzK2X1ezoPC6cr", name: "Harry", accent: "US", gender: "Male", desc: "Fierce Warrior" },
+  { id: "elevenlabs:IKne3meq5aSn9XLyUdCD", name: "Charlie", accent: "US", gender: "Male", desc: "Deep, Energetic" },
+  { id: "elevenlabs:N2lVS1w4EtoT3dr4eOWO", name: "Callum", accent: "US", gender: "Male", desc: "Husky Trickster" },
+  { id: "elevenlabs:SAz9YHcvj6GT2YYXdXww", name: "River", accent: "US", gender: "Neutral", desc: "Relaxed, Neutral" },
+  { id: "elevenlabs:bvB801cu7ca8Klk5nO4O", name: "Haseeb", accent: "UK", gender: "Male", desc: "British Documentary" },
 ];
 
 const resolutions = [
@@ -64,6 +91,14 @@ export default function StudioVoice() {
 
   const updateProject = trpc.studio.update.useMutation();
   const previewVoice = trpc.studio.previewVoice.useMutation();
+
+  // ── ElevenLabs credits (shared free API key) ──
+  const credits = trpc.ai.elevenLabsCredits.useQuery(undefined, {
+    refetchInterval: 30_000,
+  });
+  const elevenLabsRemaining = credits.data?.remaining ?? null;
+  const elevenLabsLimit = credits.data?.limit ?? null;
+  const elevenLabsAvailable = elevenLabsRemaining !== null && elevenLabsRemaining > 0;
 
   const handlePlayPreview = async (e: React.MouseEvent, voiceId: string) => {
     e.stopPropagation(); // prevent selecting the voice when clicking play
@@ -191,31 +226,47 @@ export default function StudioVoice() {
               })}
             </div>
 
-            {/* ElevenLabs PRO Section */}
+            {/* ElevenLabs Premium Voices Section */}
             <div className="mt-6 border-2 border-amber-500/20 bg-amber-500/5 p-4" style={{ borderRadius: "12px" }}>
               <div className="flex items-center justify-between mb-3">
                 <h4 className="font-body font-semibold text-sm flex items-center gap-2 text-[var(--sketch-fg)]">
-                  <Sparkles className="w-4 h-4 text-amber-500" />
-                  ElevenLabs Ultra-Real Voices
+                  <Crown className="w-4 h-4 text-amber-500" />
+                  ElevenLabs Premium Voices
                 </h4>
-                {isFreePlan && (
-                  <span className="font-mono text-[10px] bg-amber-500/20 text-amber-600 px-1.5 py-0.5 sketch-border-sm flex items-center gap-1">
-                    <Lock className="w-3 h-3" /> PRO
+                {/* Credits display */}
+                {elevenLabsRemaining !== null && (
+                  <span className={`font-mono text-[10px] px-2 py-0.5 sketch-border-sm flex items-center gap-1 ${
+                    elevenLabsAvailable
+                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                      : "bg-red-500/15 text-red-600 dark:text-red-400"
+                  }`}>
+                    {elevenLabsAvailable ? (
+                      <>\n                        {elevenLabsRemaining.toLocaleString()} / {elevenLabsLimit?.toLocaleString()} chars left
+                      </>
+                    ) : (
+                      <>
+                        <Lock className="w-3 h-3" /> No credits left
+                      </>
+                    )}
                   </span>
                 )}
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { id: "elevenlabs:adam", name: "Adam", accent: "US", gender: "Male" },
-                  { id: "elevenlabs:rachel", name: "Rachel", accent: "US", gender: "Female" }
-                ].map((v) => {
+
+              {!elevenLabsAvailable && (
+                <p className="font-body text-xs text-amber-600 dark:text-amber-400 mb-3">
+                  Monthly ElevenLabs credits are used up. Voices will fall back to Edge TTS. Credits reset monthly.
+                </p>
+              )}
+
+              <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
+                {elevenLabsVoices.map((v) => {
                   const isActive = voice.voice === v.id;
                   return (
                     <button
                       key={v.id}
                       onClick={() => {
-                        if (isFreePlan) {
-                          toast.error("ElevenLabs voices are a Pro feature. Upgrade your plan to use them.");
+                        if (!elevenLabsAvailable) {
+                          toast.error("ElevenLabs monthly credits are used up. Please use the free voices above.");
                           return;
                         }
                         setVoice({ voice: v.id });
@@ -223,16 +274,34 @@ export default function StudioVoice() {
                       className={`p-3 border-2 text-left transition-all relative ${
                         isActive
                           ? "border-amber-500 bg-amber-500/10 shadow-[2px_2px_0px_0px_#F59E0B]"
-                          : isFreePlan
-                            ? "border-[var(--sketch-fg-subtle)]/45 bg-[var(--sketch-card-bg)]/50 opacity-75 cursor-not-allowed"
-                            : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-amber-500/40"
+                          : elevenLabsAvailable
+                            ? "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-amber-500/40"
+                            : "border-[var(--sketch-fg-subtle)]/45 bg-[var(--sketch-card-bg)]/50 opacity-60 cursor-not-allowed"
                       }`}
                       style={{ borderRadius: "8px" }}
                     >
-                      <span className="font-body font-semibold text-sm text-[var(--sketch-fg)]">
-                        {v.name}
+                      <div className="flex items-center justify-between">
+                        <span className="font-body font-semibold text-sm text-[var(--sketch-fg)]">
+                          {v.name}
+                        </span>
+                        <button
+                          onClick={(e) => handlePlayPreview(e, v.id)}
+                          disabled={(previewLoadingId !== null && previewLoadingId !== v.id) || !elevenLabsAvailable}
+                          className="text-xs text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg)] transition-colors disabled:opacity-50"
+                        >
+                          {previewLoadingId === v.id ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : playingId === v.id ? (
+                            <Square className="w-3 h-3 fill-current" />
+                          ) : (
+                            <Play className="w-3 h-3" />
+                          )}
+                        </button>
+                      </div>
+                      <span className="font-body text-[10px] text-[var(--sketch-fg-muted)] block mt-0.5 truncate">
+                        {v.desc}
                       </span>
-                      <div className="flex items-center gap-2 mt-1">
+                      <div className="flex items-center gap-1.5 mt-1.5">
                         <span className="font-mono text-[9px] px-1.5 py-0.5 bg-amber-500/10 text-amber-700 sketch-border-sm">
                           {v.accent}
                         </span>
