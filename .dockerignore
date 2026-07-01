@@ -1,5 +1,26 @@
 node_modules
 dist
 .git
+.gitignore
 *.swp
 *.log
+
+# Env files — never bake secrets into the image
+.env
+.env.local
+.env.docker
+.env.example
+
+# Docker files themselves
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# IDE / editor
+.vscode
+.idea
+
+# Test / docs
+coverage
+*.md
+!README.md
