@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useWizardStore, stepOrder, stepIndex, stepLabels, type WizardStep } from "@/hooks/useWizardStore";
@@ -8,7 +8,6 @@ import {
   CheckCircle,
   Circle,
   Loader2,
-  ChevronLeft,
   ArrowLeft,
   Sparkles,
 } from "lucide-react";
@@ -40,7 +39,7 @@ export default function Wizard() {
   const projectIdNum = Number(pid) || 0;
   const currentStepIdx = stepIndex(currentStep);
 
-  const [isGuideOpen, setIsGuideOpen] = useState<boolean>(true);
+  const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
 
   const { data: project } = trpc.project.getById.useQuery(
     { id: projectIdNum },

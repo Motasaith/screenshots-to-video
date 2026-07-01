@@ -143,7 +143,7 @@ export default function StepVoice() {
   };
 
   return (
-    <div className="max-w-2xl">
+    <div className="w-full">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <div className="relative">
           <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
@@ -160,331 +160,338 @@ export default function StepVoice() {
           Select a voice, set the speed, and configure video options.
         </p>
 
-        <div className="mt-8 space-y-8">
-          <div id="voice-standard" className="scroll-mt-6">
-            <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
-              <Volume2 className="w-5 h-5 text-[#FBBF24]" />
-              Voice
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
-              {voices.map((voice) => (
-                <button
-                  key={voice.id}
-                  onClick={() => setSelectedVoice(voice.id)}
-                  className={`p-4 border-2 text-left transition-all ${
-                    selectedVoice === voice.id
-                      ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/5 shadow-[4px_4px_0px_0px_#FBBF24]"
-                      : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
-                  }`}
-                  style={{ borderRadius: selectedVoice === voice.id ? "255px 15px 225px 15px/15px 225px 15px 255px" : "12px" }}
-                >
-                  <div className="flex items-center justify-between">
-                    <span className="font-body font-semibold text-sm text-[var(--sketch-fg)]">
-                      {voice.name}
-                    </span>
-                    <button 
-                      onClick={(e) => handlePlayPreview(e, voice.id)}
-                      disabled={previewLoadingId !== null && previewLoadingId !== voice.id}
-                      className="text-xs text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg)] transition-colors disabled:opacity-50"
-                    >
-                      {previewLoadingId === voice.id ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : playingId === voice.id ? (
-                        <Square className="w-3 h-3 fill-current" />
-                      ) : (
-                        <Play className="w-3 h-3" />
-                      )}
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="font-mono text-[10px] px-1.5 py-0.5 bg-[#FBBF24]/10 text-[var(--sketch-fg-muted)] sketch-border-sm">
-                      {voice.accent}
-                    </span>
-                    <span className="font-mono text-[10px] px-1.5 py-0.5 bg-[#FBBF24]/10 text-[var(--sketch-fg-muted)] sketch-border-sm">
-                      {voice.gender}
-                    </span>
-                    {voice.tag && (
-                      <span className="font-mono text-[10px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 sketch-border-sm">
-                        {voice.tag}
+        {/* Responsive layout grid */}
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-5 items-start">
+          {/* Left Column: Voice Options */}
+          <div className="space-y-6">
+            <div id="voice-standard" className="scroll-mt-6">
+              <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
+                <Volume2 className="w-5 h-5 text-[#FBBF24]" />
+                Voice
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                {voices.map((voice) => (
+                  <button
+                    key={voice.id}
+                    onClick={() => setSelectedVoice(voice.id)}
+                    className={`p-4 border-2 text-left transition-all ${
+                      selectedVoice === voice.id
+                        ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/5 shadow-[4px_4px_0px_0px_#FBBF24]"
+                        : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
+                    }`}
+                    style={{ borderRadius: selectedVoice === voice.id ? "255px 15px 225px 15px/15px 225px 15px 255px" : "12px" }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="font-body font-semibold text-sm text-[var(--sketch-fg)]">
+                        {voice.name}
                       </span>
-                    )}
-                  </div>
-                </button>
-              ))}
-            </div>
-
-            {/* ElevenLabs Premium Voices Section */}
-            <div id="voice-elevenlabs" className="mt-6 border-2 border-amber-500/20 bg-amber-500/5 p-4 scroll-mt-6" style={{ borderRadius: "12px" }}>
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="font-body font-semibold text-sm flex items-center gap-2 text-[var(--sketch-fg)]">
-                  <Crown className="w-4 h-4 text-amber-500" />
-                  ElevenLabs Premium Voices
-                </h4>
-                {/* Credits display */}
-                {elevenLabsRemaining !== null && (
-                  <span className={`font-mono text-[10px] px-2 py-0.5 sketch-border-sm flex items-center gap-1 ${
-                    elevenLabsAvailable
-                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
-                      : "bg-red-500/15 text-red-600 dark:text-red-400"
-                  }`}>
-                    {elevenLabsAvailable ? (
-                      <>
-                        {elevenLabsRemaining.toLocaleString()} / {elevenLabsLimit?.toLocaleString()} chars left
-                      </>
-                    ) : (
-                      <>
-                        <Lock className="w-3 h-3" /> No credits left
-                      </>
-                    )}
-                  </span>
-                )}
+                      <button 
+                        onClick={(e) => handlePlayPreview(e, voice.id)}
+                        disabled={previewLoadingId !== null && previewLoadingId !== voice.id}
+                        className="text-xs text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg)] transition-colors disabled:opacity-50"
+                      >
+                        {previewLoadingId === voice.id ? (
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                        ) : playingId === voice.id ? (
+                          <Square className="w-3 h-3 fill-current" />
+                        ) : (
+                          <Play className="w-3 h-3" />
+                        )}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="font-mono text-[10px] px-1.5 py-0.5 bg-[#FBBF24]/10 text-[var(--sketch-fg-muted)] sketch-border-sm">
+                        {voice.accent}
+                      </span>
+                      <span className="font-mono text-[10px] px-1.5 py-0.5 bg-[#FBBF24]/10 text-[var(--sketch-fg-muted)] sketch-border-sm">
+                        {voice.gender}
+                      </span>
+                      {voice.tag && (
+                        <span className="font-mono text-[10px] px-1.5 py-0.5 bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 sketch-border-sm">
+                          {voice.tag}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                ))}
               </div>
 
-              {!elevenLabsAvailable && (
-                <p className="font-body text-xs text-amber-600 dark:text-amber-400 mb-3">
-                  Monthly ElevenLabs credits are used up. Voices will fall back to Edge TTS. Credits reset monthly.
-                </p>
-              )}
+              {/* ElevenLabs Premium Voices Section */}
+              <div id="voice-elevenlabs" className="mt-6 border-2 border-amber-500/20 bg-amber-500/5 p-4 scroll-mt-6" style={{ borderRadius: "12px" }}>
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="font-body font-semibold text-sm flex items-center gap-2 text-[var(--sketch-fg)]">
+                    <Crown className="w-4 h-4 text-amber-500" />
+                    ElevenLabs Premium Voices
+                  </h4>
+                  {elevenLabsRemaining !== null && (
+                    <span className={`font-mono text-[10px] px-2 py-0.5 sketch-border-sm flex items-center gap-1 ${
+                      elevenLabsAvailable
+                        ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                        : "bg-red-500/15 text-red-600 dark:text-red-400"
+                    }`}>
+                      {elevenLabsAvailable ? (
+                        <>
+                          {elevenLabsRemaining.toLocaleString()} / {elevenLabsLimit?.toLocaleString()} chars left
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="w-3 h-3" /> No credits left
+                        </>
+                      )}
+                    </span>
+                  )}
+                </div>
 
-              <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
-                {elevenLabsVoices.map((voice) => {
-                  const isSelected = selectedVoice === voice.id;
+                {!elevenLabsAvailable && (
+                  <p className="font-body text-xs text-amber-600 dark:text-amber-400 mb-3">
+                    Monthly ElevenLabs credits are used up. Voices will fall back to Edge TTS. Credits reset monthly.
+                  </p>
+                )}
+
+                <div className="grid grid-cols-2 gap-2 max-h-72 overflow-y-auto pr-1">
+                  {elevenLabsVoices.map((voice) => {
+                    const isSelected = selectedVoice === voice.id;
+                    return (
+                      <button
+                        key={voice.id}
+                        onClick={() => {
+                          if (!elevenLabsAvailable) {
+                            toast.error("ElevenLabs monthly credits are used up. Please use the free voices above.");
+                            return;
+                          }
+                          setSelectedVoice(voice.id);
+                        }}
+                        className={`p-3 border-2 text-left transition-all relative ${
+                          isSelected
+                            ? "border-amber-500 bg-amber-500/10 shadow-[2px_2px_0px_0px_#F59E0B]"
+                            : elevenLabsAvailable
+                              ? "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-amber-500/40"
+                              : "border-[var(--sketch-fg-subtle)]/45 bg-[var(--sketch-card-bg)]/50 opacity-60 cursor-not-allowed"
+                        }`}
+                        style={{ borderRadius: "8px" }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-body font-semibold text-sm text-[var(--sketch-fg)]">
+                            {voice.name}
+                          </span>
+                          <button
+                            onClick={(e) => handlePlayPreview(e, voice.id)}
+                            disabled={(previewLoadingId !== null && previewLoadingId !== voice.id) || !elevenLabsAvailable}
+                            className="text-xs text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg)] transition-colors disabled:opacity-50"
+                          >
+                            {previewLoadingId === voice.id ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : playingId === voice.id ? (
+                              <Square className="w-3 h-3 fill-current" />
+                            ) : (
+                              <Play className="w-3 h-3" />
+                            )}
+                          </button>
+                        </div>
+                        <span className="font-body text-[10px] text-[var(--sketch-fg-muted)] block mt-0.5 truncate">
+                          {voice.desc}
+                        </span>
+                        <div className="flex items-center gap-1.5 mt-1.5">
+                          <span className="font-mono text-[9px] px-1.5 py-0.5 bg-amber-500/10 text-amber-700 sketch-border-sm">
+                            {voice.accent}
+                          </span>
+                          <span className="font-mono text-[9px] px-1.5 py-0.5 bg-amber-500/10 text-amber-700 sketch-border-sm">
+                            {voice.gender}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column: Other settings */}
+          <div className="space-y-6">
+            <div id="voice-speed" className="scroll-mt-6">
+              <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
+                <Gauge className="w-5 h-5 text-[#FBBF24]" />
+                Speaking Speed
+              </h3>
+              <div className="sketch-card p-4 bg-[var(--sketch-card-bg)]">
+                <div className="flex items-center gap-4">
+                  <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] w-10">
+                    0.8x
+                  </span>
+                  <input
+                    type="range"
+                    min={0.8}
+                    max={1.3}
+                    step={0.05}
+                    value={speed}
+                    onChange={(e) => setSpeed(Number(e.target.value))}
+                    className="flex-1 h-2 bg-[var(--sketch-fg-subtle)] appearance-none cursor-pointer accent-[#FBBF24]"
+                  />
+                  <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] w-10">
+                    1.3x
+                  </span>
+                </div>
+                <div className="text-center mt-2">
+                  <span className="font-body font-bold text-2xl text-[var(--sketch-fg)]">
+                    {speed.toFixed(2)}x
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div id="voice-resolution" className="border-t border-[var(--sketch-fg-subtle)] pt-6 scroll-mt-6">
+              <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
+                <Monitor className="w-5 h-5 text-[#FBBF24]" />
+                Resolution
+              </h3>
+              <div className="grid grid-cols-3 gap-3">
+                {([ "720p", "1080p", "4k" ] as const).map((res) => {
+                  const isActive = resolution === res;
+                  const isLocked = isFreePlan && (res === "1080p" || res === "4k");
+
                   return (
                     <button
-                      key={voice.id}
+                      key={res}
                       onClick={() => {
-                        if (!elevenLabsAvailable) {
-                          toast.error("ElevenLabs monthly credits are used up. Please use the free voices above.");
+                        if (isLocked) {
+                          toast.error(`${res} is a Pro feature. Upgrade your plan to unlock high resolution rendering.`);
                           return;
                         }
-                        setSelectedVoice(voice.id);
+                        setResolution(res);
                       }}
-                      className={`p-3 border-2 text-left transition-all relative ${
-                        isSelected
-                          ? "border-amber-500 bg-amber-500/10 shadow-[2px_2px_0px_0px_#F59E0B]"
-                          : elevenLabsAvailable
-                            ? "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-amber-500/40"
-                            : "border-[var(--sketch-fg-subtle)]/45 bg-[var(--sketch-card-bg)]/50 opacity-60 cursor-not-allowed"
+                      className={`p-4 border-2 text-center transition-all relative ${
+                        isActive
+                          ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/5 shadow-[4px_4px_0px_0px_#FBBF24]"
+                          : isLocked
+                            ? "border-[var(--sketch-fg-subtle)]/45 bg-[var(--sketch-card-bg)]/50 opacity-75 cursor-not-allowed"
+                            : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
                       }`}
-                      style={{ borderRadius: "8px" }}
+                      style={{ borderRadius: isActive ? "255px 15px 225px 15px/15px 225px 15px 255px" : "12px" }}
                     >
-                      <div className="flex items-center justify-between">
-                        <span className="font-body font-semibold text-sm text-[var(--sketch-fg)]">
-                          {voice.name}
+                      {isLocked && (
+                        <Lock className="w-3.5 h-3.5 text-amber-600 absolute top-2 right-2" />
+                      )}
+                      <span className="font-body font-bold text-lg text-[var(--sketch-fg)]">{res}</span>
+                      {res === "4k" && !isLocked && (
+                        <span className="block font-mono text-[10px] text-[#FBBF24] mt-1">
+                          PRO
                         </span>
-                        <button
-                          onClick={(e) => handlePlayPreview(e, voice.id)}
-                          disabled={(previewLoadingId !== null && previewLoadingId !== voice.id) || !elevenLabsAvailable}
-                          className="text-xs text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg)] transition-colors disabled:opacity-50"
-                        >
-                          {previewLoadingId === voice.id ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          ) : playingId === voice.id ? (
-                            <Square className="w-3 h-3 fill-current" />
-                          ) : (
-                            <Play className="w-3 h-3" />
-                          )}
-                        </button>
-                      </div>
-                      <span className="font-body text-[10px] text-[var(--sketch-fg-muted)] block mt-0.5 truncate">
-                        {voice.desc}
-                      </span>
-                      <div className="flex items-center gap-1.5 mt-1.5">
-                        <span className="font-mono text-[9px] px-1.5 py-0.5 bg-amber-500/10 text-amber-700 sketch-border-sm">
-                          {voice.accent}
-                        </span>
-                        <span className="font-mono text-[9px] px-1.5 py-0.5 bg-amber-500/10 text-amber-700 sketch-border-sm">
-                          {voice.gender}
-                        </span>
-                      </div>
+                      )}
                     </button>
                   );
                 })}
               </div>
             </div>
-          </div>
 
-          <div id="voice-speed" className="border-t border-[var(--sketch-fg-subtle)] pt-6 scroll-mt-6">
-            <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
-              <Gauge className="w-5 h-5 text-[#FBBF24]" />
-              Speaking Speed
-            </h3>
-            <div className="sketch-card p-4 bg-[var(--sketch-card-bg)]">
-              <div className="flex items-center gap-4">
-                <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] w-10">
-                  0.8x
-                </span>
-                <input
-                  type="range"
-                  min={0.8}
-                  max={1.3}
-                  step={0.05}
-                  value={speed}
-                  onChange={(e) => setSpeed(Number(e.target.value))}
-                  className="flex-1 h-2 bg-[var(--sketch-fg-subtle)] appearance-none cursor-pointer accent-[#FBBF24]"
-                />
-                <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] w-10">
-                  1.3x
-                </span>
-              </div>
-              <div className="text-center mt-2">
-                <span className="font-body font-bold text-2xl text-[var(--sketch-fg)]">
-                  {speed.toFixed(2)}x
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div id="voice-resolution" className="border-t border-[var(--sketch-fg-subtle)] pt-6 scroll-mt-6">
-            <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
-              <Monitor className="w-5 h-5 text-[#FBBF24]" />
-              Resolution
-            </h3>
-            <div className="grid grid-cols-3 gap-3">
-              {(["720p", "1080p", "4k"] as const).map((res) => {
-                const isActive = resolution === res;
-                const isLocked = isFreePlan && (res === "1080p" || res === "4k");
-
-                return (
+            <div id="voice-music" className="border-t border-[var(--sketch-fg-subtle)] pt-6 scroll-mt-6">
+              <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
+                <Music className="w-5 h-5 text-[#FBBF24]" />
+                Background Music
+                {isFreePlan && (
+                  <span className="font-mono text-[10px] bg-[#FBBF24]/20 text-[#FBBF24] px-1.5 py-0.5 sketch-border-sm flex items-center gap-1">
+                    <Lock className="w-3 h-3" /> PRO
+                  </span>
+                )}
+              </h3>
+              <div className="sketch-card p-4 bg-[var(--sketch-card-bg)]">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="font-body text-sm text-[var(--sketch-fg)]">Enable background music</span>
                   <button
-                    key={res}
                     onClick={() => {
-                      if (isLocked) {
-                        toast.error(`${res} is a Pro feature. Upgrade your plan to unlock high resolution rendering.`);
+                      if (isFreePlan) {
+                        toast.error("Background music is a Pro feature. Upgrade your plan to enable it.");
                         return;
                       }
-                      setResolution(res);
+                      setMusicEnabled(!musicEnabled);
                     }}
-                    className={`p-4 border-2 text-center transition-all relative ${
-                      isActive
-                        ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/5 shadow-[4px_4px_0px_0px_#FBBF24]"
-                        : isLocked
-                          ? "border-[var(--sketch-fg-subtle)]/45 bg-[var(--sketch-card-bg)]/50 opacity-75 cursor-not-allowed"
-                          : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
+                    className={`w-12 h-6 rounded-full transition-colors relative ${
+                      musicEnabled ? "bg-[#FBBF24]" : "bg-[var(--sketch-fg-subtle)]"
                     }`}
-                    style={{ borderRadius: isActive ? "255px 15px 225px 15px/15px 225px 15px 255px" : "12px" }}
                   >
-                    {isLocked && (
-                      <Lock className="w-3.5 h-3.5 text-amber-600 absolute top-2 right-2" />
-                    )}
-                    <span className="font-body font-bold text-lg text-[var(--sketch-fg)]">{res}</span>
-                    {res === "4k" && !isLocked && (
-                      <span className="block font-mono text-[10px] text-[#FBBF24] mt-1">
-                        PRO
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div id="voice-music" className="border-t border-[var(--sketch-fg-subtle)] pt-6 scroll-mt-6">
-            <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
-              <Music className="w-5 h-5 text-[#FBBF24]" />
-              Background Music
-              {isFreePlan && (
-                <span className="font-mono text-[10px] bg-[#FBBF24]/20 text-[#FBBF24] px-1.5 py-0.5 sketch-border-sm flex items-center gap-1">
-                  <Lock className="w-3 h-3" /> PRO
-                </span>
-              )}
-            </h3>
-            <div className="sketch-card p-4 bg-[var(--sketch-card-bg)]">
-              <div className="flex items-center justify-between mb-4">
-                <span className="font-body text-sm text-[var(--sketch-fg)]">Enable background music</span>
-                <button
-                  onClick={() => {
-                    if (isFreePlan) {
-                      toast.error("Background music is a Pro feature. Upgrade your plan to enable it.");
-                      return;
-                    }
-                    setMusicEnabled(!musicEnabled);
-                  }}
-                  className={`w-12 h-6 rounded-full transition-colors relative ${
-                    musicEnabled ? "bg-[#FBBF24]" : "bg-[var(--sketch-fg-subtle)]"
-                  }`}
-                >
-                  <div
-                    className={`w-5 h-5 bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-border-color)] rounded-full absolute top-0.5 transition-transform ${
-                      musicEnabled ? "translate-x-6" : "translate-x-0.5"
-                    }`}
-                  />
-                </button>
-              </div>
-              {musicEnabled && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  className="space-y-2"
-                >
-                  {musicTracks.map((track) => (
-                    <button
-                      key={track.id}
-                      onClick={() => setSelectedTrack(track.id)}
-                      className={`w-full p-3 border-2 text-left transition-all ${
-                        selectedTrack === track.id
-                          ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/5"
-                          : "border-[var(--sketch-fg-subtle)] hover:border-[var(--sketch-border-color)]/40"
+                    <div
+                      className={`w-5 h-5 bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-border-color)] rounded-full absolute top-0.5 transition-transform ${
+                        musicEnabled ? "translate-x-6" : "translate-x-0.5"
                       }`}
-                      style={{ borderRadius: selectedTrack === track.id ? "255px 15px 225px 15px/15px 225px 15px 255px" : "8px" }}
-                    >
-                      <span className="font-body text-sm text-[var(--sketch-fg)]">{track.name}</span>
-                    </button>
-                  ))}
-                </motion.div>
-              )}
-            </div>
-          </div>
-
-          <div id="voice-randomize" className="border-t border-[var(--sketch-fg-subtle)] pt-6 scroll-mt-6">
-            <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
-              <Sparkles className="w-5 h-5 text-[#FBBF24]" />
-              Randomize Generation
-            </h3>
-            <div className="sketch-card p-4 bg-[var(--sketch-card-bg)]">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="font-body text-sm font-semibold text-[var(--sketch-fg)] block">Enable Randomization</span>
-                  <span className="font-body text-xs text-[var(--sketch-fg-muted)]">Randomizes zooms and camera movements for a truly unique video. Best for YouTube.</span>
+                    />
+                  </button>
                 </div>
-                <button
-                  onClick={() => setRandomize(!randomize)}
-                  className={`w-12 h-6 rounded-full transition-colors relative flex-shrink-0 ${
-                    randomize ? "bg-[#FBBF24]" : "bg-[var(--sketch-fg-subtle)]"
-                  }`}
-                >
-                  <div
-                    className={`w-5 h-5 bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-border-color)] rounded-full absolute top-0.5 transition-transform ${
-                      randomize ? "translate-x-6" : "translate-x-0.5"
+                {musicEnabled && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    className="space-y-2"
+                  >
+                    {musicTracks.map((track) => (
+                      <button
+                        key={track.id}
+                        onClick={() => setSelectedTrack(track.id)}
+                        className={`w-full p-3 border-2 text-left transition-all ${
+                          selectedTrack === track.id
+                            ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/5"
+                            : "border-[var(--sketch-fg-subtle)] hover:border-[var(--sketch-border-color)]/40"
+                        }`}
+                        style={{ borderRadius: selectedTrack === track.id ? "255px 15px 225px 15px/15px 225px 15px 255px" : "8px" }}
+                      >
+                        <span className="font-body text-sm text-[var(--sketch-fg)]">{track.name}</span>
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </div>
+            </div>
+
+            <div id="voice-randomize" className="border-t border-[var(--sketch-fg-subtle)] pt-6 scroll-mt-6">
+              <h3 className="font-body font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--sketch-fg)]">
+                <Sparkles className="w-5 h-5 text-[#FBBF24]" />
+                Randomize Generation
+              </h3>
+              <div className="sketch-card p-4 bg-[var(--sketch-card-bg)]">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-body text-sm font-semibold text-[var(--sketch-fg)] block">Enable Randomization</span>
+                    <span className="font-body text-xs text-[var(--sketch-fg-muted)]">Randomizes zooms and camera movements for a truly unique video. Best for YouTube.</span>
+                  </div>
+                  <button
+                    onClick={() => setRandomize(!randomize)}
+                    className={`w-12 h-6 rounded-full transition-colors relative flex-shrink-0 ${
+                      randomize ? "bg-[#FBBF24]" : "bg-[var(--sketch-fg-subtle)]"
                     }`}
-                  />
-                </button>
+                  >
+                    <div
+                      className={`w-5 h-5 bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-border-color)] rounded-full absolute top-0.5 transition-transform ${
+                        randomize ? "translate-x-6" : "translate-x-0.5"
+                      }`}
+                    />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
+        </div>
 
-          <div className="flex gap-4">
-            <Button
-              variant="ghost"
-              type="button"
-              onClick={() => navigate(`/create/${projectIdNum}/preview`)}
-              className="sketch-btn-ghost flex-1"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              Back
-            </Button>
-            <Button
-              onClick={handleContinue}
-              disabled={updateProject.isPending}
-              className="sketch-btn-primary flex-[2]"
-            >
-              <span className="flex items-center gap-2 justify-center">
-                <Zap className="w-4 h-4" />
-                Start Rendering
-                <ChevronRight className="w-4 h-4" />
-              </span>
-            </Button>
-          </div>
+        {/* Bottom Actions Row */}
+        <div className="flex gap-4 mt-6 max-w-xl">
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={() => navigate(`/create/${projectIdNum}/preview`)}
+            className="sketch-btn-ghost flex-1"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back
+          </Button>
+          <Button
+            onClick={handleContinue}
+            disabled={updateProject.isPending}
+            className="sketch-btn-primary flex-[2]"
+          >
+            <span className="flex items-center gap-2 justify-center">
+              <Zap className="w-4 h-4" />
+              Start Rendering
+              <ChevronRight className="w-4 h-4" />
+            </span>
+          </Button>
         </div>
       </motion.div>
     </div>

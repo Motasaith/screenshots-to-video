@@ -14,6 +14,7 @@ import {
   Upload,
   CheckCircle,
   Camera,
+  MonitorPlay,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { nanoid } from "nanoid";
@@ -433,45 +434,73 @@ export default function StepUpload() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
+  // Intro/Outro configuration state
+  const [introTemplate, setIntroTemplate] = useState("");
+  const [introText, setIntroText] = useState("");
+  const [introVideoPath, setIntroVideoPath] = useState("");
+  const [introDuration, setIntroDuration] = useState(3.0);
+  const [outroTemplate, setOutroTemplate] = useState("");
+  const [outroText, setOutroText] = useState("");
+  const [outroVideoPath, setOutroVideoPath] = useState("");
+  const [outroDuration, setOutroDuration] = useState(3.0);
+
+  const [isUploadingIntro, setIsUploadingIntro] = useState(false);
+  const [isUploadingOutro, setIsUploadingOutro] = useState(false);
+  const introFileRef = useRef<HTMLInputElement>(null);
+  const outroFileRef = useRef<HTMLInputElement>(null);
+
   // Track which DB step IDs we started with, so we can detect removals
   const [originalDbIds, setOriginalDbIds] = useState<number[]>([]);
 
   const createStep = trpc.step.create.useMutation();
   const updateStep = trpc.step.update.useMutation();
   const deleteStep = trpc.step.delete.useMutation();
+  const updateProject = trpc.project.update.useMutation();
   const checkMediaSafety = trpc.ai.checkMediaSafety.useMutation();
 
-  // Initialize steps from DB data or wizard store
+  // Initialize steps and project intro/outro from DB data or wizard store
   useState(() => {});
   if (!initialized && !isLoadingProject) {
-    if (project?.steps && project.steps.length > 0) {
-      // Load from database (existing project with saved steps)
-      const dbSteps: WizardStep[] = project.steps.map((s) => ({
-        id: s.id,
-        localId: nanoid(8),
-        order: s.order,
-        description: s.description || "",
-        screenshotPath: s.screenshotPath || undefined,
-        screenshotKey: s.screenshotPath || undefined,
-        previewUrl: s.screenshotPath || undefined,
-        isSafe: s.isSafe === 1,
-        safetyReason: s.safetyReason || undefined,
-      }));
-      setSteps(dbSteps);
-      setOriginalDbIds(project.steps.map((s) => s.id));
-      setInitialized(true);
-    } else if (stepData.upload.steps.length > 0) {
-      // Load from wizard store (in-progress local state)
-      const storeSteps = stepData.upload.steps.map((s) => ({
-        ...s,
-        localId: (s as { localId?: string }).localId || nanoid(8),
-      }));
-      setSteps(storeSteps);
-      setInitialized(true);
-    } else if (!isLoadingProject) {
-      // Fresh start — one empty step
-      setSteps([{ localId: nanoid(8), order: 1, description: "" }]);
-      setInitialized(true);
+    if (project) {
+      // Load intro/outro options
+      setIntroTemplate(project.introTemplate || stepData.preview.introTemplate || "");
+      setIntroText(project.introText || stepData.preview.introText || "");
+      setIntroVideoPath(project.introVideoPath || stepData.preview.introVideoPath || "");
+      setIntroDuration(project.introDuration || stepData.preview.introDuration || 3.0);
+      setOutroTemplate(project.outroTemplate || stepData.preview.outroTemplate || "");
+      setOutroText(project.outroText || stepData.preview.outroText || "");
+      setOutroVideoPath(project.outroVideoPath || stepData.preview.outroVideoPath || "");
+      setOutroDuration(project.outroDuration || stepData.preview.outroDuration || 3.0);
+
+      if (project.steps && project.steps.length > 0) {
+        // Load from database (existing project with saved steps)
+        const dbSteps: WizardStep[] = project.steps.map((s) => ({
+          id: s.id,
+          localId: nanoid(8),
+          order: s.order,
+          description: s.description || "",
+          screenshotPath: s.screenshotPath || undefined,
+          screenshotKey: s.screenshotPath || undefined,
+          previewUrl: s.screenshotPath || undefined,
+          isSafe: s.isSafe === 1,
+          safetyReason: s.safetyReason || undefined,
+        }));
+        setSteps(dbSteps);
+        setOriginalDbIds(project.steps.map((s) => s.id));
+        setInitialized(true);
+      } else if (stepData.upload.steps.length > 0) {
+        // Load from wizard store (in-progress local state)
+        const storeSteps = stepData.upload.steps.map((s) => ({
+          ...s,
+          localId: (s as { localId?: string }).localId || nanoid(8),
+        }));
+        setSteps(storeSteps);
+        setInitialized(true);
+      } else {
+        // Fresh start — one empty step
+        setSteps([{ localId: nanoid(8), order: 1, description: "" }]);
+        setInitialized(true);
+      }
     }
   }
 
@@ -698,8 +727,32 @@ export default function StepUpload() {
 
     setIsSaving(true);
     setStepData("upload", { steps });
+    setStepData("preview", {
+      ...stepData.preview,
+      introTemplate,
+      introText,
+      introVideoPath,
+      introDuration,
+      outroTemplate,
+      outroText,
+      outroVideoPath,
+      outroDuration,
+    });
 
     try {
+      // Save project-level intro/outro data
+      await updateProject.mutateAsync({
+        id: projectIdNum,
+        introTemplate,
+        introText,
+        introVideoPath,
+        introDuration,
+        outroTemplate,
+        outroText,
+        outroVideoPath,
+        outroDuration,
+      });
+
       // 1. Delete steps that were removed by the user
       const currentDbIds = steps.filter((s) => s.id).map((s) => s.id!);
       const removedIds = originalDbIds.filter((id) => !currentDbIds.includes(id));
@@ -751,7 +804,7 @@ export default function StepUpload() {
   }
 
   return (
-    <div className="max-w-3xl">
+    <div className="w-full">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <div className="relative">
           <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
@@ -769,6 +822,155 @@ export default function StepUpload() {
         </p>
 
         <div id="upload-list" className="mt-8 space-y-4 scroll-mt-6">
+          {/* Intro Screen Card */}
+          {!introTemplate ? (
+            <button
+              type="button"
+              onClick={() => setIntroTemplate("blue-fade")}
+              className="w-full py-4 border-2 border-dashed border-amber-500/40 hover:border-amber-500 hover:bg-amber-500/5 transition-all flex items-center justify-center gap-2 mb-4"
+              style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
+            >
+              <Plus className="w-4 h-4 text-amber-500" />
+              <span className="font-hand text-lg text-amber-600 dark:text-amber-400">
+                Add Intro Screen
+              </span>
+            </button>
+          ) : (
+            <div
+              className="sketch-card p-4 bg-amber-500/5 border-amber-500/30 relative mb-4"
+              style={{ borderRadius: "12px" }}
+            >
+              <div className="flex items-start gap-4">
+                <div className="flex flex-col items-center gap-1 pt-1">
+                  <span className="font-mono text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+                    INTRO
+                  </span>
+                </div>
+
+                <div className="flex-1 flex gap-4">
+                  {/* Visual Placeholder representing Intro */}
+                  <div className="w-24 h-24 flex-shrink-0 border-2 border-dashed border-amber-500/40 rounded-lg flex flex-col items-center justify-center bg-amber-500/5">
+                    <MonitorPlay className="w-5 h-5 text-amber-500 mb-1" />
+                    <span className="font-hand text-xs text-amber-600 text-center px-1">Intro Scene</span>
+                  </div>
+
+                  <div className="flex-1 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-body text-sm font-semibold text-[var(--sketch-fg)]">Intro Screen Configuration</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIntroTemplate("");
+                          setIntroText("");
+                          setIntroVideoPath("");
+                        }}
+                        className="font-hand text-sm text-[var(--sketch-fg-subtle)] hover:text-red-500 transition-colors"
+                      >
+                        Remove Intro
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <select
+                        value={introTemplate}
+                        onChange={(e) => {
+                          setIntroTemplate(e.target.value);
+                          if (!e.target.value) {
+                            setIntroVideoPath("");
+                            setIntroText("");
+                          }
+                        }}
+                        className="sketch-input text-sm"
+                      >
+                        <option value="blue-fade">Blue Gradient (Fade)</option>
+                        <option value="dark-minimal">Dark Minimal</option>
+                        <option value="warm-title">Warm Title Screen</option>
+                        <option value="custom-video">Custom Video</option>
+                      </select>
+
+                      {introTemplate === "custom-video" ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            ref={introFileRef}
+                            type="file"
+                            accept="video/mp4,video/webm,video/quicktime"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              setIsUploadingIntro(true);
+                              try {
+                                const formData = new FormData();
+                                formData.append("file", file);
+                                formData.append("folder", `projects/${projectIdNum}/intros`);
+                                const res = await fetch("/api/upload", { method: "POST", body: formData, credentials: "include" });
+                                if (!res.ok) throw new Error("Upload failed");
+                                const data = await res.json();
+                                setIntroVideoPath(data.url);
+                              } catch {
+                                alert("Failed to upload intro video");
+                              } finally {
+                                setIsUploadingIntro(false);
+                              }
+                            }}
+                          />
+                          {introVideoPath ? (
+                            <div className="flex items-center gap-2 flex-1 border-2 border-[var(--sketch-border-color)] p-1 sketch-border-sm bg-[var(--sketch-card-bg)]">
+                              <video src={introVideoPath} className="h-8 w-12 object-cover rounded" />
+                              <span className="text-[10px] text-emerald-600 flex-1 truncate">Uploaded</span>
+                              <button type="button" onClick={() => setIntroVideoPath("")} className="text-red-500 hover:text-red-700">
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => introFileRef.current?.click()}
+                              disabled={isUploadingIntro}
+                              className="sketch-input flex items-center gap-2 justify-center text-xs text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)]"
+                            >
+                              {isUploadingIntro ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                              Upload Intro Video
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <input
+                          type="text"
+                          placeholder="Intro Title Text..."
+                          value={introText}
+                          onChange={(e) => setIntroText(e.target.value)}
+                          className="sketch-input text-sm"
+                        />
+                      )}
+                    </div>
+
+                    {introTemplate !== "custom-video" && (
+                      <div className="space-y-1">
+                        <label className="font-body text-xs font-semibold text-[var(--sketch-fg)]">
+                          Intro Duration: {introDuration.toFixed(1)}s
+                        </label>
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono text-[10px] text-[var(--sketch-fg-subtle)]">1.0s</span>
+                          <input
+                            type="range"
+                            min={1.0}
+                            max={10.0}
+                            step={0.5}
+                            value={introDuration}
+                            onChange={(e) => setIntroDuration(Number(e.target.value))}
+                            className="flex-1 h-1.5 bg-[var(--sketch-fg-subtle)] appearance-none cursor-pointer accent-amber-500"
+                          />
+                          <span className="font-mono text-[10px] text-[var(--sketch-fg-subtle)]">10.0s</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -811,6 +1013,7 @@ export default function StepUpload() {
           {steps.length < 20 && (
             <div id="upload-add" className="flex gap-3 scroll-mt-6">
               <button
+                type="button"
                 onClick={addStep}
                 className="flex-1 py-4 border-2 border-dashed border-[var(--sketch-fg-subtle)] hover:border-[var(--sketch-border-color)] hover:bg-[#FBBF24]/5 transition-all flex items-center justify-center gap-2"
                 style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
@@ -821,6 +1024,7 @@ export default function StepUpload() {
                 </span>
               </button>
               <button
+                type="button"
                 onClick={openCamera}
                 className="py-4 px-6 border-2 border-dashed border-[var(--sketch-fg-subtle)] hover:border-blue-500 hover:bg-blue-500/5 transition-all flex items-center justify-center gap-2"
                 style={{ borderRadius: "15px 255px 15px 225px/225px 15px 255px 15px" }}
@@ -830,6 +1034,155 @@ export default function StepUpload() {
                   Camera
                 </span>
               </button>
+            </div>
+          )}
+
+          {/* Outro Screen Card */}
+          {!outroTemplate ? (
+            <button
+              type="button"
+              onClick={() => setOutroTemplate("blue-fade")}
+              className="w-full py-4 border-2 border-dashed border-amber-500/40 hover:border-amber-500 hover:bg-amber-500/5 transition-all flex items-center justify-center gap-2 mt-4"
+              style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
+            >
+              <Plus className="w-4 h-4 text-amber-500" />
+              <span className="font-hand text-lg text-amber-600 dark:text-amber-400">
+                Add Outro Screen
+              </span>
+            </button>
+          ) : (
+            <div
+              className="sketch-card p-4 bg-amber-500/5 border-amber-500/30 relative mt-4"
+              style={{ borderRadius: "12px" }}
+            >
+              <div className="flex items-start gap-4">
+                <div className="flex flex-col items-center gap-1 pt-1">
+                  <span className="font-mono text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+                    OUTRO
+                  </span>
+                </div>
+
+                <div className="flex-1 flex gap-4">
+                  {/* Visual Placeholder representing Outro */}
+                  <div className="w-24 h-24 flex-shrink-0 border-2 border-dashed border-amber-500/40 rounded-lg flex flex-col items-center justify-center bg-amber-500/5">
+                    <MonitorPlay className="w-5 h-5 text-amber-500 mb-1" />
+                    <span className="font-hand text-xs text-amber-600 text-center px-1">Outro Scene</span>
+                  </div>
+
+                  <div className="flex-1 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-body text-sm font-semibold text-[var(--sketch-fg)]">Outro Screen Configuration</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOutroTemplate("");
+                          setOutroText("");
+                          setOutroVideoPath("");
+                        }}
+                        className="font-hand text-sm text-[var(--sketch-fg-subtle)] hover:text-red-500 transition-colors"
+                      >
+                        Remove Outro
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <select
+                        value={outroTemplate}
+                        onChange={(e) => {
+                          setOutroTemplate(e.target.value);
+                          if (!e.target.value) {
+                            setOutroVideoPath("");
+                            setOutroText("");
+                          }
+                        }}
+                        className="sketch-input text-sm"
+                      >
+                        <option value="blue-fade">Blue Gradient (Fade)</option>
+                        <option value="dark-minimal">Dark Minimal</option>
+                        <option value="warm-title">Warm Title Screen</option>
+                        <option value="custom-video">Custom Video</option>
+                      </select>
+
+                      {outroTemplate === "custom-video" ? (
+                        <div className="flex items-center gap-2">
+                          <input
+                            ref={outroFileRef}
+                            type="file"
+                            accept="video/mp4,video/webm,video/quicktime"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              setIsUploadingOutro(true);
+                              try {
+                                const formData = new FormData();
+                                formData.append("file", file);
+                                formData.append("folder", `projects/${projectIdNum}/outros`);
+                                const res = await fetch("/api/upload", { method: "POST", body: formData, credentials: "include" });
+                                if (!res.ok) throw new Error("Upload failed");
+                                const data = await res.json();
+                                setOutroVideoPath(data.url);
+                              } catch {
+                                alert("Failed to upload outro video");
+                              } finally {
+                                setIsUploadingOutro(false);
+                              }
+                            }}
+                          />
+                          {outroVideoPath ? (
+                            <div className="flex items-center gap-2 flex-1 border-2 border-[var(--sketch-border-color)] p-1 sketch-border-sm bg-[var(--sketch-card-bg)]">
+                              <video src={outroVideoPath} className="h-8 w-12 object-cover rounded" />
+                              <span className="text-[10px] text-emerald-600 flex-1 truncate">Uploaded</span>
+                              <button type="button" onClick={() => setOutroVideoPath("")} className="text-red-500 hover:text-red-700">
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => outroFileRef.current?.click()}
+                              disabled={isUploadingOutro}
+                              className="sketch-input flex items-center gap-2 justify-center text-xs text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)]"
+                            >
+                              {isUploadingOutro ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
+                              Upload Outro Video
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <input
+                          type="text"
+                          placeholder="Outro Title Text..."
+                          value={outroText}
+                          onChange={(e) => setOutroText(e.target.value)}
+                          className="sketch-input text-sm"
+                        />
+                      )}
+                    </div>
+
+                    {outroTemplate !== "custom-video" && (
+                      <div className="space-y-1">
+                        <label className="font-body text-xs font-semibold text-[var(--sketch-fg)]">
+                          Outro Duration: {outroDuration.toFixed(1)}s
+                        </label>
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono text-[10px] text-[var(--sketch-fg-subtle)]">1.0s</span>
+                          <input
+                            type="range"
+                            min={1.0}
+                            max={10.0}
+                            step={0.5}
+                            value={outroDuration}
+                            onChange={(e) => setOutroDuration(Number(e.target.value))}
+                            className="flex-1 h-1.5 bg-[var(--sketch-fg-subtle)] appearance-none cursor-pointer accent-amber-500"
+                          />
+                          <span className="font-mono text-[10px] text-[var(--sketch-fg-subtle)]">10.0s</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

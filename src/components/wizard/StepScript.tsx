@@ -156,7 +156,7 @@ export default function StepScript() {
   }
 
   return (
-    <div className="max-w-3xl">
+    <div className="w-full">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <div className="flex items-start justify-between">
           <div className="relative">
