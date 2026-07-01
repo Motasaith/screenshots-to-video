@@ -2569,14 +2569,12 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="h-full flex flex-col">
         {/* Main split layout: left sidebar + right main area */}
         <div className="flex h-full min-h-0 gap-2">
-          {/* ══════════ LEFT SIDEBAR (Tools & Properties) ══════════ */}
-          <div className="w-64 flex-shrink-0 flex flex-col sketch-card p-2.5 bg-[var(--sketch-card-bg)]">
-            <div className="flex-1 overflow-y-auto min-h-0 pr-1 space-y-3">
-            {/* Tool Icon Grid */}
-            <h3 className="font-mono text-[10px] text-[var(--sketch-fg-muted)] uppercase tracking-wider mb-2">
+          {/* ══════════ SIDEBAR 1: TOOLS DOCK ══════════ */}
+          <div className="w-12 flex-shrink-0 flex flex-col sketch-card p-1.5 bg-[var(--sketch-card-bg)] items-center min-h-0">
+            <h3 className="font-mono text-[8px] text-[var(--sketch-fg-muted)] uppercase tracking-wider mb-2 text-center select-none">
               Tools
             </h3>
-            <div className="grid grid-cols-4 gap-1.5 mb-3">
+            <div className="flex-1 w-full flex flex-col gap-1.5 overflow-y-auto scrollbar-none items-center">
               <ToolIconButton active={mode === "select"} onClick={() => setMode("select")} icon={<MousePointer className="w-4 h-4" />} label="Select" />
               <ToolIconButton active={mode === "rect"} onClick={() => setMode("rect")} icon={<Square className="w-4 h-4" />} label="Highlight" />
               <ToolIconButton active={mode === "point"} onClick={() => setMode("point")} icon={<Target className="w-4 h-4" />} label="Zoom Point" />
@@ -2617,6 +2615,11 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               <ToolIconButton active={mode === "pan"} onClick={() => setMode("pan")} icon={<Move className="w-4 h-4" />} label="Pan" />
               <ToolIconButton active={mode === "caption"} onClick={() => setMode("caption")} icon={<Type className="w-4 h-4" />} label="Subtitles" />
             </div>
+          </div>
+
+          {/* ══════════ SIDEBAR 2: PROPERTIES & SETTINGS ══════════ */}
+          <div className="w-60 flex-shrink-0 flex flex-col sketch-card p-2.5 bg-[var(--sketch-card-bg)]">
+            <div className="flex-1 overflow-y-auto min-h-0 pr-1 space-y-3">
 
 
 
@@ -2829,7 +2832,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           </div>
 
           {/* ══════════ VERTICAL TIMELINE ══════════ */}
-          <div className="w-28 flex-shrink-0 flex flex-col sketch-card p-2 bg-[var(--sketch-card-bg)]">
+          <div className="w-20 flex-shrink-0 flex flex-col sketch-card p-2 bg-[var(--sketch-card-bg)]">
             <h3 className="font-mono text-[9px] text-[var(--sketch-fg-muted)] uppercase tracking-wider mb-2 text-center">
               Timeline
             </h3>
