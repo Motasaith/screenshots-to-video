@@ -125,30 +125,10 @@ export default function StepPreview() {
             description: s.description,
             transition: s.transition,
           }))}
+          onBack={() => navigate(`/create/${projectIdNum}/script`)}
+          onContinue={handleContinue}
+          isSaving={updateProject.isPending || updateStep.isPending}
         />
-      </div>
-
-      {/* Compact footer with Back / Continue */}
-      <div className="flex gap-4 mt-2 flex-shrink-0">
-        <Button
-          variant="ghost"
-          type="button"
-          onClick={() => navigate(`/create/${projectIdNum}/script`)}
-          className="sketch-btn-ghost flex-1"
-        >
-          <ChevronLeft className="w-4 h-4" />
-          Back
-        </Button>
-        <Button
-          onClick={handleContinue}
-          disabled={updateProject.isPending || updateStep.isPending}
-          className="sketch-btn-primary flex-[2]"
-        >
-          <span className="flex items-center gap-2 justify-center">
-            Continue
-            <ChevronRight className="w-4 h-4" />
-          </span>
-        </Button>
       </div>
     </div>
   );

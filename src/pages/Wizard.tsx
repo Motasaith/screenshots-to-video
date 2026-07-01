@@ -141,7 +141,7 @@ export default function Wizard() {
       <div className="relative z-10 flex-1 flex flex-row items-stretch justify-center h-full w-full px-6 lg:overflow-hidden gap-4 mt-2">
         {/* Floating Stepper in Left Blank Space - Desktop XL only */}
         <div className="hidden xl:flex flex-col justify-center py-2 flex-shrink-0 z-20">
-          <div className="rounded-full bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] py-8 px-2 flex flex-col items-center justify-between shadow-[0_10px_35px_rgba(0,0,0,0.06)] relative h-[calc(100vh-130px)] min-h-[550px] max-h-[800px] w-20 z-0">
+          <div className="rounded-full bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] py-8 px-2 flex flex-col items-center justify-between shadow-[0_10px_35px_rgba(0,0,0,0.06)] relative h-[calc(100vh-130px)] min-h-[550px] max-h-[800px] w-14 z-0">
             {/* Connecting line container */}
             <div className="absolute top-[50px] bottom-[50px] w-0.5 left-1/2 -translate-x-1/2 z-0">
               {/* Background track */}
@@ -273,7 +273,7 @@ export default function Wizard() {
           {/* Content Pane Layout */}
           <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden w-full mt-2 gap-4 pb-2">
             {/* Sidebar (Only shown on LG screens below XL to contain the stepper) */}
-            <aside className="hidden lg:flex xl:hidden w-80 flex-col gap-4 flex-shrink-0">
+            <aside className="hidden lg:flex xl:hidden w-64 flex-col gap-4 flex-shrink-0">
               <div className="glass-panel rounded-2xl border border-[var(--space-border)] bg-[var(--space-card)]/15 backdrop-blur-sm p-3 w-full">
                 <div className="flex flex-col gap-3 relative z-0">
                   {/* Connecting line container */}
@@ -339,10 +339,10 @@ export default function Wizard() {
               </div>
             </aside>
 
-            <main className={`flex-1 p-6 glass-panel rounded-2xl border border-[var(--space-border)] ${
+            <main className={`flex-1 glass-panel rounded-2xl border border-[var(--space-border)] ${
               currentStep === "preview"
-                ? "lg:overflow-hidden"
-                : "lg:overflow-y-auto"
+                ? "h-full lg:overflow-hidden flex flex-col p-3 lg:p-4"
+                : "p-6 lg:overflow-y-auto"
             }`}>
               <AnimatePresence mode="wait">
                 <motion.div
@@ -351,7 +351,7 @@ export default function Wizard() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
                   transition={{ duration: 0.2 }}
-                  className={currentStep === "preview" ? "h-full" : ""}
+                  className={currentStep === "preview" ? "h-full flex flex-col flex-1 min-h-0" : ""}
                 >
                   {stepComponents[currentStep] || <StepSetup />}
                 </motion.div>
