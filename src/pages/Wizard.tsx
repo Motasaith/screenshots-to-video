@@ -4,12 +4,15 @@ import { useAuth } from "@/hooks/useAuth";
 import { useWizardStore, stepOrder, stepIndex, stepLabels, type WizardStep } from "@/hooks/useWizardStore";
 import { motion, AnimatePresence } from "framer-motion";
 import { trpc } from "@/providers/trpc";
+import { useTheme } from "next-themes";
 import {
   CheckCircle,
   Circle,
   Loader2,
   ArrowLeft,
-  Sparkles,
+  Sun,
+  Moon,
+  ChevronLeft,
 } from "lucide-react";
 import StepSetup from "@/components/wizard/StepSetup";
 import StepUpload from "@/components/wizard/StepUpload";
@@ -24,6 +27,7 @@ import { SpaceBackground } from "@/components/shared/SpaceBackground";
 
 
 export default function Wizard() {
+  const { setTheme, resolvedTheme } = useTheme();
   const { projectId: pid, step } = useParams<{
     projectId: string;
     step: string;
@@ -99,9 +103,9 @@ export default function Wizard() {
       <SpaceBackground />
       
       {/* Header */}
-      <header className="w-full px-6 pt-4 flex-shrink-0 z-20">
+      <header className="w-full px-6 pt-2 flex-shrink-0 z-20">
         <div className="w-full rounded-full bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] shadow-[0_10px_35px_rgba(0,0,0,0.06)] px-6 py-1">
-          <div className="flex items-center justify-between h-14">
+          <div className="flex items-center justify-between h-12">
             <button
               onClick={() => navigate("/dashboard")}
               className="flex items-center gap-2 text-[var(--space-text-muted)] hover:text-[var(--space-text)] transition-colors group"
@@ -114,9 +118,22 @@ export default function Wizard() {
                 {project.title}
               </span>
             )}
-            <span className="font-mono text-xs text-[var(--space-text-muted)] bg-teal-500/10 px-2.5 py-1 rounded-md border border-[var(--space-border)]">
-              Step {currentStepIdx + 1} of {stepOrder.length}
-            </span>
+            <div className="flex items-center gap-3">
+              <span className="font-mono text-xs text-[var(--space-text-muted)] bg-teal-500/10 px-2.5 py-1 rounded-md border border-[var(--space-border)]">
+                Step {currentStepIdx + 1} of {stepOrder.length}
+              </span>
+              <button
+                onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+                className="p-2 rounded-xl bg-[var(--space-card)] border border-[var(--space-border)] hover:bg-[var(--space-card-hover)] hover:border-teal-500/50 transition-colors focus:outline-none cursor-pointer"
+                aria-label="Toggle dark mode"
+              >
+                {resolvedTheme === "dark" ? (
+                  <Sun className="w-4 h-4 text-teal-400" />
+                ) : (
+                  <Moon className="w-4 h-4 text-[var(--space-text-muted)]" />
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -124,9 +141,9 @@ export default function Wizard() {
       <div className="relative z-10 flex-1 flex flex-row items-stretch justify-center h-full w-full px-6 lg:overflow-hidden gap-4 mt-2">
         {/* Floating Stepper in Left Blank Space - Desktop XL only */}
         <div className="hidden xl:flex flex-col justify-center py-2 flex-shrink-0 z-20">
-          <div className="rounded-full bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] py-10 px-4 flex flex-col items-center justify-between shadow-[0_10px_35px_rgba(0,0,0,0.06)] relative h-[calc(100vh-160px)] min-h-[500px] max-h-[720px] w-24 z-0">
+          <div className="rounded-full bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] py-8 px-2 flex flex-col items-center justify-between shadow-[0_10px_35px_rgba(0,0,0,0.06)] relative h-[calc(100vh-130px)] min-h-[550px] max-h-[800px] w-20 z-0">
             {/* Connecting line container */}
-            <div className="absolute top-[58px] bottom-[58px] w-0.5 left-1/2 -translate-x-1/2 z-0">
+            <div className="absolute top-[50px] bottom-[50px] w-0.5 left-1/2 -translate-x-1/2 z-0">
               {/* Background track */}
               <div className="absolute inset-0 bg-[var(--space-border)]/50 rounded-full" />
               {/* Glowing active path */}
@@ -257,8 +274,8 @@ export default function Wizard() {
           <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden w-full mt-2 gap-4 pb-2">
             {/* Sidebar (Only shown on LG screens below XL to contain the stepper) */}
             <aside className="hidden lg:flex xl:hidden w-80 flex-col gap-4 flex-shrink-0">
-              <div className="glass-panel rounded-2xl border border-[var(--space-border)] bg-[var(--space-card)]/15 backdrop-blur-sm p-5 w-full">
-                <div className="flex flex-col gap-4 relative z-0">
+              <div className="glass-panel rounded-2xl border border-[var(--space-border)] bg-[var(--space-card)]/15 backdrop-blur-sm p-3 w-full">
+                <div className="flex flex-col gap-3 relative z-0">
                   {/* Connecting line container */}
                   <div className="absolute left-[18px] top-[18px] bottom-[18px] w-0.5 z-0">
                     {/* Background track */}
@@ -322,7 +339,11 @@ export default function Wizard() {
               </div>
             </aside>
 
-            <main className="flex-1 lg:overflow-y-auto p-6 glass-panel rounded-2xl border border-[var(--space-border)]">
+            <main className={`flex-1 p-6 glass-panel rounded-2xl border border-[var(--space-border)] ${
+              currentStep === "preview"
+                ? "lg:overflow-hidden"
+                : "lg:overflow-y-auto"
+            }`}>
               <AnimatePresence mode="wait">
                 <motion.div
                   key={currentStep}
@@ -330,6 +351,7 @@ export default function Wizard() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -10 }}
                   transition={{ duration: 0.2 }}
+                  className={currentStep === "preview" ? "h-full" : ""}
                 >
                   {stepComponents[currentStep] || <StepSetup />}
                 </motion.div>
@@ -357,16 +379,12 @@ export default function Wizard() {
             animate={{ x: 0, opacity: 1, y: "-50%" }}
             exit={{ x: "100%", opacity: 0, y: "-50%" }}
             onClick={() => setIsGuideOpen(true)}
-            className="fixed right-0 top-1/2 z-40 bg-[var(--space-card)]/90 backdrop-blur-md border border-r-0 border-[var(--space-border)] py-6 px-3 rounded-l-2xl shadow-[0_10px_35px_rgba(0,0,0,0.15)] flex flex-col items-center gap-4 hover:bg-[var(--space-border)]/20 hover:text-teal-300 transition-all duration-300 group cursor-pointer"
+            className="fixed right-0 top-1/2 z-40 bg-[var(--space-card)]/95 backdrop-blur-md border border-r-0 border-teal-500/40 w-7 h-28 rounded-l-xl shadow-[0_0_15px_rgba(20,184,166,0.35)] flex flex-col items-center justify-center hover:bg-teal-500/10 hover:border-teal-400 hover:shadow-[0_0_20px_rgba(45,212,191,0.5)] transition-all duration-300 group cursor-pointer"
           >
-            <div className="relative">
-              <Sparkles className="w-5 h-5 text-teal-400" />
-              <span className="absolute -top-1.5 -right-1.5 flex h-2.5 w-2.5">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-              </span>
+            <div className="absolute -left-2.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-5 h-5 rounded-full border border-teal-500 bg-teal-500 shadow-[0_0_12px_rgba(45,212,191,0.6)]">
+              <ChevronLeft className="w-3.5 h-3.5 text-white group-hover:-translate-x-0.5 transition-transform" />
             </div>
-            <span className="font-mono text-[10px] uppercase tracking-widest text-[var(--space-text-muted)] group-hover:text-teal-300 font-bold select-none whitespace-nowrap rotate-90 my-6">
+            <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--space-text-muted)] group-hover:text-teal-300 font-bold select-none whitespace-nowrap rotate-90 pl-1.5">
               AI Guide
             </span>
           </motion.button>

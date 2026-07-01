@@ -29,10 +29,16 @@ import {
   HelpCircle,
   Undo2,
   Redo2,
+  Film,
+  ChevronDown,
+  ZoomIn,
+  ZoomOut,
+  Maximize,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import type { TransitionType } from "@/hooks/useWizardStore";
 
 /* ------------------------------------------------------------------ */
 /*  Types & Helpers (carried over from old StepAnnotate)              */
@@ -194,7 +200,39 @@ function clamp(n: number, min: number, max: number) {
 /*  StepEditorPanel - the full canvas editor with all 14 tools         */
 /* ------------------------------------------------------------------ */
 
-export function StepEditorPanel() {
+export interface StepEditorPanelProps {
+  /** Per-step transition state (stepId -> transition type) */
+  stepTransitions?: Record<number, TransitionType>;
+  onStepTransitionChange?: (stepId: number, transition: TransitionType) => void;
+  /** Global transition (used as default for steps without an explicit one) */
+  globalTransition?: TransitionType;
+  onGlobalTransitionChange?: (transition: TransitionType) => void;
+  transitionDuration?: number;
+  onTransitionDurationChange?: (duration: number) => void;
+  captionsEnabled?: boolean;
+  onCaptionsEnabledChange?: (enabled: boolean) => void;
+  captionStyle?: string;
+  onCaptionStyleChange?: (style: string) => void;
+  captionSize?: string;
+  onCaptionSizeChange?: (size: string) => void;
+  captionPosition?: string;
+  onCaptionPositionChange?: (position: string) => void;
+  captionColor?: string;
+  onCaptionColorChange?: (color: string) => void;
+  /** Steps data from parent (StepPreview) so the timeline can show screenshots */
+  parentSteps?: Array<{ id: number; screenshotPath?: string | null; description?: string | null; transition?: string | null }>;
+}
+
+const transitionTypes: { value: TransitionType; label: string }[] = [
+  { value: "fade", label: "Fade" },
+  { value: "slide-left", label: "Slide Left" },
+  { value: "slide-right", label: "Slide Right" },
+  { value: "slide-up", label: "Slide Up" },
+  { value: "flip", label: "Flip" },
+  { value: "dissolve", label: "Dissolve" },
+];
+
+export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const { projectId } = useParams<{ projectId: string }>();
   const projectIdNum = Number(projectId) || 0;
 
@@ -211,6 +249,12 @@ export function StepEditorPanel() {
   const isPanningRef = useRef(false);
   const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const panScrollRef = useRef<{ left: number; top: number }>({ left: 0, top: 0 });
+
+  // Collapsible sidebar sections
+  const [transitionsOpen, setTransitionsOpen] = useState(true);
+  const [captionsOpen, setCaptionsOpen] = useState(true);
+  // Which transition diamond dropdown is open (stepId of the left step in the pair)
+  const [openTransitionDropdown, setOpenTransitionDropdown] = useState<number | null>(null);
 
   const [history, setHistory] = useState<Record<number, StepAnnotation>[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -707,10 +751,10 @@ export function StepEditorPanel() {
           updated.editorMultiZooms = (stepAnn.editorMultiZooms || []).map((p) =>
             p.id === dragItem.id
               ? {
-                  ...p,
-                  targetX: clamp(dragItem.initialX + deltaX, 0, 100),
-                  targetY: clamp(dragItem.initialY + deltaY, 0, 100),
-                }
+                ...p,
+                targetX: clamp(dragItem.initialX + deltaX, 0, 100),
+                targetY: clamp(dragItem.initialY + deltaY, 0, 100),
+              }
               : p
           );
         }
@@ -954,45 +998,45 @@ export function StepEditorPanel() {
   const projectRatio = project?.aspectRatio || "16:9";
   const aspectClass =
     projectRatio === "9:16" ? "aspect-[9/16]" :
-    projectRatio === "1:1" ? "aspect-square" :
-    projectRatio === "4:5" ? "aspect-[4/5]" :
-    "aspect-video";
+      projectRatio === "1:1" ? "aspect-square" :
+        projectRatio === "4:5" ? "aspect-[4/5]" :
+          "aspect-video";
 
   const rect = currentAnn
     ? {
-        x: currentAnn.zoomRectX,
-        y: currentAnn.zoomRectY,
-        w: currentAnn.zoomRectWidth,
-        h: currentAnn.zoomRectHeight,
-      }
+      x: currentAnn.zoomRectX,
+      y: currentAnn.zoomRectY,
+      w: currentAnn.zoomRectWidth,
+      h: currentAnn.zoomRectHeight,
+    }
     : null;
 
   const tempRect =
     isDragging && dragStart && dragCurrent
       ? {
-          x: Math.min(dragStart.x, dragCurrent.x),
-          y: Math.min(dragStart.y, dragCurrent.y),
-          w: Math.abs(dragCurrent.x - dragStart.x),
-          h: Math.abs(dragCurrent.y - dragStart.y),
-        }
+        x: Math.min(dragStart.x, dragCurrent.x),
+        y: Math.min(dragStart.y, dragCurrent.y),
+        w: Math.abs(dragCurrent.x - dragStart.x),
+        h: Math.abs(dragCurrent.y - dragStart.y),
+      }
       : null;
 
   const cropRect = currentAnn
     ? {
-        x: currentAnn.editorCropX,
-        y: currentAnn.editorCropY,
-        w: currentAnn.editorCropW,
-        h: currentAnn.editorCropH,
-      }
+      x: currentAnn.editorCropX,
+      y: currentAnn.editorCropY,
+      w: currentAnn.editorCropW,
+      h: currentAnn.editorCropH,
+    }
     : null;
 
   const redactRect = currentAnn
     ? {
-        x: currentAnn.editorRedactX,
-        y: currentAnn.editorRedactY,
-        w: currentAnn.editorRedactW,
-        h: currentAnn.editorRedactH,
-      }
+      x: currentAnn.editorRedactX,
+      y: currentAnn.editorRedactY,
+      w: currentAnn.editorRedactW,
+      h: currentAnn.editorRedactH,
+    }
     : null;
 
   const overlayPos = currentAnn
@@ -1033,360 +1077,338 @@ export function StepEditorPanel() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-80px)]">
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        {/* Toolbar */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <ToolButton
-            active={mode === "select"}
-            onClick={() => setMode("select")}
-            icon={<MousePointer className="w-4 h-4" />}
-            label="Select"
-          />
-          <ToolButton
-            active={mode === "rect"}
-            onClick={() => setMode("rect")}
-            icon={<Square className="w-4 h-4" />}
-            label="Highlight"
-          />
-          <ToolButton
-            active={mode === "point"}
-            onClick={() => setMode("point")}
-            icon={<Target className="w-4 h-4" />}
-            label="Zoom Point"
-          />
-          <ToolButton
-            active={mode === "overlay"}
-            onClick={() => setMode("overlay")}
-            icon={<Type className="w-4 h-4" />}
-            label="Text Overlay"
-          />
-          <ToolButton
-            active={mode === "crop"}
-            onClick={() => {
-              // Canva-style: auto-initialize crop to full image if not already set
-              if (currentStep) {
-                const ann = annotations[currentStep.id] || {};
-                if (ann.editorCropX == null || ann.editorCropW == null) {
-                  const next = {
-                    ...annotations,
-                    [currentStep.id]: {
-                      ...ann,
-                      editorCropX: 0,
-                      editorCropY: 0,
-                      editorCropW: 100,
-                      editorCropH: 100,
-                    },
-                  };
-                  pushHistory(next);
-                }
-              }
-              setMode("crop");
-            }}
-            icon={<Crop className="w-4 h-4" />}
-            label="Crop"
-          />
-          <ToolButton
-            active={mode === "blur"}
-            onClick={() => setMode("blur")}
-            icon={<Aperture className="w-4 h-4" />}
-            label="Blur"
-          />
-          <ToolButton
-            active={mode === "redact"}
-            onClick={() => setMode("redact")}
-            icon={<Shield className="w-4 h-4" />}
-            label="Redact"
-          />
-          <ToolButton
-            active={mode === "watermark"}
-            onClick={() => setMode("watermark")}
-            icon={<Stamp className="w-4 h-4" />}
-            label="Watermark"
-          />
-          <ToolButton
-            active={mode === "pixelate"}
-            onClick={() => setMode("pixelate")}
-            icon={<Grid3x3 className="w-4 h-4" />}
-            label="Pixelate"
-          />
-          <ToolButton
-            active={mode === "spotlight"}
-            onClick={() => setMode("spotlight")}
-            icon={<Sun className="w-4 h-4" />}
-            label="Spotlight"
-          />
-          <ToolButton
-            active={mode === "badge"}
-            onClick={() => setMode("badge")}
-            icon={<BadgeCheck className="w-4 h-4" />}
-            label="Badge"
-          />
-          <ToolButton
-            active={mode === "magnify"}
-            onClick={() => setMode("magnify")}
-            icon={<Search className="w-4 h-4" />}
-            label="Magnify"
-          />
-          <ToolButton
-            active={mode === "filter"}
-            onClick={() => setMode("filter")}
-            icon={<Palette className="w-4 h-4" />}
-            label="Filter"
-          />
-          <ToolButton
-            active={mode === "multizoom"}
-            onClick={() => setMode("multizoom")}
-            icon={<Scan className="w-4 h-4" />}
-            label="Multi-Zoom"
-          />
-          <ToolButton
-            active={mode === "pan"}
-            onClick={() => setMode("pan")}
-            icon={<Move className="w-4 h-4" />}
-            label="Pan"
-          />
-          <ToolButton
-            active={mode === "caption"}
-            onClick={() => setMode("caption")}
-            icon={<Type className="w-4 h-4" />}
-            label="Subtitles"
-          />
-
-          <div className="w-px h-6 bg-[var(--sketch-border-color)]/30 mx-1" />
-
-          <button
-            onClick={handleUndo}
-            disabled={historyIndex <= 0}
-            className="flex items-center gap-2 px-3 py-2 border-2 border-[var(--sketch-fg-subtle)] text-sm font-body hover:border-[var(--sketch-border-color)] transition-all disabled:opacity-30"
-            style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
-            title="Undo"
-          >
-            <Undo2 className="w-4 h-4" />
-            Undo
-          </button>
-
-          <button
-            onClick={handleRedo}
-            disabled={historyIndex >= history.length - 1}
-            className="flex items-center gap-2 px-3 py-2 border-2 border-[var(--sketch-fg-subtle)] text-sm font-body hover:border-[var(--sketch-border-color)] transition-all disabled:opacity-30"
-            style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
-            title="Redo"
-          >
-            <Redo2 className="w-4 h-4" />
-            Redo
-          </button>
-
-          <div className="flex-1" />
-
-          <button
-            onClick={handleSaveStep}
-            disabled={updateStep.isPending}
-            className="flex items-center gap-2 px-3 py-2 border-2 border-[var(--sketch-border-color)] bg-[#FBBF24]/10 text-sm font-body hover:shadow-[3px_3px_0px_0px_#FBBF24] transition-all"
-            style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
-          >
-            <Save className="w-4 h-4" />
-            Save Step
-          </button>
-        </div>
-
-        {/* Main layout */}
-        <div className="mt-4 grid grid-cols-1 lg:grid-cols-[120px_1fr] gap-3">
-          {/* Î“Ã¶Ã‡Î“Ã¶Ã‡ Left: Step thumbnails Î“Ã¶Ã‡Î“Ã¶Ã‡ */}
-          <div className="sketch-card p-2 bg-[var(--sketch-card-bg)] h-fit max-h-[calc(100vh-200px)] overflow-y-auto">
+    <div className="h-full flex flex-col">
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="h-full flex flex-col">
+        {/* Main split layout: left sidebar + right main area */}
+        <div className="flex h-full min-h-0 gap-2">
+          {/* ══════════ LEFT SIDEBAR ══════════ */}
+          <div className="w-72 flex-shrink-0 flex flex-col sketch-card p-3 bg-[var(--sketch-card-bg)] overflow-y-auto">
+            {/* Tool Icon Grid */}
             <h3 className="font-mono text-[10px] text-[var(--sketch-fg-muted)] uppercase tracking-wider mb-2">
-              Steps
+              Tools
             </h3>
-            <div className="space-y-1.5">
-              {steps.map((step, idx: number) => {
-                const ann = annotations[step.id];
-                const isActive = idx === currentStepIndex;
-                const edited = hasAnyEdit(ann);
+            <div className="grid grid-cols-4 gap-1.5 mb-3">
+              <ToolIconButton active={mode === "select"} onClick={() => setMode("select")} icon={<MousePointer className="w-4 h-4" />} label="Select" />
+              <ToolIconButton active={mode === "rect"} onClick={() => setMode("rect")} icon={<Square className="w-4 h-4" />} label="Highlight" />
+              <ToolIconButton active={mode === "point"} onClick={() => setMode("point")} icon={<Target className="w-4 h-4" />} label="Zoom Point" />
+              <ToolIconButton active={mode === "overlay"} onClick={() => setMode("overlay")} icon={<Type className="w-4 h-4" />} label="Text Overlay" />
+              <ToolIconButton
+                active={mode === "crop"}
+                onClick={() => {
+                  if (currentStep) {
+                    const ann = annotations[currentStep.id] || {};
+                    if (ann.editorCropX == null || ann.editorCropW == null) {
+                      const next = {
+                        ...annotations,
+                        [currentStep.id]: {
+                          ...ann,
+                          editorCropX: 0,
+                          editorCropY: 0,
+                          editorCropW: 100,
+                          editorCropH: 100,
+                        },
+                      };
+                      pushHistory(next);
+                    }
+                  }
+                  setMode("crop");
+                }}
+                icon={<Crop className="w-4 h-4" />}
+                label="Crop"
+              />
+              <ToolIconButton active={mode === "blur"} onClick={() => setMode("blur")} icon={<Aperture className="w-4 h-4" />} label="Blur" />
+              <ToolIconButton active={mode === "redact"} onClick={() => setMode("redact")} icon={<Shield className="w-4 h-4" />} label="Redact" />
+              <ToolIconButton active={mode === "watermark"} onClick={() => setMode("watermark")} icon={<Stamp className="w-4 h-4" />} label="Watermark" />
+              <ToolIconButton active={mode === "pixelate"} onClick={() => setMode("pixelate")} icon={<Grid3x3 className="w-4 h-4" />} label="Pixelate" />
+              <ToolIconButton active={mode === "spotlight"} onClick={() => setMode("spotlight")} icon={<Sun className="w-4 h-4" />} label="Spotlight" />
+              <ToolIconButton active={mode === "badge"} onClick={() => setMode("badge")} icon={<BadgeCheck className="w-4 h-4" />} label="Badge" />
+              <ToolIconButton active={mode === "magnify"} onClick={() => setMode("magnify")} icon={<Search className="w-4 h-4" />} label="Magnify" />
+              <ToolIconButton active={mode === "filter"} onClick={() => setMode("filter")} icon={<Palette className="w-4 h-4" />} label="Filter" />
+              <ToolIconButton active={mode === "multizoom"} onClick={() => setMode("multizoom")} icon={<Scan className="w-4 h-4" />} label="Multi-Zoom" />
+              <ToolIconButton active={mode === "pan"} onClick={() => setMode("pan")} icon={<Move className="w-4 h-4" />} label="Pan" />
+              <ToolIconButton active={mode === "caption"} onClick={() => setMode("caption")} icon={<Type className="w-4 h-4" />} label="Subtitles" />
+            </div>
 
-                return (
-                  <button
-                    key={step.id}
-                    onClick={() => setCurrentStepIndex(idx)}
-                    className={`w-full text-left p-1 border-2 transition-all relative ${
-                      isActive
-                        ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/10 shadow-[2px_2px_0px_0px_#FBBF24]"
-                        : "border-[var(--sketch-fg-subtle)]/30 hover:border-[var(--sketch-border-color)]/40"
-                    }`}
-                    style={{ borderRadius: "6px" }}
-                  >
-                    {edited && (
-                      <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                    )}
-                    {step.screenshotPath ? (
-                      <img
-                        src={step.screenshotPath}
-                        alt={`Step ${idx + 1}`}
-                        className="w-full aspect-video object-cover rounded-sm mb-0.5"
+            {/* Undo/Redo/Save compact row */}
+            <div className="flex items-center gap-1.5 mb-3">
+              <button
+                onClick={handleUndo}
+                disabled={historyIndex <= 0}
+                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 border-2 border-[var(--sketch-fg-subtle)] text-xs font-body hover:border-[var(--sketch-border-color)] transition-all disabled:opacity-30 rounded-md"
+                title="Undo"
+              >
+                <Undo2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={handleRedo}
+                disabled={historyIndex >= history.length - 1}
+                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 border-2 border-[var(--sketch-fg-subtle)] text-xs font-body hover:border-[var(--sketch-border-color)] transition-all disabled:opacity-30 rounded-md"
+                title="Redo"
+              >
+                <Redo2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={handleSaveStep}
+                disabled={updateStep.isPending}
+                className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 border-2 border-[var(--sketch-border-color)] bg-[#FBBF24]/10 text-xs font-body hover:shadow-[2px_2px_0px_0px_#FBBF24] transition-all disabled:opacity-30 rounded-md"
+                title="Save Step"
+              >
+                <Save className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="border-t border-[var(--sketch-fg-subtle)]/20 my-1" />
+
+            {/* Active Tool Properties Panel */}
+            <h3 className="font-mono text-[10px] text-[var(--sketch-fg-muted)] uppercase tracking-wider mb-2 flex items-center gap-1">
+              <Settings2 className="w-3 h-3" />
+              Properties
+            </h3>
+
+            {/* Tool Guide */}
+            <div className="mb-3 p-2.5 bg-[var(--sketch-fg-subtle)]/5 rounded border border-[var(--sketch-fg-subtle)]/20">
+              <div className="flex items-start gap-2">
+                <HelpCircle className="w-3.5 h-3.5 text-[var(--sketch-fg-muted)] mt-0.5 shrink-0" />
+                <div className="text-[11px] text-[var(--sketch-fg-muted)] leading-relaxed">
+                  {mode === "select" && (
+                    <><span className="font-semibold text-[var(--sketch-fg)]">Select Tool:</span> Select annotations on the canvas to edit or reposition them.</>
+                  )}
+                  {mode === "rect" && (
+                    <><span className="font-semibold text-[var(--sketch-fg)]">Highlight Box:</span> Drag on the canvas to draw an orange highlight rectangle. This marks the area the main zoom will focus on.</>
+                  )}
+                  {mode === "point" && (
+                    <><span className="font-semibold text-[var(--sketch-fg)]">Zoom Point:</span> Click anywhere on the screenshot to set a single zoom target. Use the Zoom settings below to adjust scale.</>
+                  )}
+                  {mode === "overlay" && (
+                    <><span className="font-semibold text-[var(--sketch-fg)]">Text Overlay:</span> Click on the canvas to place text. Edit the text, color, and size in the settings below.</>
+                  )}
+                  {mode === "crop" && (
+                    <><span className="font-semibold text-[var(--sketch-fg)]">Crop:</span> Drag the green box edges to choose what to keep. Everything dimmed outside the box will be removed. Drag inside the box to move it.</>
+                  )}
+                  {mode === "blur" && (
+                    <><span className="font-semibold text-[var(--sketch-fg)]">Blur:</span> Drag over sensitive information (emails, names, API keys) to blur it. Adjust intensity in the settings below.</>
+                  )}
+                  {mode === "redact" && (
+                    <><span className="font-semibold text-[var(--sketch-fg)]">Redact:</span> Drag over areas to cover with a solid color block. Choose color in the settings below.</>
+                  )}
+                  {mode === "watermark" && (
+                    <><span className="font-semibold text-[var(--sketch-fg)]">Watermark:</span> Click to set position. Edit text, size, color, and opacity in the settings below.</>
+                  )}
+                  {mode === "pixelate" && (
+                    <><span className="font-semibold text-[var(--sketch-fg)]">Pixelate:</span> Drag over faces, license plates, or sensitive UI to pixelate. Adjust block size in the settings below.</>
+                  )}
+                  {mode === "spotlight" && (
+                    <><span className="font-semibold text-[var(--sketch-fg)]">Spotlight:</span> Drag to highlight a region while dimming the rest. Adjust dim intensity in the settings below.</>
+                  )}
+                  {mode === "badge" && (
+                    <><span className="font-semibold text-[var(--sketch-fg)]">Badge:</span> Click to place a numbered circle. Edit number and color in the settings below.</>
+                  )}
+                  {mode === "magnify" && (
+                    <><span className="font-semibold text-[var(--sketch-fg)]">Magnify:</span> Click to set the target area. A zoomed inset will appear in a corner. Adjust scale and corner in the settings below.</>
+                  )}
+                  {mode === "filter" && (
+                    <><span className="font-semibold text-[var(--sketch-fg)]">Filter:</span> Select a color filter from the settings below. Applies to the entire screenshot for this step.</>
+                  )}
+                  {mode === "multizoom" && (
+                    <><span className="font-semibold text-[var(--sketch-fg)]">Multi-Zoom:</span> Click multiple times on the canvas to add zoom points. Each point becomes a separate animated zoom segment. Edit scale and duration per point in the settings below.</>
+                  )}
+                  {mode === "pan" && (
+                    <><span className="font-semibold text-[var(--sketch-fg)]">Pan:</span> Drag to pan around the canvas when zoomed in. No edits are made in this mode.</>
+                  )}
+                  {mode === "caption" && (
+                    <><span className="font-semibold text-[var(--sketch-fg)]">Subtitles:</span> Add narration subtitles for the TTS generation.</>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Properties content - tool-specific settings rendered below canvas */}
+
+            {/* Transitions Section (collapsible) */}
+            <div className="border-t border-[var(--sketch-fg-subtle)]/20 mt-3 pt-3">
+              <button
+                onClick={() => setTransitionsOpen(!transitionsOpen)}
+                className="flex items-center justify-between w-full mb-2"
+              >
+                <span className="font-mono text-[10px] text-[var(--sketch-fg-muted)] uppercase tracking-wider flex items-center gap-1">
+                  <Film className="w-3 h-3" />
+                  Transitions
+                </span>
+                <ChevronDown className={`w-3.5 h-3.5 text-[var(--sketch-fg-muted)] transition-transform ${transitionsOpen ? "rotate-180" : ""}`} />
+              </button>
+              {transitionsOpen && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {transitionTypes.map((t) => (
+                      <button
+                        key={t.value}
+                        onClick={() => props.onGlobalTransitionChange?.(t.value)}
+                        className={`p-1.5 border text-center transition-all text-[10px] font-body font-semibold rounded ${props.globalTransition === t.value
+                          ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/10 shadow-[1px_1px_0px_0px_#FBBF24]"
+                          : "border-[var(--sketch-fg-subtle)]/30 hover:border-[var(--sketch-border-color)]/40"
+                          }`}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div>
+                    <label className="font-body text-[10px] font-semibold mb-1 block text-[var(--sketch-fg)]">
+                      Duration: {(props.transitionDuration ?? 0.5).toFixed(1)}s
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-[9px] text-[var(--sketch-fg-subtle)] w-6">0.3s</span>
+                      <input
+                        type="range"
+                        min={0.3}
+                        max={2.0}
+                        step={0.1}
+                        value={props.transitionDuration ?? 0.5}
+                        onChange={(e) => props.onTransitionDurationChange?.(Number(e.target.value))}
+                        className="flex-1 h-1.5 bg-[var(--sketch-fg-subtle)] appearance-none cursor-pointer accent-[#FBBF24]"
                       />
-                    ) : (
-                      <div className="w-full aspect-video bg-[var(--sketch-fg-subtle)]/10 rounded-sm mb-0.5 flex items-center justify-center">
-                        <ImageIcon className="w-3 h-3 text-[var(--sketch-fg-subtle)]" />
-                      </div>
-                    )}
-                    <div className="flex items-center gap-0.5">
-                      <span className="font-mono text-[9px] text-[var(--sketch-fg-muted)]">
-                        {idx + 1}
-                      </span>
-                      <span className="text-[9px] font-body truncate text-[var(--sketch-fg)] leading-tight">
-                        {step.description?.slice(0, 20) || "Untitled"}
-                      </span>
+                      <span className="font-mono text-[9px] text-[var(--sketch-fg-subtle)] w-6">2.0s</span>
                     </div>
-                  </button>
-                );
-              })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Captions Section (collapsible) */}
+            <div className="border-t border-[var(--sketch-fg-subtle)]/20 mt-3 pt-3">
+              <button
+                onClick={() => setCaptionsOpen(!captionsOpen)}
+                className="flex items-center justify-between w-full mb-2"
+              >
+                <span className="font-mono text-[10px] text-[var(--sketch-fg-muted)] uppercase tracking-wider flex items-center gap-1">
+                  <Type className="w-3 h-3" />
+                  Captions
+                </span>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={props.captionsEnabled ?? true}
+                      onChange={(e) => props.onCaptionsEnabledChange?.(e.target.checked)}
+                      className="w-3 h-3 text-[#FBBF24] rounded border-[var(--sketch-fg-subtle)] focus:ring-[#FBBF24]"
+                    />
+                  </label>
+                  <ChevronDown className={`w-3.5 h-3.5 text-[var(--sketch-fg-muted)] transition-transform ${captionsOpen ? "rotate-180" : ""}`} />
+                </div>
+              </button>
+              {captionsOpen && (props.captionsEnabled ?? true) && (
+                <div className="space-y-2">
+                  <div>
+                    <label className="font-body text-[10px] font-semibold mb-0.5 block text-[var(--sketch-fg)]">Style</label>
+                    <select value={props.captionStyle || "standard"} onChange={(e) => props.onCaptionStyleChange?.(e.target.value)} className="sketch-input w-full text-xs py-1">
+                      <option value="standard">Standard</option>
+                      <option value="outline">Outline</option>
+                      <option value="highlight">Highlight</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-body text-[10px] font-semibold mb-0.5 block text-[var(--sketch-fg)]">Size</label>
+                    <select value={props.captionSize || "medium"} onChange={(e) => props.onCaptionSizeChange?.(e.target.value)} className="sketch-input w-full text-xs py-1">
+                      <option value="small">Small</option>
+                      <option value="medium">Medium</option>
+                      <option value="large">Large</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-body text-[10px] font-semibold mb-0.5 block text-[var(--sketch-fg)]">Position</label>
+                    <select value={props.captionPosition || "bottom"} onChange={(e) => props.onCaptionPositionChange?.(e.target.value)} className="sketch-input w-full text-xs py-1">
+                      <option value="top">Top</option>
+                      <option value="middle">Middle</option>
+                      <option value="bottom">Bottom</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="font-body text-[10px] font-semibold mb-0.5 block text-[var(--sketch-fg)]">Color</label>
+                    <div className="flex gap-1.5 mt-1">
+                      {["#FFFFFF", "#FBBF24", "#10B981", "#EF4444", "#3B82F6"].map(c => (
+                        <button
+                          key={c}
+                          onClick={() => props.onCaptionColorChange?.(c)}
+                          className={`w-6 h-6 rounded-full border-2 ${props.captionColor === c ? 'border-[var(--sketch-fg)]' : 'border-transparent'}`}
+                          style={{ backgroundColor: c }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Î“Ã¶Ã‡Î“Ã¶Ã‡ Center: Canvas Î“Ã¶Ã‡Î“Ã¶Ã‡ */}
-          <div className="sketch-card p-4 bg-[var(--sketch-card-bg)]">
+          {/* ══════════ RIGHT MAIN AREA ══════════ */}
+          <div className="flex-1 flex flex-col min-w-0">
+            {/* Compact toolbar */}
             {currentStep && (
-              <>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setCurrentStepIndex(Math.max(0, currentStepIndex - 1))}
-                        disabled={currentStepIndex === 0}
-                        className="p-1 border border-[var(--sketch-fg-subtle)]/30 rounded hover:bg-[var(--sketch-fg-subtle)]/10 disabled:opacity-30"
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </button>
-                      <span className="font-mono text-xs text-[var(--sketch-fg-subtle)]">
-                        Step {currentStepIndex + 1} of {steps.length}
-                      </span>
-                      <button
-                        onClick={() =>
-                          setCurrentStepIndex(Math.min(steps.length - 1, currentStepIndex + 1))
-                        }
-                        disabled={currentStepIndex === steps.length - 1}
-                        className="p-1 border border-[var(--sketch-fg-subtle)]/30 rounded hover:bg-[var(--sketch-fg-subtle)]/10 disabled:opacity-30"
-                      >
-                        <ChevronRightIcon className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <div className="w-px h-4 bg-[var(--sketch-border-color)]/30" />
-
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => setCanvasScale(prev => Math.max(1.0, prev - 0.25))}
-                        disabled={canvasScale <= 1.0}
-                        className="w-5 h-5 flex items-center justify-center border border-[var(--sketch-fg-subtle)]/30 rounded text-xs hover:bg-[var(--sketch-fg-subtle)]/10 disabled:opacity-30"
-                        title="Zoom Out"
-                      >
-                        -
-                      </button>
-                      <span className="text-[10px] font-mono w-10 text-center font-bold">
-                        {Math.round(canvasScale * 100)}%
-                      </span>
-                      <button
-                        onClick={() => setCanvasScale(prev => Math.min(3.0, prev + 0.25))}
-                        disabled={canvasScale >= 3.0}
-                        className="w-5 h-5 flex items-center justify-center border border-[var(--sketch-fg-subtle)]/30 rounded text-xs hover:bg-[var(--sketch-fg-subtle)]/10 disabled:opacity-30"
-                        title="Zoom In"
-                      >
-                        +
-                      </button>
-                      <button
-                        onClick={() => setCanvasScale(1.0)}
-                        disabled={canvasScale === 1.0}
-                        className="text-[9px] font-mono px-1.5 py-0.5 border border-[var(--sketch-fg-subtle)]/30 rounded hover:bg-[var(--sketch-fg-subtle)]/10 disabled:opacity-30 ml-1"
-                      >
-                        Reset
-                      </button>
-                    </div>
+              <div className="flex items-center justify-between mb-2 flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setCurrentStepIndex(Math.max(0, currentStepIndex - 1))}
+                      disabled={currentStepIndex === 0}
+                      className="p-1 border border-[var(--sketch-fg-subtle)]/30 rounded hover:bg-[var(--sketch-fg-subtle)]/10 disabled:opacity-30"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="font-mono text-xs text-[var(--sketch-fg-subtle)]">
+                      Step {currentStepIndex + 1} of {steps.length}
+                    </span>
+                    <button
+                      onClick={() =>
+                        setCurrentStepIndex(Math.min(steps.length - 1, currentStepIndex + 1))
+                      }
+                      disabled={currentStepIndex === steps.length - 1}
+                      className="p-1 border border-[var(--sketch-fg-subtle)]/30 rounded hover:bg-[var(--sketch-fg-subtle)]/10 disabled:opacity-30"
+                    >
+                      <ChevronRightIcon className="w-4 h-4" />
+                    </button>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {currentAnn?.zoomTargetX != null && (
-                      <span className="flex items-center gap-1 text-xs font-mono text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-                        <Check className="w-3 h-3" />
-                        Zoom
-                      </span>
-                    )}
-                    {currentAnn?.editorCaptionText && (
-                      <span className="flex items-center gap-1 text-xs font-mono text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
-                        <Type className="w-3 h-3" />
-                        Caption
-                      </span>
-                    )}
-                    {currentAnn?.editorOverlayText && (
-                      <span className="flex items-center gap-1 text-xs font-mono text-purple-600 bg-purple-50 px-2 py-0.5 rounded">
-                        <Type className="w-3 h-3" />
-                        Overlay
-                      </span>
-                    )}
-                    {currentAnn?.editorCropX != null && (
-                      <span className="flex items-center gap-1 text-xs font-mono text-amber-600 bg-amber-50 px-2 py-0.5 rounded">
-                        <Crop className="w-3 h-3" />
-                        Crop
-                      </span>
-                    )}
-                    {(currentAnn?.editorBlurX != null || (currentAnn?.editorBlurs != null && currentAnn.editorBlurs.length > 0)) && (
-                      <span className="flex items-center gap-1 text-xs font-mono text-pink-600 bg-pink-50 px-2 py-0.5 rounded">
-                        <Aperture className="w-3 h-3" />
-                        Blur{currentAnn?.editorBlurs && currentAnn.editorBlurs.length > 1 ? ` (${currentAnn.editorBlurs.length})` : ""}
-                      </span>
-                    )}
-                    {currentAnn?.editorRedactX != null && (
-                      <span className="flex items-center gap-1 text-xs font-mono text-gray-700 bg-gray-200 px-2 py-0.5 rounded">
-                        <Shield className="w-3 h-3" />
-                        Redact
-                      </span>
-                    )}
-                    {currentAnn?.editorWatermarkText && (
-                      <span className="flex items-center gap-1 text-xs font-mono text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded">
-                        <Stamp className="w-3 h-3" />
-                        Watermark
-                      </span>
-                    )}
-                    {(currentAnn?.editorPixelateX != null || (currentAnn?.editorPixelates != null && currentAnn.editorPixelates.length > 0)) && (
-                      <span className="flex items-center gap-1 text-xs font-mono text-cyan-600 bg-cyan-50 px-2 py-0.5 rounded">
-                        <Grid3x3 className="w-3 h-3" />
-                        Pixelate{currentAnn?.editorPixelates && currentAnn.editorPixelates.length > 1 ? ` (${currentAnn.editorPixelates.length})` : ""}
-                      </span>
-                    )}
-                    {(currentAnn?.editorSpotlightX != null || (currentAnn?.editorSpotlights != null && currentAnn.editorSpotlights.length > 0)) && (
-                      <span className="flex items-center gap-1 text-xs font-mono text-orange-600 bg-orange-50 px-2 py-0.5 rounded">
-                        <Sun className="w-3 h-3" />
-                        Spotlight{currentAnn?.editorSpotlights && currentAnn.editorSpotlights.length > 1 ? ` (${currentAnn.editorSpotlights.length})` : ""}
-                      </span>
-                    )}
-                    {currentAnn?.editorBadgeNumber != null && (
-                      <span className="flex items-center gap-1 text-xs font-mono text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded">
-                        <BadgeCheck className="w-3 h-3" />
-                        Badge
-                      </span>
-                    )}
-                    {currentAnn?.editorMagnifyX != null && (
-                      <span className="flex items-center gap-1 text-xs font-mono text-teal-600 bg-teal-50 px-2 py-0.5 rounded">
-                        <Search className="w-3 h-3" />
-                        Magnify
-                      </span>
-                    )}
-                    {currentAnn?.editorColorFilter && currentAnn.editorColorFilter !== "none" && (
-                      <span className="flex items-center gap-1 text-xs font-mono text-rose-600 bg-rose-50 px-2 py-0.5 rounded">
-                        <Palette className="w-3 h-3" />
-                        Filter
-                      </span>
-                    )}
-                    {currentAnn?.editorMultiZooms && currentAnn.editorMultiZooms.length > 0 && (
-                      <span className="flex items-center gap-1 text-xs font-mono text-violet-600 bg-violet-50 px-2 py-0.5 rounded">
-                        <Scan className="w-3 h-3" />
-                        {currentAnn.editorMultiZooms.length} Multi-Zoom
-                      </span>
-                    )}
+                  <div className="w-px h-4 bg-[var(--sketch-border-color)]/30" />
+
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setCanvasScale(prev => Math.max(1.0, prev - 0.25))}
+                      disabled={canvasScale <= 1.0}
+                      className="w-5 h-5 flex items-center justify-center border border-[var(--sketch-fg-subtle)]/30 rounded text-xs hover:bg-[var(--sketch-fg-subtle)]/10 disabled:opacity-30"
+                      title="Zoom Out"
+                    >
+                      <ZoomOut className="w-3 h-3" />
+                    </button>
+                    <span className="text-[10px] font-mono w-10 text-center font-bold">
+                      {Math.round(canvasScale * 100)}%
+                    </span>
+                    <button
+                      onClick={() => setCanvasScale(prev => Math.min(3.0, prev + 0.25))}
+                      disabled={canvasScale >= 3.0}
+                      className="w-5 h-5 flex items-center justify-center border border-[var(--sketch-fg-subtle)]/30 rounded text-xs hover:bg-[var(--sketch-fg-subtle)]/10 disabled:opacity-30"
+                      title="Zoom In"
+                    >
+                      <ZoomIn className="w-3 h-3" />
+                    </button>
+                    <button
+                      onClick={() => setCanvasScale(1.0)}
+                      disabled={canvasScale === 1.0}
+                      className="text-[9px] font-mono px-1.5 py-0.5 border border-[var(--sketch-fg-subtle)]/30 rounded hover:bg-[var(--sketch-fg-subtle)]/10 disabled:opacity-30 ml-1"
+                    >
+                      <Maximize className="w-3 h-3 inline" />
+                    </button>
                   </div>
                 </div>
+              </div>
+            )}
 
+            {/* Canvas area */}
+            <div className="flex-1 min-h-0 sketch-card p-3 bg-[var(--sketch-card-bg)] flex flex-col">
+              {currentStep && (
+                <>
                 <div
                   ref={scrollContainerRef}
-                  className="w-full overflow-auto max-h-[70vh] border-2 border-[var(--sketch-border-color)] rounded-md bg-[#000000] relative"
+                  className="w-full flex-1 min-h-0 overflow-auto border-2 border-[var(--sketch-border-color)] rounded-md bg-[#000000] relative"
                 >
                   <div
                     style={{
@@ -1397,13 +1419,12 @@ export function StepEditorPanel() {
                   >
                     <div
                       ref={canvasRef}
-                      className={`relative w-full ${aspectClass} overflow-hidden sketch-border-sm ${
-                        mode === "pan"
+                      className={`relative w-full ${aspectClass} overflow-hidden sketch-border-sm ${mode === "pan"
                           ? "cursor-grab active:cursor-grabbing"
                           : mode === "select"
-                          ? "cursor-default"
-                          : "cursor-crosshair"
-                      }`}
+                            ? "cursor-default"
+                            : "cursor-crosshair"
+                        }`}
                       onMouseDown={handleMouseDown}
                       onMouseMove={handleMouseMove}
                       onMouseUp={handleMouseUp}
@@ -1420,14 +1441,14 @@ export function StepEditorPanel() {
                               currentAnn?.editorColorFilter === "grayscale"
                                 ? "grayscale(100%)"
                                 : currentAnn?.editorColorFilter === "sepia"
-                                ? "sepia(100%)"
-                                : currentAnn?.editorColorFilter === "warm"
-                                ? "sepia(50%) saturate(140%)"
-                                : currentAnn?.editorColorFilter === "cool"
-                                ? "hue-rotate(180deg) saturate(80%)"
-                                : currentAnn?.editorColorFilter === "contrast"
-                                ? "contrast(150%) saturate(120%)"
-                                : "none",
+                                  ? "sepia(100%)"
+                                  : currentAnn?.editorColorFilter === "warm"
+                                    ? "sepia(50%) saturate(140%)"
+                                    : currentAnn?.editorColorFilter === "cool"
+                                      ? "hue-rotate(180deg) saturate(80%)"
+                                      : currentAnn?.editorColorFilter === "contrast"
+                                        ? "contrast(150%) saturate(120%)"
+                                        : "none",
                           }}
                           draggable={false}
                           onLoad={updateBounds}
@@ -1454,124 +1475,87 @@ export function StepEditorPanel() {
                             pointerEvents: "none",
                           }}
                         >
-                      {/* Highlight box */}
-                      {rect && rect.x != null && rect.y != null && rect.w != null && rect.h != null && (
-                        <div
-                          className="absolute pointer-events-auto cursor-move select-none"
-                          style={{
-                            left: `${rect.x}%`,
-                            top: `${rect.y}%`,
-                            width: `${rect.w}%`,
-                            height: `${rect.h}%`,
-                            border: "3px solid #FF0099",
-                            backgroundColor: "rgba(255,0,153,0.12)",
-                            boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setMode("rect");
-                            const coords = getCanvasCoords(e);
-                            if (!coords) return;
-                            setDragItem({
-                              type: "zoomRect",
-                              startX: coords.x,
-                              startY: coords.y,
-                              initialX: currentAnn?.zoomRectX ?? 0,
-                              initialY: currentAnn?.zoomRectY ?? 0,
-                              initialW: currentAnn?.zoomRectWidth ?? 0,
-                              initialH: currentAnn?.zoomRectHeight ?? 0,
-                            });
-                          }}
-                        >
-                          <div className="absolute top-1 left-1 bg-[#FF0099] text-white text-[10px] font-mono px-1 rounded font-bold">
-                            Highlight
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Temp drag rect */}
-                      {tempRect && (
-                        <div
-                          className="absolute pointer-events-none select-none"
-                          style={{
-                            left: `${tempRect.x}%`,
-                            top: `${tempRect.y}%`,
-                            width: `${tempRect.w}%`,
-                            height: `${tempRect.h}%`,
-                            border: "3px dashed #00E5FF",
-                            backgroundColor: "rgba(0,229,255,0.10)",
-                            boxShadow: "0 0 0 1px rgba(255,255,255,0.7)",
-                          }}
-                        />
-                      )}
-
-                      {/* Crop overlay — Canva style with dimmed outside + edge handles */}
-                      {cropRect && cropRect.x != null && cropRect.y != null && cropRect.w != null && cropRect.h != null && (
-                        <>
-                          {/* Dimmed area outside the crop (4 rectangles: top, bottom, left, right) */}
-                          <div className="absolute pointer-events-none" style={{ left: 0, top: 0, width: "100%", height: "100%", overflow: "hidden" }}>
-                            {/* Top */}
-                            <div style={{ position: "absolute", left: 0, top: 0, width: "100%", height: `${cropRect.y}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
-                            {/* Bottom */}
-                            <div style={{ position: "absolute", left: 0, top: `${cropRect.y + cropRect.h}%`, width: "100%", height: `${100 - cropRect.y - cropRect.h}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
-                            {/* Left */}
-                            <div style={{ position: "absolute", left: 0, top: `${cropRect.y}%`, width: `${cropRect.x}%`, height: `${cropRect.h}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
-                            {/* Right */}
-                            <div style={{ position: "absolute", left: `${cropRect.x + cropRect.w}%`, top: `${cropRect.y}%`, width: `${100 - cropRect.x - cropRect.w}%`, height: `${cropRect.h}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
-                          </div>
-
-                          {/* Crop selection rectangle — draggable to move, with edge handles to resize */}
-                          <div
-                            className="absolute pointer-events-auto cursor-move select-none"
-                            style={{
-                              left: `${cropRect.x}%`,
-                              top: `${cropRect.y}%`,
-                              width: `${cropRect.w}%`,
-                              height: `${cropRect.h}%`,
-                              border: "3px solid #00E676",
-                              boxShadow: "0 0 0 1px rgba(255,255,255,0.9)",
-                            }}
-                            onMouseDown={(e) => {
-                              // Only drag if clicking inside (not on handles)
-                              if ((e.target as HTMLElement).dataset.handle) return;
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setMode("crop");
-                              const coords = getCanvasCoords(e);
-                              if (!coords) return;
-                              setDragItem({
-                                type: "crop",
-                                startX: coords.x,
-                                startY: coords.y,
-                                initialX: currentAnn?.editorCropX ?? 0,
-                                initialY: currentAnn?.editorCropY ?? 0,
-                                initialW: currentAnn?.editorCropW ?? 0,
-                                initialH: currentAnn?.editorCropH ?? 0,
-                              });
-                            }}
-                          >
-                            <div className="absolute top-1 left-1 bg-[#00E676] text-black text-[10px] font-mono px-1 rounded font-bold">
-                              Crop — keep this area
+                          {/* Highlight box */}
+                          {rect && rect.x != null && rect.y != null && rect.w != null && rect.h != null && (
+                            <div
+                              className="absolute pointer-events-auto cursor-move select-none"
+                              style={{
+                                left: `${rect.x}%`,
+                                top: `${rect.y}%`,
+                                width: `${rect.w}%`,
+                                height: `${rect.h}%`,
+                                border: "3px solid #FF0099",
+                                backgroundColor: "rgba(255,0,153,0.12)",
+                                boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
+                              }}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setMode("rect");
+                                const coords = getCanvasCoords(e);
+                                if (!coords) return;
+                                setDragItem({
+                                  type: "zoomRect",
+                                  startX: coords.x,
+                                  startY: coords.y,
+                                  initialX: currentAnn?.zoomRectX ?? 0,
+                                  initialY: currentAnn?.zoomRectY ?? 0,
+                                  initialW: currentAnn?.zoomRectWidth ?? 0,
+                                  initialH: currentAnn?.zoomRectHeight ?? 0,
+                                });
+                              }}
+                            >
+                              <div className="absolute top-1 left-1 bg-[#FF0099] text-white text-[10px] font-mono px-1 rounded font-bold">
+                                Highlight
+                              </div>
                             </div>
+                          )}
 
-                            {/* Edge handles — 8 resize handles (corners + midpoints) */}
-                            {[
-                              { name: "nw", style: { top: "-6px", left: "-6px", cursor: "nwse-resize" } },
-                              { name: "n", style: { top: "-6px", left: "50%", transform: "translateX(-50%)", cursor: "ns-resize" } },
-                              { name: "ne", style: { top: "-6px", right: "-6px", cursor: "nesw-resize" } },
-                              { name: "e", style: { top: "50%", right: "-6px", transform: "translateY(-50%)", cursor: "ew-resize" } },
-                              { name: "se", style: { bottom: "-6px", right: "-6px", cursor: "nwse-resize" } },
-                              { name: "s", style: { bottom: "-6px", left: "50%", transform: "translateX(-50%)", cursor: "ns-resize" } },
-                              { name: "sw", style: { bottom: "-6px", left: "-6px", cursor: "nesw-resize" } },
-                              { name: "w", style: { top: "50%", left: "-6px", transform: "translateY(-50%)", cursor: "ew-resize" } },
-                            ].map((h) => (
+                          {/* Temp drag rect */}
+                          {tempRect && (
+                            <div
+                              className="absolute pointer-events-none select-none"
+                              style={{
+                                left: `${tempRect.x}%`,
+                                top: `${tempRect.y}%`,
+                                width: `${tempRect.w}%`,
+                                height: `${tempRect.h}%`,
+                                border: "3px dashed #00E5FF",
+                                backgroundColor: "rgba(0,229,255,0.10)",
+                                boxShadow: "0 0 0 1px rgba(255,255,255,0.7)",
+                              }}
+                            />
+                          )}
+
+                          {/* Crop overlay — Canva style with dimmed outside + edge handles */}
+                          {cropRect && cropRect.x != null && cropRect.y != null && cropRect.w != null && cropRect.h != null && (
+                            <>
+                              {/* Dimmed area outside the crop (4 rectangles: top, bottom, left, right) */}
+                              <div className="absolute pointer-events-none" style={{ left: 0, top: 0, width: "100%", height: "100%", overflow: "hidden" }}>
+                                {/* Top */}
+                                <div style={{ position: "absolute", left: 0, top: 0, width: "100%", height: `${cropRect.y}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
+                                {/* Bottom */}
+                                <div style={{ position: "absolute", left: 0, top: `${cropRect.y + cropRect.h}%`, width: "100%", height: `${100 - cropRect.y - cropRect.h}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
+                                {/* Left */}
+                                <div style={{ position: "absolute", left: 0, top: `${cropRect.y}%`, width: `${cropRect.x}%`, height: `${cropRect.h}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
+                                {/* Right */}
+                                <div style={{ position: "absolute", left: `${cropRect.x + cropRect.w}%`, top: `${cropRect.y}%`, width: `${100 - cropRect.x - cropRect.w}%`, height: `${cropRect.h}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
+                              </div>
+
+                              {/* Crop selection rectangle — draggable to move, with edge handles to resize */}
                               <div
-                                key={h.name}
-                                data-handle={h.name}
-                                className="absolute w-3 h-3 bg-white border-2 border-[#00E676] rounded-sm pointer-events-auto"
-                                style={{ ...h.style, zIndex: 10 }}
+                                className="absolute pointer-events-auto cursor-move select-none"
+                                style={{
+                                  left: `${cropRect.x}%`,
+                                  top: `${cropRect.y}%`,
+                                  width: `${cropRect.w}%`,
+                                  height: `${cropRect.h}%`,
+                                  border: "3px solid #00E676",
+                                  boxShadow: "0 0 0 1px rgba(255,255,255,0.9)",
+                                }}
                                 onMouseDown={(e) => {
+                                  // Only drag if clicking inside (not on handles)
+                                  if ((e.target as HTMLElement).dataset.handle) return;
                                   e.preventDefault();
                                   e.stopPropagation();
                                   setMode("crop");
@@ -1586,259 +1570,93 @@ export function StepEditorPanel() {
                                     initialW: currentAnn?.editorCropW ?? 0,
                                     initialH: currentAnn?.editorCropH ?? 0,
                                   });
-                                  // Store which handle is being dragged via a custom property
-                                  handleResizeRef.current = h.name;
                                 }}
-                              />
-                            ))}
-                          </div>
-                        </>
-                      )}
+                              >
+                                <div className="absolute top-1 left-1 bg-[#00E676] text-black text-[10px] font-mono px-1 rounded font-bold">
+                                  Crop — keep this area
+                                </div>
 
-                      {/* Blur overlays (multiple regions) */}
-                      {(currentAnn?.editorBlurs || []).map((blurRegion, idx) => (
-                        <div
-                          key={blurRegion.id}
-                          className="absolute pointer-events-auto cursor-move overflow-hidden select-none group"
-                          style={{
-                            left: `${blurRegion.x}%`,
-                            top: `${blurRegion.y}%`,
-                            width: `${blurRegion.w}%`,
-                            height: `${blurRegion.h}%`,
-                            border: "3px solid #FF4081",
-                            boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setMode("blur");
-                            const coords = getCanvasCoords(e);
-                            if (!coords) return;
-                            setDragItem({
-                              type: "blurArr",
-                              id: blurRegion.id,
-                              startX: coords.x,
-                              startY: coords.y,
-                              initialX: blurRegion.x,
-                              initialY: blurRegion.y,
-                              initialW: blurRegion.w,
-                              initialH: blurRegion.h,
-                            });
-                          }}
-                        >
-                          <div
-                            className="w-full h-full"
-                            style={{
-                              backdropFilter: `blur(${blurRegion.intensity ?? currentAnn?.editorBlurIntensity ?? 20}px)`,
-                              WebkitBackdropFilter: `blur(${blurRegion.intensity ?? currentAnn?.editorBlurIntensity ?? 20}px)`,
-                              backgroundColor: "rgba(255,255,255,0.05)",
-                            }}
-                          />
-                          <div className="absolute top-1 left-1 bg-[#FF4081] text-white text-[10px] font-mono px-1 rounded font-bold">
-                            Blur {idx + 1}
-                          </div>
-                          <button
-                            className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              const next = {
-                                ...annotations,
-                                [currentStep.id]: {
-                                  ...(annotations[currentStep.id] || {}),
-                                  editorBlurs: (currentAnn?.editorBlurs || []).filter((r) => r.id !== blurRegion.id),
-                                },
-                              };
-                              pushHistory(next);
-                            }}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
+                                {/* Edge handles — 8 resize handles (corners + midpoints) */}
+                                {[
+                                  { name: "nw", style: { top: "-6px", left: "-6px", cursor: "nwse-resize" } },
+                                  { name: "n", style: { top: "-6px", left: "50%", transform: "translateX(-50%)", cursor: "ns-resize" } },
+                                  { name: "ne", style: { top: "-6px", right: "-6px", cursor: "nesw-resize" } },
+                                  { name: "e", style: { top: "50%", right: "-6px", transform: "translateY(-50%)", cursor: "ew-resize" } },
+                                  { name: "se", style: { bottom: "-6px", right: "-6px", cursor: "nwse-resize" } },
+                                  { name: "s", style: { bottom: "-6px", left: "50%", transform: "translateX(-50%)", cursor: "ns-resize" } },
+                                  { name: "sw", style: { bottom: "-6px", left: "-6px", cursor: "nesw-resize" } },
+                                  { name: "w", style: { top: "50%", left: "-6px", transform: "translateY(-50%)", cursor: "ew-resize" } },
+                                ].map((h) => (
+                                  <div
+                                    key={h.name}
+                                    data-handle={h.name}
+                                    className="absolute w-3 h-3 bg-white border-2 border-[#00E676] rounded-sm pointer-events-auto"
+                                    style={{ ...h.style, zIndex: 10 }}
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setMode("crop");
+                                      const coords = getCanvasCoords(e);
+                                      if (!coords) return;
+                                      setDragItem({
+                                        type: "crop",
+                                        startX: coords.x,
+                                        startY: coords.y,
+                                        initialX: currentAnn?.editorCropX ?? 0,
+                                        initialY: currentAnn?.editorCropY ?? 0,
+                                        initialW: currentAnn?.editorCropW ?? 0,
+                                        initialH: currentAnn?.editorCropH ?? 0,
+                                      });
+                                      // Store which handle is being dragged via a custom property
+                                      handleResizeRef.current = h.name;
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            </>
+                          )}
 
-                      {/* Redact overlay */}
-                      {redactRect && redactRect.x != null && (
-                        <div
-                          className="absolute pointer-events-auto cursor-move select-none"
-                          style={{
-                            left: `${redactRect.x}%`,
-                            top: `${redactRect.y}%`,
-                            width: `${redactRect.w}%`,
-                            height: `${redactRect.h}%`,
-                            backgroundColor: currentAnn?.editorRedactColor || "#000000",
-                            border: "3px solid #FFFFFF",
-                            boxShadow: "0 0 0 1px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.4)",
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setMode("redact");
-                            const coords = getCanvasCoords(e);
-                            if (!coords) return;
-                            setDragItem({
-                              type: "redact",
-                              startX: coords.x,
-                              startY: coords.y,
-                              initialX: currentAnn?.editorRedactX ?? 0,
-                              initialY: currentAnn?.editorRedactY ?? 0,
-                              initialW: currentAnn?.editorRedactW ?? 0,
-                              initialH: currentAnn?.editorRedactH ?? 0,
-                            });
-                          }}
-                        >
-                          <div className="absolute top-1 left-1 bg-gray-900 text-white text-[10px] font-mono px-1 rounded font-bold border border-white/50">
-                            Redacted
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Watermark preview */}
-                      {currentAnn?.editorWatermarkText && (
-                        <div
-                          className="absolute pointer-events-none select-none"
-                          style={{
-                            ...(currentAnn.editorWatermarkPosition?.includes("top")
-                              ? { top: "5%" }
-                              : { bottom: "5%" }),
-                            ...(currentAnn.editorWatermarkPosition?.includes("left")
-                              ? { left: "5%" }
-                              : { right: "5%" }),
-                            ...(currentAnn.editorWatermarkPosition === "center"
-                              ? { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }
-                              : {}),
-                          }}
-                        >
-                          <div
-                            className="font-body font-bold whitespace-nowrap"
-                            style={{
-                              color: currentAnn.editorWatermarkColor || "#FFFFFF",
-                              fontSize:
-                                currentAnn.editorWatermarkSize === "small"
-                                  ? "14px"
-                                  : currentAnn.editorWatermarkSize === "large"
-                                  ? "28px"
-                                  : "20px",
-                              opacity: currentAnn.editorWatermarkOpacity ?? 0.5,
-                              textShadow: "0 1px 3px rgba(0,0,0,0.5)",
-                            }}
-                          >
-                            {currentAnn.editorWatermarkText}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Pixelate overlays (multiple regions) */}
-                      {(currentAnn?.editorPixelates || []).map((pixRegion, idx) => (
-                        <div
-                          key={pixRegion.id}
-                          className="absolute pointer-events-auto cursor-move overflow-hidden select-none group"
-                          style={{
-                            left: `${pixRegion.x}%`,
-                            top: `${pixRegion.y}%`,
-                            width: `${pixRegion.w}%`,
-                            height: `${pixRegion.h}%`,
-                            border: "3px solid #00BCD4",
-                            boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setMode("pixelate");
-                            const coords = getCanvasCoords(e);
-                            if (!coords) return;
-                            setDragItem({
-                              type: "pixelateArr",
-                              id: pixRegion.id,
-                              startX: coords.x,
-                              startY: coords.y,
-                              initialX: pixRegion.x,
-                              initialY: pixRegion.y,
-                              initialW: pixRegion.w,
-                              initialH: pixRegion.h,
-                            });
-                          }}
-                        >
-                          <div
-                            className="w-full h-full"
-                            style={{
-                              backgroundImage: `repeating-conic-gradient(#808080 0% 25%, #a0a0a0 0% 50%)`,
-                              backgroundSize: `${pixRegion.blockSize ?? currentAnn?.editorPixelateBlockSize ?? 20}px ${pixRegion.blockSize ?? currentAnn?.editorPixelateBlockSize ?? 20}px`,
-                              opacity: 0.7,
-                            }}
-                          />
-                          <div className="absolute top-1 left-1 bg-[#00BCD4] text-white text-[10px] font-mono px-1 rounded font-bold">
-                            Pixelate {idx + 1}
-                          </div>
-                          <button
-                            className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
-                            onMouseDown={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              const next = {
-                                ...annotations,
-                                [currentStep.id]: {
-                                  ...(annotations[currentStep.id] || {}),
-                                  editorPixelates: (currentAnn?.editorPixelates || []).filter((r) => r.id !== pixRegion.id),
-                                },
-                              };
-                              pushHistory(next);
-                            }}
-                          >
-                            ×
-                          </button>
-                        </div>
-                      ))}
-
-                      {/* Spotlight overlays (multiple regions) */}
-                      {(currentAnn?.editorSpotlights || []).length > 0 && (
-                        <>
-                          {/* Dark overlay covering everything */}
-                          <div
-                            className="absolute pointer-events-none"
-                            style={{
-                              left: 0,
-                              top: 0,
-                              width: "100%",
-                              height: "100%",
-                              backgroundColor: `rgba(0,0,0,${Math.max(...(currentAnn?.editorSpotlights || []).map(s => s.intensity ?? currentAnn?.editorSpotlightIntensity ?? 0.6))})`,
-                              mixBlendMode: "multiply",
-                            }}
-                          />
-                          {/* Each spotlight region "cuts out" the dark overlay */}
-                          {(currentAnn?.editorSpotlights || []).map((spotRegion, idx) => (
+                          {/* Blur overlays (multiple regions) */}
+                          {(currentAnn?.editorBlurs || []).map((blurRegion, idx) => (
                             <div
-                              key={spotRegion.id}
-                              className="absolute pointer-events-auto cursor-move select-none group"
+                              key={blurRegion.id}
+                              className="absolute pointer-events-auto cursor-move overflow-hidden select-none group"
                               style={{
-                                left: `${spotRegion.x}%`,
-                                top: `${spotRegion.y}%`,
-                                width: `${spotRegion.w}%`,
-                                height: `${spotRegion.h}%`,
-                                border: "3px solid #FF6D00",
-                                borderRadius: "4px",
-                                boxShadow: `0 0 0 9999px rgba(0,0,0,${spotRegion.intensity ?? currentAnn?.editorSpotlightIntensity ?? 0.6}), 0 0 0 1px rgba(255,255,255,0.9)`,
+                                left: `${blurRegion.x}%`,
+                                top: `${blurRegion.y}%`,
+                                width: `${blurRegion.w}%`,
+                                height: `${blurRegion.h}%`,
+                                border: "3px solid #FF4081",
+                                boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
                               }}
                               onMouseDown={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
-                                setMode("spotlight");
+                                setMode("blur");
                                 const coords = getCanvasCoords(e);
                                 if (!coords) return;
                                 setDragItem({
-                                  type: "spotlightArr",
-                                  id: spotRegion.id,
+                                  type: "blurArr",
+                                  id: blurRegion.id,
                                   startX: coords.x,
                                   startY: coords.y,
-                                  initialX: spotRegion.x,
-                                  initialY: spotRegion.y,
-                                  initialW: spotRegion.w,
-                                  initialH: spotRegion.h,
+                                  initialX: blurRegion.x,
+                                  initialY: blurRegion.y,
+                                  initialW: blurRegion.w,
+                                  initialH: blurRegion.h,
                                 });
                               }}
                             >
-                              <div className="absolute top-1 left-1 bg-[#FF6D00] text-white text-[10px] font-mono px-1 rounded font-bold">
-                                Spotlight {idx + 1}
+                              <div
+                                className="w-full h-full"
+                                style={{
+                                  backdropFilter: `blur(${blurRegion.intensity ?? currentAnn?.editorBlurIntensity ?? 20}px)`,
+                                  WebkitBackdropFilter: `blur(${blurRegion.intensity ?? currentAnn?.editorBlurIntensity ?? 20}px)`,
+                                  backgroundColor: "rgba(255,255,255,0.05)",
+                                }}
+                              />
+                              <div className="absolute top-1 left-1 bg-[#FF4081] text-white text-[10px] font-mono px-1 rounded font-bold">
+                                Blur {idx + 1}
                               </div>
                               <button
                                 className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
@@ -1849,7 +1667,7 @@ export function StepEditorPanel() {
                                     ...annotations,
                                     [currentStep.id]: {
                                       ...(annotations[currentStep.id] || {}),
-                                      editorSpotlights: (currentAnn?.editorSpotlights || []).filter((r) => r.id !== spotRegion.id),
+                                      editorBlurs: (currentAnn?.editorBlurs || []).filter((r) => r.id !== blurRegion.id),
                                     },
                                   };
                                   pushHistory(next);
@@ -1859,239 +1677,442 @@ export function StepEditorPanel() {
                               </button>
                             </div>
                           ))}
-                        </>
-                      )}
 
-                      {/* Badge overlay */}
-                      {currentAnn?.editorBadgeNumber != null && currentAnn?.editorBadgeX != null && (
-                        <div
-                          className="absolute pointer-events-auto cursor-move select-none"
-                          style={{
-                            left: `${currentAnn.editorBadgeX}%`,
-                            top: `${currentAnn.editorBadgeY}%`,
-                            transform: "translate(-50%, -50%)",
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setMode("badge");
-                            const coords = getCanvasCoords(e);
-                            if (!coords) return;
-                            setDragItem({
-                              type: "badge",
-                              startX: coords.x,
-                              startY: coords.y,
-                              initialX: currentAnn?.editorBadgeX ?? 50,
-                              initialY: currentAnn?.editorBadgeY ?? 50,
-                            });
-                          }}
-                        >
-                          <div
-                            className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-lg"
-                            style={{ backgroundColor: currentAnn.editorBadgeColor || "#FBBF24", color: "#000" }}
-                          >
-                            {currentAnn.editorBadgeNumber}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Magnify overlay */}
-                      {currentAnn?.editorMagnifyX != null && currentAnn?.editorMagnifyW != null && (
-                        <div
-                          className="absolute pointer-events-auto cursor-move border-2 border-white shadow-lg overflow-hidden bg-black select-none"
-                          style={{
-                            ...(currentAnn.editorMagnifyCorner?.includes("top") ? { top: "10px" } : { bottom: "10px" }),
-                            ...(currentAnn.editorMagnifyCorner?.includes("left") ? { left: "10px" } : { right: "10px" }),
-                            width: "120px",
-                            height: "120px",
-                            borderRadius: "8px",
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setMode("magnify");
-                            const coords = getCanvasCoords(e);
-                            if (!coords) return;
-                            setDragItem({
-                              type: "magnify",
-                              startX: coords.x,
-                              startY: coords.y,
-                              initialX: currentAnn?.editorMagnifyX ?? 50,
-                              initialY: currentAnn?.editorMagnifyY ?? 50,
-                            });
-                          }}
-                        >
-                          <div
-                            className="w-full h-full"
-                            style={{
-                              backgroundImage: `url(${currentStep.screenshotPath})`,
-                              backgroundPosition: `${currentAnn.editorMagnifyX}% ${currentAnn.editorMagnifyY}%`,
-                              backgroundSize: `${(currentAnn.editorMagnifyScale ?? 2) * 100}%`,
-                              backgroundRepeat: "no-repeat",
-                            }}
-                          />
-                          <div className="absolute top-0 left-0 bg-teal-500 text-white text-[8px] font-mono px-1 rounded-br">
-                            {currentAnn.editorMagnifyScale ?? 2}x
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Color filter overlay */}
-                      {currentAnn?.editorColorFilter && currentAnn.editorColorFilter !== "none" && (
-                        <div
-                          className="absolute inset-0 pointer-events-none"
-                          style={{
-                            filter:
-                              currentAnn.editorColorFilter === "grayscale"
-                                ? "grayscale(100%)"
-                                : currentAnn.editorColorFilter === "sepia"
-                                ? "sepia(100%)"
-                                : currentAnn.editorColorFilter === "warm"
-                                ? "sepia(50%) saturate(140%)"
-                                : currentAnn.editorColorFilter === "cool"
-                                ? "hue-rotate(180deg) saturate(80%)"
-                                : currentAnn.editorColorFilter === "contrast"
-                                ? "contrast(150%) saturate(120%)"
-                                : "none",
-                            mixBlendMode: currentAnn.editorColorFilter === "contrast" ? "normal" : "multiply",
-                            opacity: 0.3,
-                          }}
-                        />
-                      )}
-
-                      {/* Text overlay */}
-                      {overlayPos && overlayPos.x != null && currentAnn?.editorOverlayText && (
-                        <div
-                          className="absolute pointer-events-auto cursor-move select-none"
-                          style={{
-                            left: `${overlayPos.x}%`,
-                            top: `${overlayPos.y}%`,
-                            transform: "translate(-50%, -50%)",
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setMode("overlay");
-                            const coords = getCanvasCoords(e);
-                            if (!coords) return;
-                            setDragItem({
-                              type: "overlay",
-                              startX: coords.x,
-                              startY: coords.y,
-                              initialX: currentAnn?.editorOverlayX ?? 50,
-                              initialY: currentAnn?.editorOverlayY ?? 50,
-                            });
-                          }}
-                        >
-                          <div
-                            className="px-3 py-1.5 rounded shadow-lg font-body font-semibold whitespace-nowrap"
-                            style={{
-                              backgroundColor: "rgba(0,0,0,0.6)",
-                              color: currentAnn.editorOverlayColor || "#FFFFFF",
-                              fontSize:
-                                currentAnn.editorOverlaySize === "small"
-                                  ? "12px"
-                                  : currentAnn.editorOverlaySize === "large"
-                                  ? "20px"
-                                  : "16px",
-                            }}
-                          >
-                            {currentAnn.editorOverlayText}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Zoom target point */}
-                      {currentAnn?.zoomTargetX != null && currentAnn?.zoomTargetY != null && (
-                        <div
-                          className="absolute w-4 h-4 -translate-x-1/2 -translate-y-1/2 pointer-events-auto cursor-move select-none"
-                          style={{
-                            left: `${currentAnn.zoomTargetX}%`,
-                            top: `${currentAnn.zoomTargetY}%`,
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setMode("point");
-                            const coords = getCanvasCoords(e);
-                            if (!coords) return;
-                            setDragItem({
-                              type: "zoomTarget",
-                              startX: coords.x,
-                              startY: coords.y,
-                              initialX: currentAnn?.zoomTargetX ?? 50,
-                              initialY: currentAnn?.zoomTargetY ?? 50,
-                            });
-                          }}
-                        >
-                          <div className="w-full h-full rounded-full border-2 border-[#FF0099] bg-[#FF0099]/40 animate-pulse" style={{ boxShadow: "0 0 0 2px rgba(255,255,255,0.9), 0 2px 8px rgba(0,0,0,0.5)" }} />
-                        </div>
-                      )}
-
-                      {/* Multi-zoom points */}
-                      {currentAnn?.editorMultiZooms?.map((mz, idx) => (
-                        <div key={mz.id}
-                          className="absolute pointer-events-auto cursor-move select-none"
-                          style={{
-                            left: `${mz.targetX}%`,
-                            top: `${mz.targetY}%`,
-                            transform: "translate(-50%, -50%)",
-                          }}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setMode("multizoom");
-                            const coords = getCanvasCoords(e);
-                            if (!coords) return;
-                            setDragItem({
-                              type: "multizoom",
-                              id: mz.id,
-                              startX: coords.x,
-                              startY: coords.y,
-                              initialX: mz.targetX,
-                              initialY: mz.targetY,
-                            });
-                          }}
-                        >
-                          <div className="w-6 h-6 rounded-full bg-violet-500 text-white flex items-center justify-center text-xs font-bold shadow-lg border-2 border-white">
-                            {idx + 1}
-                          </div>
-                          {mz.rectW != null && mz.rectH != null && (
+                          {/* Redact overlay */}
+                          {redactRect && redactRect.x != null && (
                             <div
-                              className="absolute border-2 border-violet-400 pointer-events-none"
+                              className="absolute pointer-events-auto cursor-move select-none"
                               style={{
-                                left: `${-((mz.rectW || 0) / 2)}%`,
-                                top: `${-((mz.rectH || 0) / 2)}%`,
-                                width: `${mz.rectW}%`,
-                                height: `${mz.rectH}%`,
+                                left: `${redactRect.x}%`,
+                                top: `${redactRect.y}%`,
+                                width: `${redactRect.w}%`,
+                                height: `${redactRect.h}%`,
+                                backgroundColor: currentAnn?.editorRedactColor || "#000000",
+                                border: "3px solid #FFFFFF",
+                                boxShadow: "0 0 0 1px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.4)",
+                              }}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setMode("redact");
+                                const coords = getCanvasCoords(e);
+                                if (!coords) return;
+                                setDragItem({
+                                  type: "redact",
+                                  startX: coords.x,
+                                  startY: coords.y,
+                                  initialX: currentAnn?.editorRedactX ?? 0,
+                                  initialY: currentAnn?.editorRedactY ?? 0,
+                                  initialW: currentAnn?.editorRedactW ?? 0,
+                                  initialH: currentAnn?.editorRedactH ?? 0,
+                                });
+                              }}
+                            >
+                              <div className="absolute top-1 left-1 bg-gray-900 text-white text-[10px] font-mono px-1 rounded font-bold border border-white/50">
+                                Redacted
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Watermark preview */}
+                          {currentAnn?.editorWatermarkText && (
+                            <div
+                              className="absolute pointer-events-none select-none"
+                              style={{
+                                ...(currentAnn.editorWatermarkPosition?.includes("top")
+                                  ? { top: "5%" }
+                                  : { bottom: "5%" }),
+                                ...(currentAnn.editorWatermarkPosition?.includes("left")
+                                  ? { left: "5%" }
+                                  : { right: "5%" }),
+                                ...(currentAnn.editorWatermarkPosition === "center"
+                                  ? { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }
+                                  : {}),
+                              }}
+                            >
+                              <div
+                                className="font-body font-bold whitespace-nowrap"
+                                style={{
+                                  color: currentAnn.editorWatermarkColor || "#FFFFFF",
+                                  fontSize:
+                                    currentAnn.editorWatermarkSize === "small"
+                                      ? "14px"
+                                      : currentAnn.editorWatermarkSize === "large"
+                                        ? "28px"
+                                        : "20px",
+                                  opacity: currentAnn.editorWatermarkOpacity ?? 0.5,
+                                  textShadow: "0 1px 3px rgba(0,0,0,0.5)",
+                                }}
+                              >
+                                {currentAnn.editorWatermarkText}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Pixelate overlays (multiple regions) */}
+                          {(currentAnn?.editorPixelates || []).map((pixRegion, idx) => (
+                            <div
+                              key={pixRegion.id}
+                              className="absolute pointer-events-auto cursor-move overflow-hidden select-none group"
+                              style={{
+                                left: `${pixRegion.x}%`,
+                                top: `${pixRegion.y}%`,
+                                width: `${pixRegion.w}%`,
+                                height: `${pixRegion.h}%`,
+                                border: "3px solid #00BCD4",
+                                boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
+                              }}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setMode("pixelate");
+                                const coords = getCanvasCoords(e);
+                                if (!coords) return;
+                                setDragItem({
+                                  type: "pixelateArr",
+                                  id: pixRegion.id,
+                                  startX: coords.x,
+                                  startY: coords.y,
+                                  initialX: pixRegion.x,
+                                  initialY: pixRegion.y,
+                                  initialW: pixRegion.w,
+                                  initialH: pixRegion.h,
+                                });
+                              }}
+                            >
+                              <div
+                                className="w-full h-full"
+                                style={{
+                                  backgroundImage: `repeating-conic-gradient(#808080 0% 25%, #a0a0a0 0% 50%)`,
+                                  backgroundSize: `${pixRegion.blockSize ?? currentAnn?.editorPixelateBlockSize ?? 20}px ${pixRegion.blockSize ?? currentAnn?.editorPixelateBlockSize ?? 20}px`,
+                                  opacity: 0.7,
+                                }}
+                              />
+                              <div className="absolute top-1 left-1 bg-[#00BCD4] text-white text-[10px] font-mono px-1 rounded font-bold">
+                                Pixelate {idx + 1}
+                              </div>
+                              <button
+                                className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  const next = {
+                                    ...annotations,
+                                    [currentStep.id]: {
+                                      ...(annotations[currentStep.id] || {}),
+                                      editorPixelates: (currentAnn?.editorPixelates || []).filter((r) => r.id !== pixRegion.id),
+                                    },
+                                  };
+                                  pushHistory(next);
+                                }}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+
+                          {/* Spotlight overlays (multiple regions) */}
+                          {(currentAnn?.editorSpotlights || []).length > 0 && (
+                            <>
+                              {/* Dark overlay covering everything */}
+                              <div
+                                className="absolute pointer-events-none"
+                                style={{
+                                  left: 0,
+                                  top: 0,
+                                  width: "100%",
+                                  height: "100%",
+                                  backgroundColor: `rgba(0,0,0,${Math.max(...(currentAnn?.editorSpotlights || []).map(s => s.intensity ?? currentAnn?.editorSpotlightIntensity ?? 0.6))})`,
+                                  mixBlendMode: "multiply",
+                                }}
+                              />
+                              {/* Each spotlight region "cuts out" the dark overlay */}
+                              {(currentAnn?.editorSpotlights || []).map((spotRegion, idx) => (
+                                <div
+                                  key={spotRegion.id}
+                                  className="absolute pointer-events-auto cursor-move select-none group"
+                                  style={{
+                                    left: `${spotRegion.x}%`,
+                                    top: `${spotRegion.y}%`,
+                                    width: `${spotRegion.w}%`,
+                                    height: `${spotRegion.h}%`,
+                                    border: "3px solid #FF6D00",
+                                    borderRadius: "4px",
+                                    boxShadow: `0 0 0 9999px rgba(0,0,0,${spotRegion.intensity ?? currentAnn?.editorSpotlightIntensity ?? 0.6}), 0 0 0 1px rgba(255,255,255,0.9)`,
+                                  }}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setMode("spotlight");
+                                    const coords = getCanvasCoords(e);
+                                    if (!coords) return;
+                                    setDragItem({
+                                      type: "spotlightArr",
+                                      id: spotRegion.id,
+                                      startX: coords.x,
+                                      startY: coords.y,
+                                      initialX: spotRegion.x,
+                                      initialY: spotRegion.y,
+                                      initialW: spotRegion.w,
+                                      initialH: spotRegion.h,
+                                    });
+                                  }}
+                                >
+                                  <div className="absolute top-1 left-1 bg-[#FF6D00] text-white text-[10px] font-mono px-1 rounded font-bold">
+                                    Spotlight {idx + 1}
+                                  </div>
+                                  <button
+                                    className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      const next = {
+                                        ...annotations,
+                                        [currentStep.id]: {
+                                          ...(annotations[currentStep.id] || {}),
+                                          editorSpotlights: (currentAnn?.editorSpotlights || []).filter((r) => r.id !== spotRegion.id),
+                                        },
+                                      };
+                                      pushHistory(next);
+                                    }}
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              ))}
+                            </>
+                          )}
+
+                          {/* Badge overlay */}
+                          {currentAnn?.editorBadgeNumber != null && currentAnn?.editorBadgeX != null && (
+                            <div
+                              className="absolute pointer-events-auto cursor-move select-none"
+                              style={{
+                                left: `${currentAnn.editorBadgeX}%`,
+                                top: `${currentAnn.editorBadgeY}%`,
+                                transform: "translate(-50%, -50%)",
+                              }}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setMode("badge");
+                                const coords = getCanvasCoords(e);
+                                if (!coords) return;
+                                setDragItem({
+                                  type: "badge",
+                                  startX: coords.x,
+                                  startY: coords.y,
+                                  initialX: currentAnn?.editorBadgeX ?? 50,
+                                  initialY: currentAnn?.editorBadgeY ?? 50,
+                                });
+                              }}
+                            >
+                              <div
+                                className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-lg"
+                                style={{ backgroundColor: currentAnn.editorBadgeColor || "#FBBF24", color: "#000" }}
+                              >
+                                {currentAnn.editorBadgeNumber}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Magnify overlay */}
+                          {currentAnn?.editorMagnifyX != null && currentAnn?.editorMagnifyW != null && (
+                            <div
+                              className="absolute pointer-events-auto cursor-move border-2 border-white shadow-lg overflow-hidden bg-black select-none"
+                              style={{
+                                ...(currentAnn.editorMagnifyCorner?.includes("top") ? { top: "10px" } : { bottom: "10px" }),
+                                ...(currentAnn.editorMagnifyCorner?.includes("left") ? { left: "10px" } : { right: "10px" }),
+                                width: "120px",
+                                height: "120px",
+                                borderRadius: "8px",
+                              }}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setMode("magnify");
+                                const coords = getCanvasCoords(e);
+                                if (!coords) return;
+                                setDragItem({
+                                  type: "magnify",
+                                  startX: coords.x,
+                                  startY: coords.y,
+                                  initialX: currentAnn?.editorMagnifyX ?? 50,
+                                  initialY: currentAnn?.editorMagnifyY ?? 50,
+                                });
+                              }}
+                            >
+                              <div
+                                className="w-full h-full"
+                                style={{
+                                  backgroundImage: `url(${currentStep.screenshotPath})`,
+                                  backgroundPosition: `${currentAnn.editorMagnifyX}% ${currentAnn.editorMagnifyY}%`,
+                                  backgroundSize: `${(currentAnn.editorMagnifyScale ?? 2) * 100}%`,
+                                  backgroundRepeat: "no-repeat",
+                                }}
+                              />
+                              <div className="absolute top-0 left-0 bg-teal-500 text-white text-[8px] font-mono px-1 rounded-br">
+                                {currentAnn.editorMagnifyScale ?? 2}x
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Color filter overlay */}
+                          {currentAnn?.editorColorFilter && currentAnn.editorColorFilter !== "none" && (
+                            <div
+                              className="absolute inset-0 pointer-events-none"
+                              style={{
+                                filter:
+                                  currentAnn.editorColorFilter === "grayscale"
+                                    ? "grayscale(100%)"
+                                    : currentAnn.editorColorFilter === "sepia"
+                                      ? "sepia(100%)"
+                                      : currentAnn.editorColorFilter === "warm"
+                                        ? "sepia(50%) saturate(140%)"
+                                        : currentAnn.editorColorFilter === "cool"
+                                          ? "hue-rotate(180deg) saturate(80%)"
+                                          : currentAnn.editorColorFilter === "contrast"
+                                            ? "contrast(150%) saturate(120%)"
+                                            : "none",
+                                mixBlendMode: currentAnn.editorColorFilter === "contrast" ? "normal" : "multiply",
+                                opacity: 0.3,
                               }}
                             />
                           )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
 
-                  {/* Mode indicator */}
-                  <div className="absolute bottom-2 left-2 bg-black/60 text-white text-[10px] font-mono px-2 py-1 rounded z-10">
-                    {mode === "rect" && "Highlight Box"}
-                    {mode === "point" && "Zoom Point"}
-                    {mode === "overlay" && "Click to place text"}
-                    {mode === "crop" && "Drag to crop"}
-                    {mode === "blur" && "Drag to blur area"}
-                    {mode === "redact" && "Drag to redact area"}
-                    {mode === "watermark" && "Click to place watermark"}
-                    {mode === "pixelate" && "Drag to pixelate area"}
-                    {mode === "spotlight" && "Drag spotlight area"}
-                    {mode === "badge" && "Click to place badge"}
-                    {mode === "magnify" && "Click to place magnifier"}
-                    {mode === "filter" && "Select filter from panel"}
-                    {mode === "multizoom" && "Click to add zoom point. Use panel to edit."}
-                    {mode === "caption" && "Narration Subtitles"}
+                          {/* Text overlay */}
+                          {overlayPos && overlayPos.x != null && currentAnn?.editorOverlayText && (
+                            <div
+                              className="absolute pointer-events-auto cursor-move select-none"
+                              style={{
+                                left: `${overlayPos.x}%`,
+                                top: `${overlayPos.y}%`,
+                                transform: "translate(-50%, -50%)",
+                              }}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setMode("overlay");
+                                const coords = getCanvasCoords(e);
+                                if (!coords) return;
+                                setDragItem({
+                                  type: "overlay",
+                                  startX: coords.x,
+                                  startY: coords.y,
+                                  initialX: currentAnn?.editorOverlayX ?? 50,
+                                  initialY: currentAnn?.editorOverlayY ?? 50,
+                                });
+                              }}
+                            >
+                              <div
+                                className="px-3 py-1.5 rounded shadow-lg font-body font-semibold whitespace-nowrap"
+                                style={{
+                                  backgroundColor: "rgba(0,0,0,0.6)",
+                                  color: currentAnn.editorOverlayColor || "#FFFFFF",
+                                  fontSize:
+                                    currentAnn.editorOverlaySize === "small"
+                                      ? "12px"
+                                      : currentAnn.editorOverlaySize === "large"
+                                        ? "20px"
+                                        : "16px",
+                                }}
+                              >
+                                {currentAnn.editorOverlayText}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Zoom target point */}
+                          {currentAnn?.zoomTargetX != null && currentAnn?.zoomTargetY != null && (
+                            <div
+                              className="absolute w-4 h-4 -translate-x-1/2 -translate-y-1/2 pointer-events-auto cursor-move select-none"
+                              style={{
+                                left: `${currentAnn.zoomTargetX}%`,
+                                top: `${currentAnn.zoomTargetY}%`,
+                              }}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setMode("point");
+                                const coords = getCanvasCoords(e);
+                                if (!coords) return;
+                                setDragItem({
+                                  type: "zoomTarget",
+                                  startX: coords.x,
+                                  startY: coords.y,
+                                  initialX: currentAnn?.zoomTargetX ?? 50,
+                                  initialY: currentAnn?.zoomTargetY ?? 50,
+                                });
+                              }}
+                            >
+                              <div className="w-full h-full rounded-full border-2 border-[#FF0099] bg-[#FF0099]/40 animate-pulse" style={{ boxShadow: "0 0 0 2px rgba(255,255,255,0.9), 0 2px 8px rgba(0,0,0,0.5)" }} />
+                            </div>
+                          )}
+
+                          {/* Multi-zoom points */}
+                          {currentAnn?.editorMultiZooms?.map((mz, idx) => (
+                            <div key={mz.id}
+                              className="absolute pointer-events-auto cursor-move select-none"
+                              style={{
+                                left: `${mz.targetX}%`,
+                                top: `${mz.targetY}%`,
+                                transform: "translate(-50%, -50%)",
+                              }}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setMode("multizoom");
+                                const coords = getCanvasCoords(e);
+                                if (!coords) return;
+                                setDragItem({
+                                  type: "multizoom",
+                                  id: mz.id,
+                                  startX: coords.x,
+                                  startY: coords.y,
+                                  initialX: mz.targetX,
+                                  initialY: mz.targetY,
+                                });
+                              }}
+                            >
+                              <div className="w-6 h-6 rounded-full bg-violet-500 text-white flex items-center justify-center text-xs font-bold shadow-lg border-2 border-white">
+                                {idx + 1}
+                              </div>
+                              {mz.rectW != null && mz.rectH != null && (
+                                <div
+                                  className="absolute border-2 border-violet-400 pointer-events-none"
+                                  style={{
+                                    left: `${-((mz.rectW || 0) / 2)}%`,
+                                    top: `${-((mz.rectH || 0) / 2)}%`,
+                                    width: `${mz.rectW}%`,
+                                    height: `${mz.rectH}%`,
+                                  }}
+                                />
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Mode indicator */}
+                      <div className="absolute bottom-2 left-2 bg-black/60 text-white text-[10px] font-mono px-2 py-1 rounded z-10">
+                        {mode === "rect" && "Highlight Box"}
+                        {mode === "point" && "Zoom Point"}
+                        {mode === "overlay" && "Click to place text"}
+                        {mode === "crop" && "Drag to crop"}
+                        {mode === "blur" && "Drag to blur area"}
+                        {mode === "redact" && "Drag to redact area"}
+                        {mode === "watermark" && "Click to place watermark"}
+                        {mode === "pixelate" && "Drag to pixelate area"}
+                        {mode === "spotlight" && "Drag spotlight area"}
+                        {mode === "badge" && "Click to place badge"}
+                        {mode === "magnify" && "Click to place magnifier"}
+                        {mode === "filter" && "Select filter from panel"}
+                        {mode === "multizoom" && "Click to add zoom point. Use panel to edit."}
+                        {mode === "caption" && "Narration Subtitles"}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
 
                 {/* Step description */}
                 <div className="mt-3 p-3 bg-[var(--sketch-fg-subtle)]/5 rounded border border-[var(--sketch-fg-subtle)]/20">
@@ -2109,71 +2130,13 @@ export function StepEditorPanel() {
               </>
             )}
           </div>
-        </div>
 
-        {/* Bottom: Properties panel */}
-        <div className="mt-3 sketch-card p-4 bg-[var(--sketch-card-bg)]">
-          <h3 className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-wider mb-3 flex items-center gap-2">
-            <Settings2 className="w-3 h-3" />
-            Properties
-          </h3>
-
-          {/* Tool Guide */}
-          <div className="mb-3 p-2.5 bg-[var(--sketch-fg-subtle)]/5 rounded border border-[var(--sketch-fg-subtle)]/20">
-            <div className="flex items-start gap-2">
-              <HelpCircle className="w-3.5 h-3.5 text-[var(--sketch-fg-muted)] mt-0.5 shrink-0" />
-              <div className="text-[11px] text-[var(--sketch-fg-muted)] leading-relaxed">
-                {mode === "select" && (
-                  <><span className="font-semibold text-[var(--sketch-fg)]">Select Tool:</span> Select annotations on the canvas to edit or reposition them.</>
-                )}
-                {mode === "rect" && (
-                  <><span className="font-semibold text-[var(--sketch-fg)]">Highlight Box:</span> Drag on the canvas to draw an orange highlight rectangle. This marks the area the main zoom will focus on.</>
-                )}
-                {mode === "point" && (
-                  <><span className="font-semibold text-[var(--sketch-fg)]">Zoom Point:</span> Click anywhere on the screenshot to set a single zoom target. Use the Zoom settings below to adjust scale.</>
-                )}
-                {mode === "overlay" && (
-                  <><span className="font-semibold text-[var(--sketch-fg)]">Text Overlay:</span> Click on the canvas to place text. Edit the text, color, and size in the settings below.</>
-                )}
-                {mode === "crop" && (
-                  <><span className="font-semibold text-[var(--sketch-fg)]">Crop:</span> Drag the green box edges to choose what to keep. Everything dimmed outside the box will be removed. Drag inside the box to move it.</>
-                )}
-                {mode === "blur" && (
-                  <><span className="font-semibold text-[var(--sketch-fg)]">Blur:</span> Drag over sensitive information (emails, names, API keys) to blur it. Adjust intensity in the settings below.</>
-                )}
-                {mode === "redact" && (
-                  <><span className="font-semibold text-[var(--sketch-fg)]">Redact:</span> Drag over areas to cover with a solid color block. Choose color in the settings below.</>
-                )}
-                {mode === "watermark" && (
-                  <><span className="font-semibold text-[var(--sketch-fg)]">Watermark:</span> Click to set position. Edit text, size, color, and opacity in the settings below.</>
-                )}
-                {mode === "pixelate" && (
-                  <><span className="font-semibold text-[var(--sketch-fg)]">Pixelate:</span> Drag over faces, license plates, or sensitive UI to pixelate. Adjust block size in the settings below.</>
-                )}
-                {mode === "spotlight" && (
-                  <><span className="font-semibold text-[var(--sketch-fg)]">Spotlight:</span> Drag to highlight a region while dimming the rest. Adjust dim intensity in the settings below.</>
-                )}
-                {mode === "badge" && (
-                  <><span className="font-semibold text-[var(--sketch-fg)]">Badge:</span> Click to place a numbered circle. Edit number and color in the settings below.</>
-                )}
-                {mode === "magnify" && (
-                  <><span className="font-semibold text-[var(--sketch-fg)]">Magnify:</span> Click to set the target area. A zoomed inset will appear in a corner. Adjust scale and corner in the settings below.</>
-                )}
-                {mode === "filter" && (
-                  <><span className="font-semibold text-[var(--sketch-fg)]">Filter:</span> Select a color filter from the settings below. Applies to the entire screenshot for this step.</>
-                )}
-                {mode === "multizoom" && (
-                  <><span className="font-semibold text-[var(--sketch-fg)]">Multi-Zoom:</span> Click multiple times on the canvas to add zoom points. Each point becomes a separate animated zoom segment. Edit scale and duration per point in the settings below.</>
-                )}
-                {mode === "pan" && (
-                  <><span className="font-semibold text-[var(--sketch-fg)]">Pan:</span> Drag to pan around the canvas when zoomed in. No edits are made in this mode.</>
-                )}
-                {mode === "caption" && (
-                  <><span className="font-semibold text-[var(--sketch-fg)]">Subtitles:</span> Add narration subtitles for the TTS generation.</>
-                )}
-              </div>
-            </div>
-          </div>
+          {/* Properties panel (collapsible, below canvas in right-main) */}
+          <div className="flex-shrink-0 sketch-card p-3 bg-[var(--sketch-card-bg)] mt-2 max-h-[35vh] overflow-y-auto">
+            <h3 className="font-mono text-[10px] text-[var(--sketch-fg-muted)] uppercase tracking-wider mb-2 flex items-center gap-1">
+              <Settings2 className="w-3 h-3" />
+              Properties — {mode}
+            </h3>
 
           <div className="space-y-4">
             {/* Caption Properties */}
@@ -3312,7 +3275,7 @@ export function StepEditorPanel() {
                       min={0}
                       max={100}
                       value={currentAnn?.editorBadgeX ?? ""}
-                      onChange={(e) => setAnnotations((prev) => ({...prev, [currentStep!.id]: {...prev[currentStep!.id], editorBadgeX: Number(e.target.value)}}))}
+                      onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorBadgeX: Number(e.target.value) } }))}
                       onBlur={() => pushHistory(annotations)}
                       className="mt-1 text-xs"
                     />
@@ -3324,7 +3287,7 @@ export function StepEditorPanel() {
                       min={0}
                       max={100}
                       value={currentAnn?.editorBadgeY ?? ""}
-                      onChange={(e) => setAnnotations((prev) => ({...prev, [currentStep!.id]: {...prev[currentStep!.id], editorBadgeY: Number(e.target.value)}}))}
+                      onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorBadgeY: Number(e.target.value) } }))}
                       onBlur={() => pushHistory(annotations)}
                       className="mt-1 text-xs"
                     />
@@ -3336,7 +3299,7 @@ export function StepEditorPanel() {
                     <input
                       type="color"
                       value={currentAnn?.editorBadgeColor || "#FBBF24"}
-                      onChange={(e) => setAnnotations((prev) => ({...prev, [currentStep!.id]: {...prev[currentStep!.id], editorBadgeColor: e.target.value}}))}
+                      onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorBadgeColor: e.target.value } }))}
                       onBlur={() => pushHistory(annotations)}
                       className="w-8 h-8 rounded border border-[var(--sketch-fg-subtle)]/30"
                     />
@@ -3354,12 +3317,12 @@ export function StepEditorPanel() {
             {activeTab === "magnify" && (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-2">
-                  <div><Label className="text-xs font-mono">X (%)</Label><Input type="number" min={0} max={100} value={currentAnn?.editorMagnifyX ?? ""} onChange={(e) => setAnnotations((prev) => ({...prev, [currentStep!.id]: {...prev[currentStep!.id], editorMagnifyX: Number(e.target.value)}}))} onBlur={() => pushHistory(annotations)} className="mt-1 text-xs" /></div>
-                  <div><Label className="text-xs font-mono">Y (%)</Label><Input type="number" min={0} max={100} value={currentAnn?.editorMagnifyY ?? ""} onChange={(e) => setAnnotations((prev) => ({...prev, [currentStep!.id]: {...prev[currentStep!.id], editorMagnifyY: Number(e.target.value)}}))} onBlur={() => pushHistory(annotations)} className="mt-1 text-xs" /></div>
+                  <div><Label className="text-xs font-mono">X (%)</Label><Input type="number" min={0} max={100} value={currentAnn?.editorMagnifyX ?? ""} onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorMagnifyX: Number(e.target.value) } }))} onBlur={() => pushHistory(annotations)} className="mt-1 text-xs" /></div>
+                  <div><Label className="text-xs font-mono">Y (%)</Label><Input type="number" min={0} max={100} value={currentAnn?.editorMagnifyY ?? ""} onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorMagnifyY: Number(e.target.value) } }))} onBlur={() => pushHistory(annotations)} className="mt-1 text-xs" /></div>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
-                  <div><Label className="text-xs font-mono">Width (%)</Label><Input type="number" min={0} max={100} value={currentAnn?.editorMagnifyW ?? ""} onChange={(e) => setAnnotations((prev) => ({...prev, [currentStep!.id]: {...prev[currentStep!.id], editorMagnifyW: Number(e.target.value)}}))} onBlur={() => pushHistory(annotations)} className="mt-1 text-xs" /></div>
-                  <div><Label className="text-xs font-mono">Height (%)</Label><Input type="number" min={0} max={100} value={currentAnn?.editorMagnifyH ?? ""} onChange={(e) => setAnnotations((prev) => ({...prev, [currentStep!.id]: {...prev[currentStep!.id], editorMagnifyH: Number(e.target.value)}}))} onBlur={() => pushHistory(annotations)} className="mt-1 text-xs" /></div>
+                  <div><Label className="text-xs font-mono">Width (%)</Label><Input type="number" min={0} max={100} value={currentAnn?.editorMagnifyW ?? ""} onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorMagnifyW: Number(e.target.value) } }))} onBlur={() => pushHistory(annotations)} className="mt-1 text-xs" /></div>
+                  <div><Label className="text-xs font-mono">Height (%)</Label><Input type="number" min={0} max={100} value={currentAnn?.editorMagnifyH ?? ""} onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorMagnifyH: Number(e.target.value) } }))} onBlur={() => pushHistory(annotations)} className="mt-1 text-xs" /></div>
                 </div>
                 <div>
                   <Label className="text-xs font-mono">Zoom Scale</Label>
@@ -3369,7 +3332,7 @@ export function StepEditorPanel() {
                       min={1.5}
                       max={5}
                       step={0.5}
-                      onValueChange={([v]) => setAnnotations((prev) => ({...prev, [currentStep!.id]: {...prev[currentStep!.id], editorMagnifyScale: v}}))}
+                      onValueChange={([v]) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorMagnifyScale: v } }))}
                       onValueCommit={([v]) => {
                         pushHistory({
                           ...annotations,
@@ -3673,39 +3636,96 @@ export function StepEditorPanel() {
                 <MousePointer className="w-8 h-8 text-[var(--sketch-fg-subtle)]/40 mb-2" />
                 <p className="text-sm font-medium text-[var(--sketch-fg)]">No tool selected</p>
                 <p className="text-xs text-[var(--sketch-fg-muted)] mt-1 max-w-[280px]">
-                  Click a tool in the toolbar or click/drag an annotation on the canvas to edit its properties.
+                  Click a tool in the sidebar or click/drag an annotation on the canvas to edit its properties.
                 </p>
               </div>
             )}
           </div>
-        </div>
+          </div>
 
-        {/* Footer actions */}
-        <div className="mt-6 flex items-center justify-end gap-3">
-          <button
-            onClick={handleSaveStep}
-            disabled={updateStep.isPending}
-            className="flex items-center gap-2 px-4 py-2 border-2 border-[var(--sketch-fg-subtle)] text-sm font-body hover:border-[var(--sketch-border-color)] transition-all disabled:opacity-50"
-            style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
-          >
-            <Save className="w-4 h-4" />
-            Save Step
-          </button>
+          {/* Timeline strip */}
+          <div className="h-24 flex-shrink-0 sketch-card p-2 bg-[var(--sketch-card-bg)] mt-2">
+            <h3 className="font-mono text-[10px] text-[var(--sketch-fg-muted)] uppercase tracking-wider mb-1">
+              Timeline
+            </h3>
+            <div className="flex items-center gap-1 overflow-x-auto h-[70px]">
+              {(props.parentSteps || steps).map((step, idx: number) => {
+                const stepId = step.id;
+                const isActive = idx === currentStepIndex;
+                const ann = annotations[stepId];
+                const edited = hasAnyEdit(ann);
+                return (
+                  <div key={stepId} className="flex items-center flex-shrink-0">
+                    <button
+                      onClick={() => setCurrentStepIndex(idx)}
+                      className={`relative flex-shrink-0 w-20 h-12 border-2 rounded transition-all overflow-hidden ${isActive
+                        ? "border-[#FBBF24] shadow-[0_0_8px_rgba(251,191,36,0.5)]"
+                        : "border-[var(--sketch-fg-subtle)]/30 hover:border-[var(--sketch-border-color)]/40"
+                        }`}
+                    >
+                      {edited && (
+                        <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-500 z-10" />
+                      )}
+                      <span className="absolute top-0.5 left-0.5 font-mono text-[9px] text-white bg-black/60 px-1 rounded z-10">
+                        {idx + 1}
+                      </span>
+                      {step.screenshotPath ? (
+                        <img
+                          src={step.screenshotPath}
+                          alt={`Step ${idx + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-[var(--sketch-fg-subtle)]/10 flex items-center justify-center">
+                          <ImageIcon className="w-4 h-4 text-[var(--sketch-fg-subtle)]" />
+                        </div>
+                      )}
+                    </button>
 
-          <button
-            onClick={handleContinue}
-            disabled={updateStep.isPending}
-            className="flex items-center gap-2 px-6 py-3 border-2 border-[var(--sketch-border-color)] bg-[#FBBF24]/10 text-base font-body font-bold hover:shadow-[4px_4px_0px_0px_#FBBF24] transition-all disabled:opacity-50"
-            style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
-          >
-            {updateStep.isPending ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
-            ) : (
-              <>
-                Save All Steps
-              </>
-            )}
-          </button>
+                    {/* Transition diamond between this step and the next */}
+                    {idx < (props.parentSteps || steps).length - 1 && (
+                      <div className="relative flex-shrink-0 mx-0.5">
+                        <button
+                          onClick={() =>
+                            setOpenTransitionDropdown(
+                              openTransitionDropdown === stepId ? null : stepId
+                            )
+                          }
+                          className="w-6 h-6 flex items-center justify-center rotate-45 border-2 border-[var(--sketch-fg-subtle)]/40 hover:border-[#FBBF24] hover:bg-[#FBBF24]/10 transition-all rounded-sm"
+                          title="Click to set transition"
+                        >
+                          <Film className="w-3 h-3 -rotate-45 text-[var(--sketch-fg-muted)]" />
+                        </button>
+                        {openTransitionDropdown === stepId && (
+                          <div className="absolute top-7 left-1/2 -translate-x-1/2 z-50 bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-border-color)] rounded-md shadow-lg p-1 min-w-[120px]">
+                            {transitionTypes.map((t) => {
+                              const nextStep = (props.parentSteps || steps)[idx + 1];
+                              const currentVal = props.stepTransitions?.[nextStep.id] || props.globalTransition || "fade";
+                              return (
+                                <button
+                                  key={t.value}
+                                  onClick={() => {
+                                    if (nextStep) {
+                                      props.onStepTransitionChange?.(nextStep.id, t.value);
+                                    }
+                                    setOpenTransitionDropdown(null);
+                                  }}
+                                  className={`block w-full text-left px-2 py-1 text-[10px] font-body rounded hover:bg-[#FBBF24]/10 ${currentVal === t.value ? "text-[#FBBF24] font-semibold" : "text-[var(--sketch-fg-muted)]"}`}
+                                >
+                                  {t.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          </div>
         </div>
       </motion.div>
     </div>
@@ -3715,6 +3735,31 @@ export function StepEditorPanel() {
 /* ------------------------------------------------------------------ */
 /*  Sub-components                                                     */
 /* ------------------------------------------------------------------ */
+
+function ToolIconButton({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      className={`flex items-center justify-center w-full aspect-square border-2 transition-all rounded-md ${active
+        ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/10 shadow-[2px_2px_0px_0px_#FBBF24]"
+        : "border-[var(--sketch-fg-subtle)]/30 hover:border-[var(--sketch-border-color)]/40 hover:bg-[var(--sketch-fg-subtle)]/5"
+        }`}
+    >
+      {icon}
+    </button>
+  );
+}
 
 function ToolButton({
   active,
@@ -3730,11 +3775,10 @@ function ToolButton({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-3 py-2 border-2 text-sm font-body transition-all ${
-        active
+      className={`flex items-center gap-2 px-3 py-2 border-2 text-sm font-body transition-all ${active
           ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/10 shadow-[3px_3px_0px_0px_#FBBF24]"
           : "border-[var(--sketch-fg-subtle)] hover:border-[var(--sketch-border-color)]/40"
-      }`}
+        }`}
       style={{
         borderRadius: active
           ? "255px 15px 225px 15px/15px 225px 15px 255px"
