@@ -91,6 +91,7 @@ export const stepRouter = createRouter({
     .input(
       z.object({
         id: z.number(),
+        order: z.number().optional(),
         description: z.string().min(1).max(500).optional(),
         screenshotPath: z.string().optional(),
         aiScript: z.string().optional(),

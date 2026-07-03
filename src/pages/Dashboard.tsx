@@ -16,6 +16,8 @@ import {
   LogOut,
   Wand2,
   Camera,
+  Upload,
+  Palette,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,6 +50,9 @@ export default function Dashboard() {
   const isLoading = standardLoading || studioLoading;
 
   const utils = trpc.useUtils();
+  const createProject = trpc.project.create.useMutation();
+  const [selectedRatio, setSelectedRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
+  
   const deleteProjectMutation = trpc.project.delete.useMutation({
     onSuccess: () => {
       utils.project.list.invalidate();
@@ -91,6 +96,22 @@ export default function Dashboard() {
         return <AlertCircle className="w-4 h-4 text-red-500" />;
       default:
         return <Sparkles className="w-4 h-4 text-[var(--space-text-subtle)]" />;
+    }
+  };
+
+  const handleCreateBlankProject = async () => {
+    try {
+      setShowNewProjectDialog(false);
+      const platform = selectedRatio === "16:9" ? "youtube" : selectedRatio === "9:16" ? "tiktok" : "linkedin";
+      const result = await createProject.mutateAsync({
+        title: "Untitled video",
+        description: "Screenshot tutorial video",
+        platform,
+        aspectRatio: selectedRatio,
+      });
+      navigate(`/create/${result.id}/preview`);
+    } catch (err) {
+      console.error("Failed to create project:", err);
     }
   };
 
@@ -305,64 +326,130 @@ export default function Dashboard() {
         </main>
       </div>
 
-      {/* New Project Type Selection Dialog */}
+      {/* Google Vids-like Start Creating Dialog */}
       <Dialog open={showNewProjectDialog} onOpenChange={setShowNewProjectDialog}>
-        <DialogContent className="border border-[var(--space-border)] bg-[var(--space-card)] dark:bg-[#041715] max-w-lg rounded-2xl shadow-2xl gap-6 p-6">
-          <DialogHeader>
-            <DialogTitle className="text-[var(--space-text)] text-xl font-bold">
-              Create New Project
+        <DialogContent className="border border-[var(--space-border)] bg-[var(--space-card)] dark:bg-[#041715] max-w-4xl rounded-2xl shadow-2xl p-6 md:p-8 flex flex-col gap-6 select-none">
+          <DialogHeader className="flex flex-col items-center text-center">
+            <DialogTitle className="text-xl md:text-2xl font-bold text-[var(--space-text)] tracking-tight">
+              Hello, {user.name || user.email.split('@')[0]}. Let's start creating.
             </DialogTitle>
-            <DialogDescription className="text-[var(--space-text-muted)] text-sm leading-relaxed mt-1">
-              Choose how you want to create your video
-            </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-4 mt-2">
-            <button
-              onClick={() => {
-                setShowNewProjectDialog(false);
-                navigate("/create/0/setup");
-              }}
-              className="p-5 text-left bg-[var(--space-card)] border border-[var(--space-border)] hover:border-teal-500 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 group flex items-start gap-4 cursor-pointer rounded-2xl shadow-sm"
-            >
-              <div className="w-12 h-12 flex items-center justify-center bg-teal-500/10 border border-teal-500/20 rounded-xl flex-shrink-0 group-hover:bg-teal-500/20 transition-colors">
-                <Camera className="w-6 h-6 text-teal-500" />
-              </div>
-              <div>
-                <h3 className="font-bold text-[var(--space-text)] group-hover:text-teal-650 transition-colors">
-                  📸 Screenshot Tutorial
-                </h3>
-                <p className="text-sm text-[var(--space-text-muted)] mt-1 leading-relaxed">
-                  Upload screenshots and turn them into a professional tutorial video with zoom effects and narration.
-                </p>
-                <span className="font-mono text-[9px] text-[var(--space-text-subtle)] mt-2 inline-block">
-                  Upload → Script → Annotate → Render
-                </span>
-              </div>
-            </button>
 
+          {/* Aspect Ratio Selector Pills */}
+          <div className="flex items-center justify-center gap-3">
             <button
-              onClick={() => {
-                setShowNewProjectDialog(false);
-                navigate("/studio/new");
-              }}
-              className="p-5 text-left bg-[var(--space-card)] border border-[var(--space-border)] hover:border-amber-500 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 group flex items-start gap-4 cursor-pointer rounded-2xl shadow-sm"
+              onClick={() => setSelectedRatio("16:9")}
+              className={`px-4 py-1.5 rounded-full text-xs font-semibold flex items-center gap-2 border transition-all cursor-pointer ${
+                selectedRatio === "16:9"
+                  ? "bg-[#FBBF24]/15 border-[#FBBF24] text-[var(--space-text)] shadow-sm"
+                  : "bg-transparent border-[var(--space-border)] text-[var(--space-text-subtle)] hover:bg-[var(--space-border)]/20"
+              }`}
             >
-              <div className="w-12 h-12 flex items-center justify-center bg-amber-500/10 border border-amber-500/20 rounded-xl flex-shrink-0 group-hover:bg-amber-500/20 transition-colors">
-                <Wand2 className="w-6 h-6 text-amber-500" />
-              </div>
-              <div>
-                <h3 className="font-bold text-[var(--space-text)] group-hover:text-amber-500 transition-colors">
-                  🎬 AI Video Studio
-                </h3>
-                <p className="text-sm text-[var(--space-text-muted)] mt-1 leading-relaxed">
-                  Describe your video topic and AI generates everything — script, stock footage, voiceover, and final video.
-                </p>
-                <span className="font-mono text-[9px] text-[var(--space-text-subtle)] mt-2 inline-flex items-center gap-1">
-                  <Sparkles className="w-3 h-3 text-amber-500" />
-                  Powered by AI + Pexels
-                </span>
-              </div>
+              <span className="w-3.5 h-2 border border-current rounded-xs inline-block" />
+              Landscape (16:9)
             </button>
+            <button
+              onClick={() => setSelectedRatio("9:16")}
+              className={`px-4 py-1.5 rounded-full text-xs font-semibold flex items-center gap-2 border transition-all cursor-pointer ${
+                selectedRatio === "9:16"
+                  ? "bg-[#FBBF24]/15 border-[#FBBF24] text-[var(--space-text)] shadow-sm"
+                  : "bg-transparent border-[var(--space-border)] text-[var(--space-text-subtle)] hover:bg-[var(--space-border)]/20"
+              }`}
+            >
+              <span className="w-2 h-3.5 border border-current rounded-xs inline-block" />
+              Portrait (9:16)
+            </button>
+            <button
+              onClick={() => setSelectedRatio("1:1")}
+              className={`px-4 py-1.5 rounded-full text-xs font-semibold flex items-center gap-2 border transition-all cursor-pointer ${
+                selectedRatio === "1:1"
+                  ? "bg-[#FBBF24]/15 border-[#FBBF24] text-[var(--space-text)] shadow-sm"
+                  : "bg-transparent border-[var(--space-border)] text-[var(--space-text-subtle)] hover:bg-[var(--space-border)]/20"
+              }`}
+            >
+              <span className="w-3 h-3 border border-current rounded-xs inline-block" />
+              Square (1:1)
+            </button>
+          </div>
+
+          {/* Cards Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
+            {/* Veo 3.1 */}
+            <div className="p-4 bg-[var(--space-card)] border border-[var(--space-border)] hover:border-[#FBBF24]/50 rounded-xl transition-all hover:scale-[1.02] flex flex-col items-center justify-between text-center min-h-[140px] cursor-pointer" onClick={handleCreateBlankProject}>
+              <div className="w-9 h-9 rounded-lg bg-teal-500/10 flex items-center justify-center text-teal-500 mb-2">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div className="flex-1 flex flex-col justify-center">
+                <h4 className="text-xs font-bold text-[var(--space-text)]">Veo 3.1 <span className="text-[8px] bg-amber-500/15 text-amber-600 px-1 py-0.2 rounded-xs ml-0.5">New</span></h4>
+                <p className="text-[9px] text-[var(--space-text-muted)] mt-1.5 leading-tight">Generate 8-second AI clips by writing prompts</p>
+              </div>
+            </div>
+
+            {/* AI Avatar */}
+            <div className="p-4 bg-[var(--space-card)] border border-[var(--space-border)] hover:border-[#FBBF24]/50 rounded-xl transition-all hover:scale-[1.02] flex flex-col items-center justify-between text-center min-h-[140px] cursor-pointer" onClick={handleCreateBlankProject}>
+              <div className="w-9 h-9 rounded-lg bg-indigo-500/10 flex items-center justify-center text-indigo-500 mb-2">
+                <Wand2 className="w-4 h-4" />
+              </div>
+              <div className="flex-1 flex flex-col justify-center">
+                <h4 className="text-xs font-bold text-[var(--space-text)]">AI avatar <span className="text-[8px] bg-amber-500/15 text-amber-600 px-1 py-0.2 rounded-xs ml-0.5">New</span></h4>
+                <p className="text-[9px] text-[var(--space-text-muted)] mt-1.5 leading-tight">Write a script and choose an avatar presenter</p>
+              </div>
+            </div>
+
+            {/* Convert Slides */}
+            <div className="p-4 bg-[var(--space-card)] border border-[var(--space-border)] hover:border-[#FBBF24]/50 rounded-xl transition-all hover:scale-[1.02] flex flex-col items-center justify-between text-center min-h-[140px] cursor-pointer" onClick={handleCreateBlankProject}>
+              <div className="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500 mb-2">
+                <Film className="w-4 h-4" />
+              </div>
+              <div className="flex-1 flex flex-col justify-center">
+                <h4 className="text-xs font-bold text-[var(--space-text)]">Convert Slides</h4>
+                <p className="text-[9px] text-[var(--space-text-muted)] mt-1.5 leading-tight">Turn presentations into fully animated videos</p>
+              </div>
+            </div>
+
+            {/* Record */}
+            <div className="p-4 bg-[var(--space-card)] border border-[var(--space-border)] hover:border-[#FBBF24]/50 rounded-xl transition-all hover:scale-[1.02] flex flex-col items-center justify-between text-center min-h-[140px] cursor-pointer" onClick={handleCreateBlankProject}>
+              <div className="w-9 h-9 rounded-lg bg-red-500/10 flex items-center justify-center text-red-500 mb-2">
+                <Camera className="w-4 h-4" />
+              </div>
+              <div className="flex-1 flex flex-col justify-center">
+                <h4 className="text-xs font-bold text-[var(--space-text)]">Record</h4>
+                <p className="text-[9px] text-[var(--space-text-muted)] mt-1.5 leading-tight">Record yourself, your screen, or both directly</p>
+              </div>
+            </div>
+
+            {/* Upload */}
+            <div className="p-4 bg-[var(--space-card)] border border-[var(--space-border)] hover:border-[#FBBF24]/50 rounded-xl transition-all hover:scale-[1.02] flex flex-col items-center justify-between text-center min-h-[140px] cursor-pointer" onClick={handleCreateBlankProject}>
+              <div className="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500 mb-2">
+                <Upload className="w-4 h-4" />
+              </div>
+              <div className="flex-1 flex flex-col justify-center">
+                <h4 className="text-xs font-bold text-[var(--space-text)]">Upload</h4>
+                <p className="text-[9px] text-[var(--space-text-muted)] mt-1.5 leading-tight">Import media from computer or cloud storage</p>
+              </div>
+            </div>
+
+            {/* Templates */}
+            <div className="p-4 bg-[var(--space-card)] border border-[var(--space-border)] hover:border-[#FBBF24]/50 rounded-xl transition-all hover:scale-[1.02] flex flex-col items-center justify-between text-center min-h-[140px] cursor-pointer" onClick={handleCreateBlankProject}>
+              <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500 mb-2">
+                <Palette className="w-4 h-4" />
+              </div>
+              <div className="flex-1 flex flex-col justify-center">
+                <h4 className="text-xs font-bold text-[var(--space-text)]">Templates</h4>
+                <p className="text-[9px] text-[var(--space-text-muted)] mt-1.5 leading-tight">Start with a themed, pre-styled outline</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Blank vid trigger */}
+          <div className="mt-2 flex flex-col items-center gap-1.5">
+            <button
+              onClick={handleCreateBlankProject}
+              className="w-14 h-14 rounded-full border-2 border-dashed border-[#FBBF24]/40 hover:border-[#FBBF24] bg-[var(--space-card)] flex items-center justify-center transition-all hover:scale-105 shadow-md group cursor-pointer"
+            >
+              <Plus className="w-5 h-5 text-[#FBBF24] group-hover:scale-110 transition-transform" />
+            </button>
+            <span className="text-xs font-bold text-[var(--space-text)]">Blank vid</span>
           </div>
         </DialogContent>
       </Dialog>

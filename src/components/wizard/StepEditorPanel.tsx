@@ -1,20 +1,18 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useParams } from "react-router";
 import { trpc } from "@/providers/trpc";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
+import { useTheme } from "next-themes";
 import {
-  ChevronLeft,
   ChevronRight as ChevronRightIcon,
   Target,
   MousePointer,
   Square,
   Loader2,
   Type,
-  Image as ImageIcon,
   Crop,
   Palette,
   Trash2,
-  Save,
   Settings2,
   Move,
   Aperture,
@@ -22,6 +20,7 @@ import {
   Stamp,
   Grid3x3,
   Sun,
+  Moon,
   BadgeCheck,
   Search,
   Scan,
@@ -30,14 +29,30 @@ import {
   Redo2,
   Film,
   ChevronDown,
-  ZoomIn,
-  ZoomOut,
-  Maximize,
+  Upload,
+  ArrowLeft,
+  Volume2,
+  Play,
+  Crown,
+  AlertTriangle,
+  Mic,
+  Merge,
+  CheckCircle,
+  Sparkles,
+  Bot,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import type { TransitionType } from "@/hooks/useWizardStore";
+import AIGuide from "@/components/wizard/AIGuide";
 
 /* ------------------------------------------------------------------ */
 /*  Types & Helpers (carried over from old StepAnnotate)              */
@@ -235,9 +250,58 @@ const transitionTypes: { value: TransitionType; label: string }[] = [
   { value: "dissolve", label: "Dissolve" },
 ];
 
+const voices = [
+  { id: "en-US-AndrewMultilingualNeural", name: "Andrew", accent: "US", gender: "Male", tag: "Natural" },
+  { id: "en-US-AvaMultilingualNeural", name: "Ava", accent: "US", gender: "Female", tag: "Natural" },
+  { id: "en-US-BrianMultilingualNeural", name: "Brian", accent: "US", gender: "Male", tag: "Natural" },
+  { id: "en-US-EmmaMultilingualNeural", name: "Emma", accent: "US", gender: "Female", tag: "Natural" },
+  { id: "en-GB-SoniaNeural", name: "Sonia", accent: "UK", gender: "Female" },
+  { id: "en-GB-RyanNeural", name: "Ryan", accent: "UK", gender: "Male" },
+  { id: "en-AU-NatashaNeural", name: "Natasha", accent: "AU", gender: "Female" },
+  { id: "en-US-GuyNeural", name: "Guy", accent: "US", gender: "Male" },
+  { id: "kokoro:af_heart", name: "Heart", accent: "US", gender: "Female", tag: "Ultra-real" },
+  { id: "kokoro:am_michael", name: "Michael", accent: "US", gender: "Male", tag: "Ultra-real" },
+  { id: "kokoro:bf_emma", name: "Emma B.", accent: "UK", gender: "Female", tag: "Ultra-real" },
+  { id: "kokoro:af_bella", name: "Bella", accent: "US", gender: "Female", tag: "Ultra-real" },
+] as Array<{ id: string; name: string; accent: string; gender: string; tag?: string }>;
+
+const elevenLabsVoices = [
+  { id: "elevenlabs:pNInz6obpgDQGcFmaJgB", name: "Adam", accent: "US", gender: "Male", desc: "Dominant, Firm" },
+  { id: "elevenlabs:EXAVITQu4vr4xnSDxMaL", name: "Sarah", accent: "US", gender: "Female", desc: "Mature, Confident" },
+  { id: "elevenlabs:TX3LPaxmHKxFdv7VOQHJ", name: "Liam", accent: "US", gender: "Male", desc: "Energetic Creator" },
+  { id: "elevenlabs:cgSgspJ2msm6clMCkdW9", name: "Jessica", accent: "US", gender: "Female", desc: "Playful, Warm" },
+  { id: "elevenlabs:cjVigY5qzO86Huf0OWal", name: "Eric", accent: "US", gender: "Male", desc: "Smooth, Trustworthy" },
+  { id: "elevenlabs:hpp4J3VqNfWAUOO0d1Us", name: "Bella", accent: "US", gender: "Female", desc: "Professional, Bright" },
+  { id: "elevenlabs:iP95p4xoKVk53GoZ742B", name: "Chris", accent: "US", gender: "Male", desc: "Charming, Down-to-Earth" },
+  { id: "elevenlabs:nPczCjzI2devNBz1zQrb", name: "Brian", accent: "US", gender: "Male", desc: "Deep, Resonant" },
+  { id: "elevenlabs:onwK4e9ZLuTAKqWW03F9", name: "Daniel", accent: "US", gender: "Male", desc: "Steady Broadcaster" },
+  { id: "elevenlabs:pFZP5JQG7iQjIQuC4Bku", name: "Lily", accent: "US", gender: "Female", desc: "Velvety Actress" },
+  { id: "elevenlabs:pqHfZKP75CvOlQylNhV4", name: "Bill", accent: "US", gender: "Male", desc: "Wise, Mature" },
+  { id: "elevenlabs:Xb7hH8MSUJpSbSDYk0k2", name: "Alice", accent: "US", gender: "Female", desc: "Clear Educator" },
+  { id: "elevenlabs:JBFqnCBsd6RMkjVDRZzb", name: "George", accent: "US", gender: "Male", desc: "Warm Storyteller" },
+  { id: "elevenlabs:XrExE9yKIg1WjnnlVkGX", name: "Matilda", accent: "US", gender: "Female", desc: "Professional" },
+  { id: "elevenlabs:bIHbv24MWmeRgasZH58o", name: "Will", accent: "US", gender: "Male", desc: "Relaxed Optimist" },
+  { id: "elevenlabs:FGY2WhTYpPnrIDTdsKH5", name: "Laura", accent: "US", gender: "Female", desc: "Quirky Attitude" },
+  { id: "elevenlabs:CwhRBWXzGAHq8TQ4Fs17", name: "Roger", accent: "US", gender: "Male", desc: "Laid-Back, Casual" },
+  { id: "elevenlabs:SOYHLrjzK2X1ezoPC6cr", name: "Harry", accent: "US", gender: "Male", desc: "Fierce Warrior" },
+  { id: "elevenlabs:IKne3meq5aSn9XLyUdCD", name: "Charlie", accent: "US", gender: "Male", desc: "Deep, Energetic" },
+  { id: "elevenlabs:N2lVS1w4EtoT3dr4eOWO", name: "Callum", accent: "US", gender: "Male", desc: "Husky Trickster" },
+  { id: "elevenlabs:SAz9YHcvj6GT2YYXdXww", name: "River", accent: "US", gender: "Neutral", desc: "Relaxed, Neutral" },
+  { id: "elevenlabs:bvB801cu7ca8Klk5nO4O", name: "Haseeb", accent: "UK", gender: "Male", desc: "British Documentary" },
+] as Array<{ id: string; name: string; accent: string; gender: string; desc: string }>;
+
+const renderStages = [
+  { key: "queued", label: "Queued", icon: Loader2 },
+  { key: "generating_audio", label: "Audio", icon: Mic },
+  { key: "rendering_segments", label: "Segments", icon: Film },
+  { key: "concatenating", label: "Merge", icon: Merge },
+  { key: "finalizing", label: "Finalize", icon: CheckCircle },
+];
+
 export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const { projectId } = useParams<{ projectId: string }>();
   const projectIdNum = Number(projectId) || 0;
+  const { setTheme, resolvedTheme } = useTheme();
 
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [annotations, setAnnotations] = useState<Record<number, StepAnnotation>>({});
@@ -253,16 +317,19 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const panScrollRef = useRef<{ left: number; top: number }>({ left: 0, top: 0 });
 
-  // Collapsible sidebar sections
-  const [transitionsOpen, setTransitionsOpen] = useState(true);
-  const [captionsOpen, setCaptionsOpen] = useState(true);
-  // Which transition diamond dropdown is open (stepId of the left step in the pair)
   const [openTransitionDropdown, setOpenTransitionDropdown] = useState<number | null>(null);
 
-  // Hover/expandable step details below canvas
-  const [isScriptExpanded, setIsScriptExpanded] = useState(false);
-  const [isScriptHovered, setIsScriptHovered] = useState(false);
-  const showFullScript = isScriptExpanded || isScriptHovered;
+  // Google Vids replica states
+  const [activeRightTab, setActiveRightTab] = useState<"properties" | "script" | "voiceover" | "elevenlabs" | "captions" | "transitions" | "aiguide" | "help" | null>("properties");
+  const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
+  const [projectTitle, setProjectTitle] = useState("Untitled video");
+
+
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isTimelineDragOver, setIsTimelineDragOver] = useState(false);
+  const [uploadingFilesCount, setUploadingFilesCount] = useState(0);
+  const [draggedSceneIndex, setDraggedSceneIndex] = useState<number | null>(null);
 
   const [history, setHistory] = useState<Record<number, StepAnnotation>[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -295,8 +362,109 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     { enabled: projectIdNum > 0 }
   );
 
+  const updateProject = trpc.project.update.useMutation();
   const updateStep = trpc.step.update.useMutation();
+  const createStep = trpc.step.create.useMutation();
+  const deleteStep = trpc.step.delete.useMutation();
+  const generateScript = trpc.ai.generateScript.useMutation();
   const utils = trpc.useUtils();
+
+  // Voice selection states
+  const [selectedVoice, setSelectedVoice] = useState("en-US-AndrewMultilingualNeural");
+  const [voiceSpeed, setVoiceSpeed] = useState(1.0);
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const audioRef = useState(() => new Audio())[0];
+
+  const previewVoice = trpc.ai.previewVoice.useMutation();
+  const credits = trpc.ai.elevenLabsCredits.useQuery(undefined, {
+    enabled: activeRightTab === "elevenlabs",
+    refetchInterval: 30_000,
+  });
+
+  const handlePlayPreview = async (e: React.MouseEvent, voiceId: string) => {
+    e.stopPropagation();
+    
+    if (playingId === voiceId) {
+      audioRef.pause();
+      setPlayingId(null);
+      return;
+    }
+
+    if (previewLoadingId) return;
+
+    audioRef.pause();
+    setPreviewLoadingId(voiceId);
+
+    try {
+      const res = await previewVoice.mutateAsync({ voice: voiceId, speed: voiceSpeed });
+      audioRef.src = res.audioData;
+      audioRef.onended = () => setPlayingId(null);
+      await audioRef.play();
+      setPlayingId(voiceId);
+    } catch (err) {
+      console.error("Preview failed:", err);
+    } finally {
+      setPreviewLoadingId(null);
+    }
+  };
+
+  useEffect(() => {
+    if (project?.voice) {
+      setSelectedVoice(project.voice);
+    }
+    if (project?.speed) {
+      setVoiceSpeed(project.speed);
+    }
+  }, [project?.id, project?.voice, project?.speed]);
+
+  // Render Popup Modal states
+  const [showRenderModal, setShowRenderModal] = useState(false);
+  const [renderStarted, setRenderStarted] = useState(false);
+  const [startRenderError, setStartRenderError] = useState<string | null>(null);
+
+  const startRender = trpc.render.start.useMutation();
+
+  const { data: renderStatus } = trpc.render.status.useQuery(
+    { projectId: projectIdNum },
+    {
+      enabled: projectIdNum > 0 && renderStarted && showRenderModal,
+      refetchInterval: 3000,
+    }
+  );
+
+  // Trigger render on dialog open
+  useEffect(() => {
+    if (showRenderModal && renderStarted && projectIdNum > 0) {
+      setStartRenderError(null);
+      startRender
+        .mutateAsync({ projectId: projectIdNum })
+        .catch((err) => {
+          setStartRenderError(err.message || "Failed to start render");
+        });
+    }
+  }, [showRenderModal, renderStarted, projectIdNum]);
+
+  // Navigate to export when complete
+  useEffect(() => {
+    if (
+      showRenderModal &&
+      (renderStatus?.projectStatus === "complete" ||
+        renderStatus?.job?.status === "complete")
+    ) {
+      const timer = setTimeout(() => {
+        setShowRenderModal(false);
+        window.location.href = `/create/${projectIdNum}/export`;
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [showRenderModal, renderStatus?.projectStatus, renderStatus?.job?.status, projectIdNum]);
+
+  useEffect(() => {
+    if (project?.title) {
+      setProjectTitle(project.title);
+    }
+  }, [project?.title]);
 
   const steps = project?.steps || [];
   const currentStep = steps[currentStepIndex];
@@ -332,6 +500,83 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       setHistoryIndex(newIndex);
       setAnnotations(JSON.parse(JSON.stringify(history[newIndex])));
     }
+  };
+
+  const handleUploadFiles = async (files: FileList) => {
+    if (files.length === 0) return;
+    setUploadingFilesCount(prev => prev + files.length);
+    
+    const sortedFiles = Array.from(files).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+    let currentOrder = (props.parentSteps || steps || []).length + 1;
+
+    for (const file of sortedFiles) {
+      try {
+        const result = await uploadFile(file, `projects/${projectIdNum}/screenshots`);
+
+        await createStep.mutateAsync({
+          projectId: projectIdNum,
+          order: currentOrder,
+          description: `Scene ${currentOrder}`,
+          screenshotPath: result.url,
+        });
+
+        currentOrder++;
+      } catch (err) {
+        console.error("Failed to upload screenshot:", err);
+      } finally {
+        setUploadingFilesCount(prev => Math.max(0, prev - 1));
+      }
+    }
+
+    utils.step.listByProject.invalidate({ projectId: projectIdNum });
+  };
+
+  const handleSceneDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedSceneIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+
+  const handleSceneDrop = async (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    if (draggedSceneIndex === null || draggedSceneIndex === targetIndex) return;
+
+    const stepList = [...(props.parentSteps || steps || [])];
+    const draggedItem = stepList[draggedSceneIndex];
+    stepList.splice(draggedSceneIndex, 1);
+    stepList.splice(targetIndex, 0, draggedItem);
+
+    for (let i = 0; i < stepList.length; i++) {
+      const step = stepList[i];
+      await updateStep.mutateAsync({
+        id: step.id,
+        order: i + 1,
+      });
+    }
+
+    setDraggedSceneIndex(null);
+    utils.step.listByProject.invalidate({ projectId: projectIdNum });
+  };
+
+  const [tempDesc, setTempDesc] = useState("");
+  const [tempScript, setTempScript] = useState("");
+
+  useEffect(() => {
+    if (currentStep) {
+      setTempDesc(currentStep.description || "");
+      setTempScript(currentStep.userEditedScript || currentStep.aiScript || "");
+    }
+  }, [currentStepIndex, currentStep?.id]);
+
+  const handleSaveStepText = async () => {
+    if (!currentStep) return;
+    await updateStep.mutateAsync({
+      id: currentStep.id,
+      description: tempDesc,
+      userEditedScript: tempScript,
+    });
+    utils.project.getById.invalidate({ id: projectIdNum });
   };
 
   // Sync the active tab to the current editing mode. This is the documented
@@ -682,7 +927,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               newH = initH - (newY - initY);
             }
             if (handle.includes("s")) {
-              newH = clamp(initH + deltaY, 5, 100 - initY);
+              newH = clamp(initY + deltaY, 5, 100 - initY);
             }
             updated.editorCropX = newX;
             updated.editorCropY = newY;
@@ -949,6 +1194,15 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     utils.project.getById.invalidate({ id: projectIdNum });
   };
 
+  // Autosave annotations to backend
+  useEffect(() => {
+    if (!currentStep) return;
+    const timer = setTimeout(() => {
+      handleSaveStep();
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [annotations, currentStep?.id]);
+
 
 
   const handleClear = (field: keyof StepAnnotation) => {
@@ -1015,29 +1269,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     : null;
 
   /* Î“Ã¶Ã‡Î“Ã¶Ã‡ Render helpers Î“Ã¶Ã‡Î“Ã¶Ã‡ */
-  const hasAnyEdit = (ann: StepAnnotation | undefined) => {
-    if (!ann) return false;
-    return (
-      ann.zoomTargetX != null ||
-      ann.editorCaptionText != null ||
-      ann.editorOverlayText != null ||
-      ann.editorCropX != null ||
-      ann.editorBlurX != null ||
-      (ann.editorBlurs != null && ann.editorBlurs.length > 0) ||
-      ann.editorRedactX != null ||
-      ann.editorWatermarkText != null ||
-      ann.editorPixelateX != null ||
-      (ann.editorPixelates != null && ann.editorPixelates.length > 0) ||
-      ann.editorSpotlightX != null ||
-      (ann.editorSpotlights != null && ann.editorSpotlights.length > 0) ||
-      ann.editorBadgeNumber != null ||
-      ann.editorMagnifyX != null ||
-      (ann.editorColorFilter != null && ann.editorColorFilter !== "none") ||
-      (ann.editorMultiZooms != null && ann.editorMultiZooms.length > 0) ||
-      ann.editorZoomScale != null ||
-      ann.editorDuration != null
-    );
-  };
 
   
   const renderPropertiesContent = () => {
@@ -2555,6 +2786,433 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     );
   };
 
+  const toggleRightTab = (tab: "properties" | "script" | "voiceover" | "elevenlabs" | "captions" | "transitions" | "aiguide" | "help") => {
+    setActiveRightTab((prev) => (prev === tab ? null : tab));
+  };
+
+  const renderScriptContent = () => {
+    if (!currentStep) return null;
+    return (
+      <div className="space-y-4">
+        <div>
+          <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-1">Scene Description</Label>
+          <Textarea
+            value={tempDesc}
+            onChange={(e) => setTempDesc(e.target.value)}
+            onBlur={handleSaveStepText}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                (e.target as HTMLTextAreaElement).blur();
+              }
+            }}
+            placeholder="Describe what happens in this scene..."
+            className="text-xs min-h-[70px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)]"
+          />
+        </div>
+        <div>
+          <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-1">Narration Script (TTS)</Label>
+          <Textarea
+            value={tempScript}
+            onChange={(e) => setTempScript(e.target.value)}
+            onBlur={handleSaveStepText}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                (e.target as HTMLTextAreaElement).blur();
+              }
+            }}
+            placeholder="Type narration script for this scene..."
+            className="text-xs min-h-[110px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)]"
+          />
+        </div>
+        <div className="pt-3 border-t border-[var(--sketch-border-color)]/20 mt-3">
+          <button
+            onClick={async () => {
+              try {
+                await generateScript.mutateAsync({ projectId: projectIdNum });
+                utils.step.listByProject.invalidate({ projectId: projectIdNum });
+              } catch (err: any) {
+                alert(err.message || "Failed to generate scripts. Make sure descriptions are set and not keyboard-mashed.");
+              }
+            }}
+            disabled={generateScript.isPending}
+            className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-[#FBBF24] hover:bg-[#F59E0B] disabled:opacity-50 text-black text-xs font-bold rounded-md shadow-sm transition-all cursor-pointer border border-black/10"
+          >
+            {generateScript.isPending ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Generating Scripts...</span>
+              </>
+            ) : (
+              <>
+                <span>✨ Generate Scripts for All Scenes</span>
+              </>
+            )}
+          </button>
+          <p className="text-[10px] text-[var(--sketch-fg-muted)] mt-1.5 leading-relaxed">
+            Automatically generate narration scripts for all scenes using AI based on your descriptions.
+          </p>
+        </div>
+      </div>
+    );
+  };
+
+  const renderVoiceoverContent = () => {
+    return (
+      <div className="space-y-4">
+        {/* Voice Selection list */}
+        <div className="space-y-2">
+          <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block">Select AI Voice</Label>
+          <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
+            {voices.map((v) => {
+              const isSelected = selectedVoice === v.id;
+              const isPlaying = playingId === v.id;
+              const isLoading = previewLoadingId === v.id;
+              return (
+                <div
+                  key={v.id}
+                  onClick={() => setSelectedVoice(v.id)}
+                  className={`p-2 border rounded-lg flex items-center justify-between text-xs transition-all cursor-pointer ${
+                    isSelected
+                      ? "border-[#FBBF24] bg-[#FBBF24]/5"
+                      : "border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
+                  }`}
+                >
+                  <div className="flex flex-col">
+                    <span className="font-semibold text-[var(--sketch-fg)]">{v.name}</span>
+                    <span className="text-[9px] text-[var(--sketch-fg-muted)]">{v.accent} • {v.gender} {v.tag && `• ${v.tag}`}</span>
+                  </div>
+                  <button
+                    onClick={(e) => handlePlayPreview(e, v.id)}
+                    disabled={previewLoadingId !== null && previewLoadingId !== v.id}
+                    className="p-1 hover:bg-[var(--sketch-fg-subtle)]/10 rounded-full text-[var(--sketch-fg-muted)] disabled:opacity-50 flex items-center justify-center cursor-pointer"
+                  >
+                    {isLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : isPlaying ? (
+                      <Square className="w-3.5 h-3.5 fill-current" />
+                    ) : (
+                      <Play className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Speed Option */}
+        <div className="space-y-1.5 pt-2 border-t border-[var(--sketch-border-color)]/20">
+          <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] flex justify-between">
+            <span>Voice Speed</span>
+            <span className="font-mono text-[10px]">{voiceSpeed.toFixed(1)}x</span>
+          </Label>
+          <input
+            type="range"
+            min={0.5}
+            max={2.0}
+            step={0.1}
+            value={voiceSpeed}
+            onChange={(e) => setVoiceSpeed(parseFloat(e.target.value))}
+            className="w-full h-1 bg-[var(--sketch-fg-subtle)]/10 appearance-none rounded cursor-pointer accent-[#FBBF24]"
+          />
+        </div>
+
+        {/* Save Voiceover Selection */}
+        <div className="pt-2">
+          <button
+            onClick={async () => {
+              try {
+                await updateProject.mutateAsync({
+                  id: projectIdNum,
+                  voice: selectedVoice,
+                  speed: voiceSpeed,
+                });
+                alert("Voiceover updated successfully!");
+              } catch (err: any) {
+                alert(err.message || "Failed to update voiceover.");
+              }
+            }}
+            disabled={updateProject.isPending}
+            className="w-full py-2 bg-[var(--sketch-btn-bg)] text-[var(--sketch-btn-text)] hover:opacity-90 disabled:opacity-50 text-xs font-bold rounded-md shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            {updateProject.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
+            Update Voiceover
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderElevenLabsContent = () => {
+    return (
+      <div className="space-y-4">
+        {/* ElevenLabs voice list */}
+        <div className="space-y-2">
+          <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block">Select ElevenLabs Voice</Label>
+          
+          {/* Credit Check Indicators */}
+          <div className="p-2 bg-[var(--sketch-fg-subtle)]/5 rounded-lg border border-[var(--sketch-border-color)]/15 text-[10px] leading-relaxed text-[var(--sketch-fg-muted)] mb-1">
+            {credits.isLoading ? (
+              <div className="flex items-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span>Checking ElevenLabs credits...</span>
+              </div>
+            ) : credits.data ? (
+              <div className="flex justify-between items-center">
+                <span>API Credits: <strong className="text-[var(--sketch-fg)]">{credits.data.remaining} / {credits.data.limit}</strong></span>
+                {credits.data.remaining > 0 ? (
+                  <span className="text-emerald-600 font-bold">✓ Active</span>
+                ) : (
+                  <span className="text-red-500 font-bold">⚠️ Exhausted</span>
+                )}
+              </div>
+            ) : (
+              <span>Could not load ElevenLabs credits</span>
+            )}
+          </div>
+
+          <div className="space-y-1.5 max-h-[260px] overflow-y-auto pr-1">
+            {elevenLabsVoices.map((v) => {
+              const isSelected = selectedVoice === v.id;
+              const isPlaying = playingId === v.id;
+              const isLoading = previewLoadingId === v.id;
+              return (
+                <div
+                  key={v.id}
+                  onClick={() => setSelectedVoice(v.id)}
+                  className={`p-2 border rounded-lg flex items-center justify-between text-xs transition-all cursor-pointer ${
+                    isSelected
+                      ? "border-[#FBBF24] bg-[#FBBF24]/5"
+                      : "border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
+                  }`}
+                >
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-semibold text-[var(--sketch-fg)]">{v.name}</span>
+                      <Crown className="w-3 h-3 text-amber-500" />
+                    </div>
+                    <span className="text-[9px] text-[var(--sketch-fg-muted)]">{v.accent} • {v.gender} • {v.desc}</span>
+                  </div>
+                  <button
+                    onClick={(e) => handlePlayPreview(e, v.id)}
+                    disabled={previewLoadingId !== null && previewLoadingId !== v.id}
+                    className="p-1 hover:bg-[var(--sketch-fg-subtle)]/10 rounded-full text-[var(--sketch-fg-muted)] disabled:opacity-50 flex items-center justify-center cursor-pointer"
+                  >
+                    {isLoading ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : isPlaying ? (
+                      <Square className="w-3.5 h-3.5 fill-current" />
+                    ) : (
+                      <Play className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Speed Option */}
+        <div className="space-y-1.5 pt-2 border-t border-[var(--sketch-border-color)]/20">
+          <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] flex justify-between">
+            <span>Voice Speed</span>
+            <span className="font-mono text-[10px]">{voiceSpeed.toFixed(1)}x</span>
+          </Label>
+          <input
+            type="range"
+            min={0.5}
+            max={2.0}
+            step={0.1}
+            value={voiceSpeed}
+            onChange={(e) => setVoiceSpeed(parseFloat(e.target.value))}
+            className="w-full h-1 bg-[var(--sketch-fg-subtle)]/10 appearance-none rounded cursor-pointer accent-[#FBBF24]"
+          />
+        </div>
+
+        {/* Save ElevenLabs Selection */}
+        <div className="pt-2">
+          <button
+            onClick={async () => {
+              try {
+                await updateProject.mutateAsync({
+                  id: projectIdNum,
+                  voice: selectedVoice,
+                  speed: voiceSpeed,
+                });
+                alert("ElevenLabs premium voice updated successfully!");
+              } catch (err: any) {
+                alert(err.message || "Failed to update ElevenLabs voice.");
+              }
+            }}
+            disabled={updateProject.isPending}
+            className="w-full py-2 bg-[#FBBF24] hover:bg-[#F59E0B] text-black disabled:opacity-50 text-xs font-bold rounded-md shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-black/10"
+          >
+            {updateProject.isPending && <Loader2 className="w-3 h-3 animate-spin text-black" />}
+            Set Premium Voice
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  const renderCaptionsContent = () => {
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between pb-2 border-b border-[var(--sketch-border-color)]/20">
+          <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] cursor-pointer" htmlFor="captions-toggle">Show Captions</Label>
+          <input
+            id="captions-toggle"
+            type="checkbox"
+            checked={props.captionsEnabled ?? true}
+            onChange={(e) => props.onCaptionsEnabledChange?.(e.target.checked)}
+            className="w-3.5 h-3.5 text-[var(--sketch-accent)] rounded border-gray-300 focus:ring-[#0B57D0] cursor-pointer"
+          />
+        </div>
+
+        {(props.captionsEnabled ?? true) && (
+          <div className="space-y-3">
+            <div>
+              <Label className="text-[11px] font-semibold text-[var(--sketch-fg-muted)] block mb-1">Style</Label>
+              <select
+                value={props.captionStyle || "standard"}
+                onChange={(e) => props.onCaptionStyleChange?.(e.target.value)}
+                className="w-full text-xs py-1.5 px-2 bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/20 rounded-md focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)] outline-none"
+              >
+                <option value="standard">Standard</option>
+                <option value="outline">Outline</option>
+                <option value="highlight">Highlight</option>
+              </select>
+            </div>
+
+            <div>
+              <Label className="text-[11px] font-semibold text-[var(--sketch-fg-muted)] block mb-1">Size</Label>
+              <select
+                value={props.captionSize || "medium"}
+                onChange={(e) => props.onCaptionSizeChange?.(e.target.value)}
+                className="w-full text-xs py-1.5 px-2 bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/20 rounded-md focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)] outline-none"
+              >
+                <option value="small">Small</option>
+                <option value="medium">Medium</option>
+                <option value="large">Large</option>
+              </select>
+            </div>
+
+            <div>
+              <Label className="text-[11px] font-semibold text-[var(--sketch-fg-muted)] block mb-1">Position</Label>
+              <select
+                value={props.captionPosition || "bottom"}
+                onChange={(e) => props.onCaptionPositionChange?.(e.target.value)}
+                className="w-full text-xs py-1.5 px-2 bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/20 rounded-md focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)] outline-none"
+              >
+                <option value="top">Top</option>
+                <option value="middle">Middle</option>
+                <option value="bottom">Bottom</option>
+              </select>
+            </div>
+
+            <div>
+              <Label className="text-[11px] font-semibold text-[var(--sketch-fg-muted)] block mb-1">Color</Label>
+              <div className="flex flex-wrap gap-2 mt-1">
+                {["#FFFFFF", "#FBBF24", "#10B981", "#EF4444", "#3B82F6", "#000000"].map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => props.onCaptionColorChange?.(c)}
+                    className={`w-6 h-6 rounded-full border-2 ${
+                      props.captionColor === c ? "border-[var(--sketch-accent)]" : "border-[var(--sketch-border-color)]/20"
+                    } hover:scale-105 transition-transform`}
+                    style={{ backgroundColor: c }}
+                    title={c}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderTransitionsContent = () => {
+    return (
+      <div className="space-y-4">
+        <div>
+          <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-2">Global Transition</Label>
+          <div className="grid grid-cols-2 gap-1.5">
+            {transitionTypes.map((t) => (
+              <button
+                key={t.value}
+                onClick={() => props.onGlobalTransitionChange?.(t.value)}
+                className={`py-1.5 px-2 border text-center transition-all text-[10px] font-semibold rounded-md cursor-pointer ${
+                  props.globalTransition === t.value
+                    ? "border-[var(--sketch-accent)] bg-[var(--sketch-accent)]/10 text-[var(--sketch-accent)] font-bold"
+                    : "border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg-muted)] hover:bg-gray-50"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="pt-2 border-t border-[var(--sketch-border-color)]/20">
+          <div className="flex justify-between items-center mb-1">
+            <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)]">Duration</Label>
+            <span className="font-mono text-[11px] font-bold text-[var(--sketch-accent)]">
+              {(props.transitionDuration ?? 0.5).toFixed(1)}s
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="font-mono text-[9px] text-[var(--sketch-fg-subtle)] w-6">0.3s</span>
+            <input
+              type="range"
+              min={0.3}
+              max={2.0}
+              step={0.1}
+              value={props.transitionDuration ?? 0.5}
+              onChange={(e) => props.onTransitionDurationChange?.(Number(e.target.value))}
+              className="flex-1 h-1 bg-[var(--sketch-fg-subtle)]/10 appearance-none cursor-pointer accent-[var(--sketch-accent)]"
+            />
+            <span className="font-mono text-[9px] text-[var(--sketch-fg-subtle)] w-6">2.0s</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderAIGuideContent = () => {
+    return (
+      <div className="flex flex-col h-full gap-2">
+        <div className="flex-1 min-h-[350px] flex flex-col">
+          <AIGuide />
+        </div>
+      </div>
+    );
+  };
+
+  const renderHelpContent = () => {
+    return (
+      <div className="text-xs text-[var(--sketch-fg-muted)] leading-relaxed space-y-3">
+        <p><strong>Select Tool:</strong> Select annotations on the canvas to edit or reposition them.</p>
+        <p><strong>Highlight Box:</strong> Drag on the canvas to draw a highlight rectangle.</p>
+        <p><strong>Zoom Point:</strong> Click anywhere on the screenshot to set a zoom target.</p>
+        <p><strong>Text Overlay:</strong> Click on the canvas to place text overlays.</p>
+        <p><strong>Crop:</strong> Drag the green box edges to choose what to keep.</p>
+        <p><strong>Blur:</strong> Drag over sensitive info to blur it.</p>
+        <p><strong>Redact:</strong> Drag over areas to cover with solid color blocks.</p>
+        <p><strong>Watermark:</strong> Click to set a persistent watermark.</p>
+        <p><strong>Pixelate:</strong> Drag over areas to pixelate.</p>
+        <p><strong>Spotlight:</strong> Highlight a region while dimming the rest.</p>
+        <p><strong>Badge:</strong> Place a numbered circle overlay.</p>
+        <p><strong>Magnify:</strong> Add a magnifying lens overlay inset.</p>
+        <p><strong>Filter:</strong> Apply color filters to the screenshot.</p>
+        <p><strong>Multi-Zoom:</strong> Set multiple zoom targets sequentially.</p>
+        <p><strong>Pan:</strong> Click and drag to navigate zoomed screenshots.</p>
+      </div>
+    );
+  };
+
 
   if (isLoading) {
     return (
@@ -2565,470 +3223,253 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   }
 
   return (
-    <div className="h-full flex flex-col">
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="h-full flex flex-col">
-        {/* Main split layout: left sidebar + right main area */}
-        <div className="flex h-full min-h-0 gap-2">
-          {/* ══════════ SIDEBAR 1: TOOLS DOCK ══════════ */}
-          <div className="w-12 flex-shrink-0 flex flex-col sketch-card p-1.5 bg-[var(--sketch-card-bg)] items-center min-h-0">
-            <h3 className="font-mono text-[8px] text-[var(--sketch-fg-muted)] uppercase tracking-wider mb-2 text-center select-none">
-              Tools
-            </h3>
-            <div className="flex-1 w-full flex flex-col gap-1.5 overflow-y-auto scrollbar-none items-center">
-              <ToolIconButton active={mode === "select"} onClick={() => setMode("select")} icon={<MousePointer className="w-4 h-4" />} label="Select" />
-              <ToolIconButton active={mode === "rect"} onClick={() => setMode("rect")} icon={<Square className="w-4 h-4" />} label="Highlight" />
-              <ToolIconButton active={mode === "point"} onClick={() => setMode("point")} icon={<Target className="w-4 h-4" />} label="Zoom Point" />
-              <ToolIconButton active={mode === "overlay"} onClick={() => setMode("overlay")} icon={<Type className="w-4 h-4" />} label="Text Overlay" />
-              <ToolIconButton
-                active={mode === "crop"}
-                onClick={() => {
-                  if (currentStep) {
-                    const ann = annotations[currentStep.id] || {};
-                    if (ann.editorCropX == null || ann.editorCropW == null) {
-                      const next = {
-                        ...annotations,
-                        [currentStep.id]: {
-                          ...ann,
-                          editorCropX: 0,
-                          editorCropY: 0,
-                          editorCropW: 100,
-                          editorCropH: 100,
-                        },
-                      };
-                      pushHistory(next);
-                    }
+    <div className="w-full h-full flex flex-col bg-[var(--sketch-bg)] text-[#052421] select-none font-sans overflow-hidden">
+      {/* 1. Main Top Header Bar */}
+      <header className="w-full bg-[var(--sketch-card-bg)] border-b border-[var(--sketch-border-color)]/20 px-4 py-2 flex flex-col gap-1.5 flex-shrink-0">
+        <div className="flex items-center justify-between">
+          {/* Left: Logo, Title row */}
+          <div className="flex items-center gap-3">
+            {/* Back button to dashboard */}
+            <button
+              onClick={() => {
+                if (props.onBack) {
+                  props.onBack();
+                } else {
+                  window.location.href = "/dashboard";
+                }
+              }}
+              className="p-1 hover:bg-[var(--sketch-fg-subtle)]/10 rounded text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] transition-all cursor-pointer flex items-center justify-center mr-1"
+              title="Back to Dashboard"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+
+            {/* Logo: Purple-blue play icon */}
+            <div className="w-6 h-6 rounded bg-[var(--primary)] flex items-center justify-center text-white shadow-sm flex-shrink-0">
+              <Film className="w-3.5 h-3.5" />
+            </div>
+            {/* Project Title Input & Star & Cloud */}
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={projectTitle}
+                onChange={(e) => setProjectTitle(e.target.value)}
+                onBlur={async () => {
+                  if (projectIdNum > 0 && projectTitle.trim()) {
+                    await updateProject.mutateAsync({ id: projectIdNum, title: projectTitle });
                   }
-                  setMode("crop");
                 }}
-                icon={<Crop className="w-4 h-4" />}
-                label="Crop"
+                onKeyDown={async (e) => {
+                  if (e.key === "Enter") {
+                    (e.target as HTMLInputElement).blur();
+                  }
+                }}
+                className="font-medium text-sm text-[var(--sketch-fg)] hover:bg-[var(--sketch-fg-subtle)]/10 focus:bg-[var(--sketch-card-bg)] focus:ring-1 focus:ring-[var(--sketch-accent)] rounded px-1.5 py-0.5 border-none bg-transparent transition-all outline-none"
+                style={{ width: `${Math.max(10, projectTitle.length + 2)}ch` }}
               />
-              <ToolIconButton active={mode === "blur"} onClick={() => setMode("blur")} icon={<Aperture className="w-4 h-4" />} label="Blur" />
-              <ToolIconButton active={mode === "redact"} onClick={() => setMode("redact")} icon={<Shield className="w-4 h-4" />} label="Redact" />
-              <ToolIconButton active={mode === "watermark"} onClick={() => setMode("watermark")} icon={<Stamp className="w-4 h-4" />} label="Watermark" />
-              <ToolIconButton active={mode === "pixelate"} onClick={() => setMode("pixelate")} icon={<Grid3x3 className="w-4 h-4" />} label="Pixelate" />
-              <ToolIconButton active={mode === "spotlight"} onClick={() => setMode("spotlight")} icon={<Sun className="w-4 h-4" />} label="Spotlight" />
-              <ToolIconButton active={mode === "badge"} onClick={() => setMode("badge")} icon={<BadgeCheck className="w-4 h-4" />} label="Badge" />
-              <ToolIconButton active={mode === "magnify"} onClick={() => setMode("magnify")} icon={<Search className="w-4 h-4" />} label="Magnify" />
-              <ToolIconButton active={mode === "filter"} onClick={() => setMode("filter")} icon={<Palette className="w-4 h-4" />} label="Filter" />
-              <ToolIconButton active={mode === "multizoom"} onClick={() => setMode("multizoom")} icon={<Scan className="w-4 h-4" />} label="Multi-Zoom" />
-              <ToolIconButton active={mode === "pan"} onClick={() => setMode("pan")} icon={<Move className="w-4 h-4" />} label="Pan" />
-              <ToolIconButton active={mode === "caption"} onClick={() => setMode("caption")} icon={<Type className="w-4 h-4" />} label="Subtitles" />
+              <span className="text-[10px] text-[var(--sketch-fg-subtle)] font-medium bg-[var(--sketch-fg-subtle)]/10 px-1.5 py-0.5 rounded flex items-center gap-1">
+                <span>All changes saved</span>
+              </span>
             </div>
           </div>
 
-          {/* ══════════ SIDEBAR 2: PROPERTIES & SETTINGS ══════════ */}
-          <div className="w-60 flex-shrink-0 flex flex-col sketch-card p-2.5 bg-[var(--sketch-card-bg)]">
-            <div className="flex-1 overflow-y-auto min-h-0 pr-1 space-y-3">
+          {/* Right: Light/Dark Mode toggle button & Profile */}
+          <div className="flex items-center gap-3">
+            {/* Render & Export Trigger Button */}
+            <button
+              onClick={() => {
+                setRenderStarted(true);
+                setShowRenderModal(true);
+              }}
+              className="py-1 px-3 bg-[#FBBF24] hover:bg-[#FBBF24]/90 dark:bg-[#FBBF24]/20 dark:hover:bg-[#FBBF24]/30 text-black dark:text-[#FBBF24] text-xs font-bold rounded shadow-sm hover:shadow transition-all flex items-center gap-1.5 cursor-pointer border border-[#FBBF24]/30"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Export</span>
+            </button>
 
-
-
-            {/* Active Tool Properties Panel */}
-            <h3 className="font-mono text-[10px] text-[var(--sketch-fg-muted)] uppercase tracking-wider mb-2 flex items-center gap-1">
-              <Settings2 className="w-3 h-3" />
-              Properties
-            </h3>
-
-            {/* Tool Guide */}
-            <div className="mb-3 p-2.5 bg-[var(--sketch-fg-subtle)]/5 rounded border border-[var(--sketch-fg-subtle)]/20">
-              <div className="flex items-start gap-2">
-                <HelpCircle className="w-3.5 h-3.5 text-[var(--sketch-fg-muted)] mt-0.5 shrink-0" />
-                <div className="text-[11px] text-[var(--sketch-fg-muted)] leading-relaxed">
-                  {mode === "select" && (
-                    <><span className="font-semibold text-[var(--sketch-fg)]">Select Tool:</span> Select annotations on the canvas to edit or reposition them.</>
-                  )}
-                  {mode === "rect" && (
-                    <><span className="font-semibold text-[var(--sketch-fg)]">Highlight Box:</span> Drag on the canvas to draw an orange highlight rectangle. This marks the area the main zoom will focus on.</>
-                  )}
-                  {mode === "point" && (
-                    <><span className="font-semibold text-[var(--sketch-fg)]">Zoom Point:</span> Click anywhere on the screenshot to set a single zoom target. Use the Zoom settings below to adjust scale.</>
-                  )}
-                  {mode === "overlay" && (
-                    <><span className="font-semibold text-[var(--sketch-fg)]">Text Overlay:</span> Click on the canvas to place text. Edit the text, color, and size in the settings below.</>
-                  )}
-                  {mode === "crop" && (
-                    <><span className="font-semibold text-[var(--sketch-fg)]">Crop:</span> Drag the green box edges to choose what to keep. Everything dimmed outside the box will be removed. Drag inside the box to move it.</>
-                  )}
-                  {mode === "blur" && (
-                    <><span className="font-semibold text-[var(--sketch-fg)]">Blur:</span> Drag over sensitive information (emails, names, API keys) to blur it. Adjust intensity in the settings below.</>
-                  )}
-                  {mode === "redact" && (
-                    <><span className="font-semibold text-[var(--sketch-fg)]">Redact:</span> Drag over areas to cover with a solid color block. Choose color in the settings below.</>
-                  )}
-                  {mode === "watermark" && (
-                    <><span className="font-semibold text-[var(--sketch-fg)]">Watermark:</span> Click to set position. Edit text, size, color, and opacity in the settings below.</>
-                  )}
-                  {mode === "pixelate" && (
-                    <><span className="font-semibold text-[var(--sketch-fg)]">Pixelate:</span> Drag over faces, license plates, or sensitive UI to pixelate. Adjust block size in the settings below.</>
-                  )}
-                  {mode === "spotlight" && (
-                    <><span className="font-semibold text-[var(--sketch-fg)]">Spotlight:</span> Drag to highlight a region while dimming the rest. Adjust dim intensity in the settings below.</>
-                  )}
-                  {mode === "badge" && (
-                    <><span className="font-semibold text-[var(--sketch-fg)]">Badge:</span> Click to place a numbered circle. Edit number and color in the settings below.</>
-                  )}
-                  {mode === "magnify" && (
-                    <><span className="font-semibold text-[var(--sketch-fg)]">Magnify:</span> Click to set the target area. A zoomed inset will appear in a corner. Adjust scale and corner in the settings below.</>
-                  )}
-                  {mode === "filter" && (
-                    <><span className="font-semibold text-[var(--sketch-fg)]">Filter:</span> Select a color filter from the settings below. Applies to the entire screenshot for this step.</>
-                  )}
-                  {mode === "multizoom" && (
-                    <><span className="font-semibold text-[var(--sketch-fg)]">Multi-Zoom:</span> Click multiple times on the canvas to add zoom points. Each point becomes a separate animated zoom segment. Edit scale and duration per point in the settings below.</>
-                  )}
-                  {mode === "pan" && (
-                    <><span className="font-semibold text-[var(--sketch-fg)]">Pan:</span> Drag to pan around the canvas when zoomed in. No edits are made in this mode.</>
-                  )}
-                  {mode === "caption" && (
-                    <><span className="font-semibold text-[var(--sketch-fg)]">Subtitles:</span> Add narration subtitles for the TTS generation.</>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Properties content - tool-specific settings rendered below canvas */}
-            {renderPropertiesContent()}
-
-            {/* Transitions Section (collapsible) */}
-            <div className="border-t border-[var(--sketch-fg-subtle)]/20 mt-3 pt-3">
-              <button
-                onClick={() => setTransitionsOpen(!transitionsOpen)}
-                className="flex items-center justify-between w-full mb-2"
-              >
-                <span className="font-mono text-[10px] text-[var(--sketch-fg-muted)] uppercase tracking-wider flex items-center gap-1">
-                  <Film className="w-3 h-3" />
-                  Transitions
-                </span>
-                <ChevronDown className={`w-3.5 h-3.5 text-[var(--sketch-fg-muted)] transition-transform ${transitionsOpen ? "rotate-180" : ""}`} />
-              </button>
-              {transitionsOpen && (
-                <div className="space-y-3">
-                  <div className="grid grid-cols-3 gap-1.5">
-                    {transitionTypes.map((t) => (
-                      <button
-                        key={t.value}
-                        onClick={() => props.onGlobalTransitionChange?.(t.value)}
-                        className={`p-1.5 border text-center transition-all text-[10px] font-body font-semibold rounded ${props.globalTransition === t.value
-                          ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/10 shadow-[1px_1px_0px_0px_#FBBF24]"
-                          : "border-[var(--sketch-fg-subtle)]/30 hover:border-[var(--sketch-border-color)]/40"
-                          }`}
-                      >
-                        {t.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div>
-                    <label className="font-body text-[10px] font-semibold mb-1 block text-[var(--sketch-fg)]">
-                      Duration: {(props.transitionDuration ?? 0.5).toFixed(1)}s
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-[9px] text-[var(--sketch-fg-subtle)] w-6">0.3s</span>
-                      <input
-                        type="range"
-                        min={0.3}
-                        max={2.0}
-                        step={0.1}
-                        value={props.transitionDuration ?? 0.5}
-                        onChange={(e) => props.onTransitionDurationChange?.(Number(e.target.value))}
-                        className="flex-1 h-1.5 bg-[var(--sketch-fg-subtle)] appearance-none cursor-pointer accent-[#FBBF24]"
-                      />
-                      <span className="font-mono text-[9px] text-[var(--sketch-fg-subtle)] w-6">2.0s</span>
-                    </div>
-                  </div>
-                </div>
+            {/* Light/Dark Mode toggle button */}
+            <button
+              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+              className="p-1.5 hover:bg-[var(--sketch-fg-subtle)]/10 rounded-full text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] transition-all cursor-pointer border border-[var(--sketch-border-color)]/20 flex items-center justify-center w-8 h-8"
+              title={resolvedTheme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+            >
+              {resolvedTheme === "dark" ? (
+                <Sun className="w-4 h-4 text-[#FBBF24]" />
+              ) : (
+                <Moon className="w-4 h-4 text-slate-700" />
               )}
-            </div>
+            </button>
 
-            {/* Captions Section (collapsible) */}
-            <div className="border-t border-[var(--sketch-fg-subtle)]/20 mt-3 pt-3">
-              <button
-                onClick={() => setCaptionsOpen(!captionsOpen)}
-                className="flex items-center justify-between w-full mb-2"
-              >
-                <span className="font-mono text-[10px] text-[var(--sketch-fg-muted)] uppercase tracking-wider flex items-center gap-1">
-                  <Type className="w-3 h-3" />
-                  Captions
-                </span>
-                <div className="flex items-center gap-2">
-                  <label className="flex items-center gap-1 cursor-pointer" onClick={(e) => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      checked={props.captionsEnabled ?? true}
-                      onChange={(e) => props.onCaptionsEnabledChange?.(e.target.checked)}
-                      className="w-3 h-3 text-[#FBBF24] rounded border-[var(--sketch-fg-subtle)] focus:ring-[#FBBF24]"
-                    />
-                  </label>
-                  <ChevronDown className={`w-3.5 h-3.5 text-[var(--sketch-fg-muted)] transition-transform ${captionsOpen ? "rotate-180" : ""}`} />
-                </div>
-              </button>
-              {captionsOpen && (props.captionsEnabled ?? true) && (
-                <div className="space-y-2">
-                  <div>
-                    <label className="font-body text-[10px] font-semibold mb-0.5 block text-[var(--sketch-fg)]">Style</label>
-                    <select value={props.captionStyle || "standard"} onChange={(e) => props.onCaptionStyleChange?.(e.target.value)} className="sketch-input w-full text-xs py-1">
-                      <option value="standard">Standard</option>
-                      <option value="outline">Outline</option>
-                      <option value="highlight">Highlight</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="font-body text-[10px] font-semibold mb-0.5 block text-[var(--sketch-fg)]">Size</label>
-                    <select value={props.captionSize || "medium"} onChange={(e) => props.onCaptionSizeChange?.(e.target.value)} className="sketch-input w-full text-xs py-1">
-                      <option value="small">Small</option>
-                      <option value="medium">Medium</option>
-                      <option value="large">Large</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="font-body text-[10px] font-semibold mb-0.5 block text-[var(--sketch-fg)]">Position</label>
-                    <select value={props.captionPosition || "bottom"} onChange={(e) => props.onCaptionPositionChange?.(e.target.value)} className="sketch-input w-full text-xs py-1">
-                      <option value="top">Top</option>
-                      <option value="middle">Middle</option>
-                      <option value="bottom">Bottom</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="font-body text-[10px] font-semibold mb-0.5 block text-[var(--sketch-fg)]">Color</label>
-                    <div className="flex gap-1.5 mt-1">
-                      {["#FFFFFF", "#FBBF24", "#10B981", "#EF4444", "#3B82F6"].map(c => (
-                        <button
-                          key={c}
-                          onClick={() => props.onCaptionColorChange?.(c)}
-                          className={`w-6 h-6 rounded-full border-2 ${props.captionColor === c ? 'border-[var(--sketch-fg)]' : 'border-transparent'}`}
-                          style={{ backgroundColor: c }}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-
+            {/* Profile Avatar placeholder */}
+            <div className="w-7 h-7 rounded-full bg-[var(--primary)] text-white flex items-center justify-center text-xs font-bold font-sans select-none flex-shrink-0 cursor-pointer">
+              {projectTitle.slice(0, 1).toUpperCase()}
             </div>
           </div>
+        </div>
 
-            {/* Sticky Navigation Footer inside Sidebar */}
-            <div className="flex-shrink-0 border-t border-[var(--sketch-fg-subtle)]/20 pt-3 mt-3 flex gap-2">
-              <button
-                onClick={props.onBack}
-                className="sketch-btn-ghost flex-1 py-1.5 text-xs flex items-center justify-center gap-1 border border-[var(--sketch-fg-subtle)]/30 rounded hover:bg-[var(--sketch-fg-subtle)]/5"
-              >
-                <ChevronLeft className="w-3.5 h-3.5" />
-                Back
-              </button>
-              <button
-                onClick={props.onContinue}
-                disabled={props.isSaving}
-                className="sketch-btn-primary flex-[2] py-1.5 text-xs font-semibold flex items-center justify-center gap-1 bg-teal-600 hover:bg-teal-500 text-white rounded disabled:opacity-50"
-              >
-                {props.isSaving ? "Saving..." : (
-                  <>
-                    Continue
-                    <ChevronRightIcon className="w-3.5 h-3.5" />
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
+        {/* Nested Menus */}
+        <div className="flex items-center gap-3 text-[11px] text-[var(--sketch-fg-muted)] font-medium leading-none select-none pl-9">
+          {["File", "Edit", "View", "Insert", "Format", "Scene", "Arrange", "Tools", "Help"].map((menu) => (
+            <button key={menu} className="hover:bg-[var(--sketch-fg-subtle)]/10 px-2 py-1 rounded transition-colors cursor-pointer leading-none">
+              {menu}
+            </button>
+          ))}
+        </div>
+      </header>
 
-          {/* ══════════ VERTICAL TIMELINE ══════════ */}
-          <div className="w-20 flex-shrink-0 flex flex-col sketch-card p-2 bg-[var(--sketch-card-bg)]">
-            <h3 className="font-mono text-[9px] text-[var(--sketch-fg-muted)] uppercase tracking-wider mb-2 text-center">
-              Timeline
-            </h3>
-            <div className="flex-1 overflow-y-auto space-y-2 pr-0.5 min-h-0 scrollbar-thin">
-              {(props.parentSteps || steps).map((step, idx: number) => {
-                const stepId = step.id;
-                const isActive = idx === currentStepIndex;
-                const ann = annotations[stepId];
-                const edited = hasAnyEdit(ann);
-                return (
-                  <div key={stepId} className="flex flex-col items-center">
-                    <button
-                      onClick={() => setCurrentStepIndex(idx)}
-                      className={`relative flex-shrink-0 w-full aspect-video border-2 rounded transition-all overflow-hidden ${isActive
-                        ? "border-[#FBBF24] shadow-[0_0_8px_rgba(251,191,36,0.5)]"
-                        : "border-[var(--sketch-fg-subtle)]/30 hover:border-[var(--sketch-border-color)]/40"
-                        }`}
-                    >
-                      {edited && (
-                        <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-500 z-10" />
-                      )}
-                      <span className="absolute top-0.5 left-0.5 font-mono text-[9px] text-white bg-black/60 px-1 rounded z-10">
-                        {idx + 1}
-                      </span>
-                      {step.screenshotPath ? (
-                        <img
-                          src={step.screenshotPath}
-                          alt={`Step ${idx + 1}`}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-[var(--sketch-fg-subtle)]/10 flex items-center justify-center">
-                          <ImageIcon className="w-4 h-4 text-[var(--sketch-fg-subtle)]" />
-                        </div>
-                      )}
-                    </button>
-
-                    {/* Transition diamond between this step and the next */}
-                    {idx < (props.parentSteps || steps).length - 1 && (
-                      <div className="relative my-2">
-                        <button
-                          onClick={() =>
-                            setOpenTransitionDropdown(
-                              openTransitionDropdown === stepId ? null : stepId
-                            )
-                          }
-                          className="w-5 h-5 flex items-center justify-center rotate-45 border border-[var(--sketch-fg-subtle)]/40 hover:border-[#FBBF24] hover:bg-[#FBBF24]/10 transition-all rounded-sm"
-                          title="Click to set transition"
-                        >
-                          <Film className="w-2.5 h-2.5 -rotate-45 text-[var(--sketch-fg-muted)]" />
-                        </button>
-                        {openTransitionDropdown === stepId && (
-                          <div className="absolute left-6 top-1/2 -translate-y-1/2 z-50 bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-border-color)] rounded-md shadow-lg p-1 min-w-[120px]">
-                            {transitionTypes.map((t) => {
-                              const nextStep = (props.parentSteps || steps)[idx + 1];
-                              const currentVal = props.stepTransitions?.[nextStep.id] || props.globalTransition || "fade";
-                              return (
-                                <button
-                                  key={t.value}
-                                  onClick={() => {
-                                    if (nextStep) {
-                                      props.onStepTransitionChange?.(nextStep.id, t.value);
-                                    }
-                                    setOpenTransitionDropdown(null);
-                                  }}
-                                  className={`block w-full text-left px-2 py-1 text-[10px] font-body rounded hover:bg-[#FBBF24]/10 ${currentVal === t.value ? "text-[#FBBF24] font-semibold" : "text-[var(--sketch-fg-muted)]"}`}
-                                >
-                                  {t.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* ══════════ RIGHT MAIN AREA ══════════ */}
-          <div className="flex-1 flex flex-col min-w-0">
-            {/* Compact toolbar */}
-            {currentStep && (
-              <div className="flex items-center justify-between mb-2 flex-shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => setCurrentStepIndex(Math.max(0, currentStepIndex - 1))}
-                      disabled={currentStepIndex === 0}
-                      className="p-1 border border-[var(--sketch-fg-subtle)]/30 rounded hover:bg-[var(--sketch-fg-subtle)]/10 disabled:opacity-30"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    <span className="font-mono text-xs text-[var(--sketch-fg-subtle)]">
-                      Step {currentStepIndex + 1} of {steps.length}
-                    </span>
-                    <button
-                      onClick={() =>
-                        setCurrentStepIndex(Math.min(steps.length - 1, currentStepIndex + 1))
-                      }
-                      disabled={currentStepIndex === steps.length - 1}
-                      className="p-1 border border-[var(--sketch-fg-subtle)]/30 rounded hover:bg-[var(--sketch-fg-subtle)]/10 disabled:opacity-30"
-                    >
-                      <ChevronRightIcon className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="w-px h-4 bg-[var(--sketch-border-color)]/30" />
-
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setCanvasScale(prev => Math.max(1.0, prev - 0.25))}
-                      disabled={canvasScale <= 1.0}
-                      className="w-5 h-5 flex items-center justify-center border border-[var(--sketch-fg-subtle)]/30 rounded text-xs hover:bg-[var(--sketch-fg-subtle)]/10 disabled:opacity-30"
-                      title="Zoom Out"
-                    >
-                      <ZoomOut className="w-3 h-3" />
-                    </button>
-                    <span className="text-[10px] font-mono w-10 text-center font-bold">
-                      {Math.round(canvasScale * 100)}%
-                    </span>
-                    <button
-                      onClick={() => setCanvasScale(prev => Math.min(3.0, prev + 0.25))}
-                      disabled={canvasScale >= 3.0}
-                      className="w-5 h-5 flex items-center justify-center border border-[var(--sketch-fg-subtle)]/30 rounded text-xs hover:bg-[var(--sketch-fg-subtle)]/10 disabled:opacity-30"
-                      title="Zoom In"
-                    >
-                      <ZoomIn className="w-3 h-3" />
-                    </button>
-                    <button
-                      onClick={() => setCanvasScale(1.0)}
-                      disabled={canvasScale === 1.0}
-                      className="text-[9px] font-mono px-1.5 py-0.5 border border-[var(--sketch-fg-subtle)]/30 rounded hover:bg-[var(--sketch-fg-subtle)]/10 disabled:opacity-30 ml-1"
-                    >
-                      <Maximize className="w-3 h-3 inline" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Undo/Redo/Save Buttons on Upper Right Corner */}
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={handleUndo}
-                    disabled={historyIndex <= 0}
-                    className="p-1 border border-[var(--sketch-fg-subtle)]/30 rounded hover:bg-[var(--sketch-fg-subtle)]/10 disabled:opacity-30"
-                    title="Undo"
-                  >
-                    <Undo2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={handleRedo}
-                    disabled={historyIndex >= history.length - 1}
-                    className="p-1 border border-[var(--sketch-fg-subtle)]/30 rounded hover:bg-[var(--sketch-fg-subtle)]/10 disabled:opacity-30"
-                    title="Redo"
-                  >
-                    <Redo2 className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={handleSaveStep}
-                    disabled={updateStep.isPending}
-                    className="flex items-center gap-1.5 px-2.5 py-1 border border-[var(--sketch-border-color)] bg-[#FBBF24]/10 text-xs font-body hover:shadow-[1.5px_1.5px_0px_0px_#FBBF24] transition-all disabled:opacity-30 rounded-md"
-                  >
-                    <Save className="w-3.5 h-3.5" />
-                    Save Step
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Canvas area */}
-            <div className="flex-1 min-h-0 sketch-card p-3 bg-[var(--sketch-card-bg)] flex flex-col">
-              {currentStep && (
-                <>
-                <div
-                  ref={scrollContainerRef}
-                  className={`w-full flex-1 min-h-0 border-2 border-[var(--sketch-border-color)] rounded-md bg-[#000000] relative ${
-                    canvasScale > 1.0
-                      ? "overflow-auto"
-                      : "overflow-hidden flex items-center justify-center p-2"
-                  }`}
+      {/* 2. Sub-header Toolbar (horizontal ribbon) */}
+      <AnimatePresence initial={false}>
+        {!isToolbarCollapsed && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 42, opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="w-full bg-[var(--sketch-card-bg)]/80 border-b border-[var(--sketch-border-color)]/20 px-4 flex items-center justify-between flex-shrink-0 select-none overflow-hidden h-[42px]"
+          >
+            {/* Left: Fit, Undo/Redo, Tools */}
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              {/* Zoom Fit */}
+              <div className="flex items-center gap-1 pr-2 border-r border-[var(--sketch-border-color)]/20">
+                <Search className="w-3.5 h-3.5 text-[var(--sketch-fg-muted)]" />
+                <select
+                  value={Math.round(canvasScale * 100)}
+                  onChange={(e) => {
+                    const val = Number(e.target.value);
+                    if (val === 100) setCanvasScale(1.0);
+                    else setCanvasScale(val / 100);
+                  }}
+                  className="bg-transparent text-[11px] font-medium text-[var(--sketch-fg-muted)] border-none outline-none cursor-pointer py-0.5 pr-1 focus:ring-0"
                 >
-                  <div
-                    style={canvasScale > 1.0 ? {
-                      width: `${canvasScale * 100}%`,
-                      minWidth: "100%",
-                      margin: "0 auto",
-                    } : {
-                      width: "100%",
-                      height: "100%",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
+                  <option value={100}>Fit</option>
+                  <option value={50}>50%</option>
+                  <option value={75}>75%</option>
+                  <option value={100}>100%</option>
+                  <option value={150}>150%</option>
+                  <option value={200}>200%</option>
+                  <option value={300}>300%</option>
+                </select>
+              </div>
+
+              {/* Undo / Redo */}
+              <div className="flex items-center gap-0.5 pr-2 border-r border-[var(--sketch-border-color)]/20">
+                <button
+                  disabled={historyIndex <= 0}
+                  onClick={handleUndo}
+                  className="p-1 hover:bg-[var(--sketch-fg-subtle)]/20 rounded disabled:opacity-30 text-[var(--sketch-fg-muted)] cursor-pointer"
+                  title="Undo"
+                >
+                  <Undo2 className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  disabled={historyIndex >= history.length - 1}
+                  onClick={handleRedo}
+                  className="p-1 hover:bg-[var(--sketch-fg-subtle)]/20 rounded disabled:opacity-30 text-[var(--sketch-fg-muted)] cursor-pointer"
+                  title="Redo"
+                >
+                  <Redo2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Tools row */}
+              <div className="flex items-center gap-1 px-1 overflow-x-auto scrollbar-none py-0.5 flex-1 min-w-0">
+                <ToolbarToolButton active={mode === "select"} onClick={() => setMode("select")} icon={<MousePointer className="w-3.5 h-3.5" />} label="Select" />
+                <ToolbarToolButton active={mode === "pan"} onClick={() => setMode("pan")} icon={<Move className="w-3.5 h-3.5" />} label="Pan" />
+                <ToolbarToolButton
+                  active={mode === "crop"}
+                  onClick={() => {
+                    if (currentStep) {
+                      const ann = annotations[currentStep.id] || {};
+                      if (ann.editorCropX == null || ann.editorCropW == null) {
+                        const next = {
+                          ...annotations,
+                          [currentStep.id]: {
+                            ...ann,
+                            editorCropX: 0,
+                            editorCropY: 0,
+                            editorCropW: 100,
+                            editorCropH: 100,
+                          },
+                        };
+                        pushHistory(next);
+                      }
+                    }
+                    setMode("crop");
+                  }}
+                  icon={<Crop className="w-3.5 h-3.5" />}
+                  label="Crop"
+                />
+                <div className="h-4 w-[1px] bg-[#D3D3D3]/50 mx-1 flex-shrink-0" />
+                <ToolbarToolButton active={mode === "rect"} onClick={() => setMode("rect")} icon={<Square className="w-3.5 h-3.5" />} label="Highlight" />
+                <ToolbarToolButton active={mode === "point"} onClick={() => setMode("point")} icon={<Target className="w-3.5 h-3.5" />} label="Zoom Point" />
+                <ToolbarToolButton active={mode === "multizoom"} onClick={() => setMode("multizoom")} icon={<Scan className="w-3.5 h-3.5" />} label="Multi-Zoom" />
+                <ToolbarToolButton active={mode === "magnify"} onClick={() => setMode("magnify")} icon={<Search className="w-3.5 h-3.5" />} label="Magnify" />
+                <div className="h-4 w-[1px] bg-[#D3D3D3]/50 mx-1 flex-shrink-0" />
+                <ToolbarToolButton active={mode === "overlay"} onClick={() => setMode("overlay")} icon={<Type className="w-3.5 h-3.5" />} label="Text Overlay" />
+                <ToolbarToolButton active={mode === "badge"} onClick={() => setMode("badge")} icon={<BadgeCheck className="w-3.5 h-3.5" />} label="Badge" />
+                <ToolbarToolButton active={mode === "watermark"} onClick={() => setMode("watermark")} icon={<Stamp className="w-3.5 h-3.5" />} label="Watermark" />
+                <ToolbarToolButton active={mode === "caption"} onClick={() => setMode("caption")} icon={<Type className="w-3.5 h-3.5" />} label="Subtitles" />
+                <div className="h-4 w-[1px] bg-[#D3D3D3]/50 mx-1 flex-shrink-0" />
+                <ToolbarToolButton active={mode === "blur"} onClick={() => setMode("blur")} icon={<Aperture className="w-3.5 h-3.5" />} label="Blur" />
+                <ToolbarToolButton active={mode === "redact"} onClick={() => setMode("redact")} icon={<Shield className="w-3.5 h-3.5" />} label="Redact" />
+                <ToolbarToolButton active={mode === "pixelate"} onClick={() => setMode("pixelate")} icon={<Grid3x3 className="w-3.5 h-3.5" />} label="Pixelate" />
+                <ToolbarToolButton active={mode === "spotlight"} onClick={() => setMode("spotlight")} icon={<Sun className="w-3.5 h-3.5" />} label="Spotlight" />
+                <ToolbarToolButton active={mode === "filter"} onClick={() => setMode("filter")} icon={<Palette className="w-3.5 h-3.5" />} label="Filter" />
+              </div>
+            </div>
+
+            {/* Right: Collapse toggle */}
+            <div className="flex items-center">
+              <button
+                onClick={() => setIsToolbarCollapsed(true)}
+                className="p-1 hover:bg-[var(--sketch-fg-subtle)]/20 rounded text-[var(--sketch-fg-muted)] cursor-pointer"
+                title="Collapse toolbar"
+              >
+                <ChevronDown className="w-3.5 h-3.5 rotate-180" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Floating Restore toolbar icon button if collapsed */}
+      {isToolbarCollapsed && (
+        <button
+          onClick={() => setIsToolbarCollapsed(false)}
+          className="absolute left-4 top-[64px] z-50 p-1 bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/20 shadow-sm hover:bg-[var(--sketch-fg-subtle)]/10 rounded-full text-[var(--sketch-fg-muted)] cursor-pointer"
+          title="Expand toolbar"
+        >
+          <ChevronDown className="w-3.5 h-3.5" />
+        </button>
+      )}
+
+      {/* 3. Main Split Workspace */}
+      <div className="flex-1 flex min-h-0 relative">
+        {/* Left/Center Workspace: Canvas container */}
+        <div className="flex-1 flex flex-col bg-[var(--sketch-bg)] relative min-w-0 p-4">
+          <div className="flex-1 w-full relative min-h-0 flex flex-col overflow-hidden">
+            {currentStep && (
+              <div
+                ref={scrollContainerRef}
+                className={`w-full flex-grow flex-1 min-h-0 border-2 border-[var(--sketch-border-color)] rounded-md bg-[#000000] relative ${
+                  canvasScale > 1.0
+                    ? "overflow-auto"
+                    : "overflow-hidden flex items-center justify-center p-2"
+                }`}
+              >
+                <div
+                  style={canvasScale > 1.0 ? {
+                    width: `${canvasScale * 100}%`,
+                    minWidth: "100%",
+                    margin: "0 auto",
+                  } : {
+                    width: "100%",
+                    height: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
                     <div
                       ref={canvasRef}
                       className={`relative overflow-hidden sketch-border-sm ${
@@ -3204,7 +3645,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                   <div
                                     key={h.name}
                                     data-handle={h.name}
-                                    className="absolute w-3 h-3 bg-white border-2 border-[#00E676] rounded-sm pointer-events-auto"
+                                    className="absolute w-3 h-3 bg-[var(--sketch-card-bg)] border-2 border-[#00E676] rounded-sm pointer-events-auto"
                                     style={{ ...h.style, zIndex: 10 }}
                                     onMouseDown={(e) => {
                                       e.preventDefault();
@@ -3727,53 +4168,470 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                     </div>
                 </div>
               </div>
-
-              {/* Collapsible/Hover-expandable Description & Script */}
-              <div
-                onMouseEnter={() => setIsScriptHovered(true)}
-                onMouseLeave={() => setIsScriptHovered(false)}
-                className="mt-2 border border-[var(--sketch-border-color)]/60 bg-[var(--sketch-card-bg)]/80 backdrop-blur-md rounded-md transition-all duration-300 flex-shrink-0"
-              >
-                {/* Header bar */}
-                <button
-                  onClick={() => setIsScriptExpanded(!isScriptExpanded)}
-                  className="w-full flex items-center justify-between px-3 py-1.5 text-[10px] font-mono text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] transition-colors"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <Settings2 className="w-3.5 h-3.5 text-teal-400" />
-                    <span className="font-semibold uppercase tracking-wider">Step Details</span>
-                    <span className="opacity-50">— {currentStep.description?.slice(0, 50)}...</span>
-                  </div>
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${showFullScript ? "rotate-180" : ""}`} />
-                </button>
-
-                {/* Content panel */}
-                <motion.div
-                  initial={false}
-                  animate={{ height: showFullScript ? "auto" : 0 }}
-                  className="overflow-hidden"
-                  transition={{ duration: 0.2 }}
-                >
-                  <div className="px-3 pb-2.5 border-t border-[var(--sketch-border-color)]/40 pt-2 space-y-1.5">
-                    <p className="text-[11px] font-body text-[var(--sketch-fg-muted)] leading-relaxed">
-                      <span className="font-semibold text-[var(--sketch-fg)]">Description:</span>{" "}
-                      {currentStep.description}
-                    </p>
-                    {(currentStep.aiScript || currentStep.userEditedScript) && (
-                      <p className="text-[10px] font-body text-[var(--sketch-fg-muted)] leading-relaxed">
-                        <span className="font-semibold text-[var(--sketch-fg)]">Script:</span>{" "}
-                        {currentStep.userEditedScript || currentStep.aiScript}
-                      </p>
-                    )}
-                  </div>
-                </motion.div>
-              </div>
-            </>
-          )}
-        </div>
+            )}
           </div>
         </div>
-      </motion.div>
+
+        {/* Right drawer and vertical tab strip */}
+        <div className="flex-shrink-0 flex items-stretch">
+          {/* Drawer container (slides open next to vertical tabs) */}
+          <AnimatePresence initial={false}>
+            {activeRightTab && (
+              <motion.div
+                initial={{ width: 0, opacity: 0 }}
+                animate={{ width: 280, opacity: 1 }}
+                exit={{ width: 0, opacity: 0 }}
+                transition={{ duration: 0.18, ease: "easeInOut" }}
+                className="h-full bg-[var(--sketch-card-bg)] border-l border-[var(--sketch-border-color)]/20 overflow-y-auto scrollbar-thin p-4 flex flex-col min-w-[280px]"
+              >
+                <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                  <h3 className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-wider font-semibold">
+                    {activeRightTab === "properties" && "Properties"}
+                    {activeRightTab === "script" && "Script & Scene"}
+                    {activeRightTab === "voiceover" && "AI Voiceover"}
+                    {activeRightTab === "elevenlabs" && "ElevenLabs Premium"}
+                    {activeRightTab === "captions" && "Captions Settings"}
+                    {activeRightTab === "transitions" && "Transitions"}
+                    {activeRightTab === "aiguide" && "AI Guide"}
+                    {activeRightTab === "help" && "Help Guide"}
+                  </h3>
+                  <button
+                    onClick={() => setActiveRightTab(null)}
+                    className="text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg-muted)] text-xs font-bold cursor-pointer"
+                  >
+                    Close ×
+                  </button>
+                </div>
+
+                <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+                  {activeRightTab === "properties" && renderPropertiesContent()}
+                  {activeRightTab === "script" && renderScriptContent()}
+                  {activeRightTab === "voiceover" && renderVoiceoverContent()}
+                  {activeRightTab === "elevenlabs" && renderElevenLabsContent()}
+                  {activeRightTab === "captions" && renderCaptionsContent()}
+                  {activeRightTab === "transitions" && renderTransitionsContent()}
+                  {activeRightTab === "aiguide" && renderAIGuideContent()}
+                  {activeRightTab === "help" && renderHelpContent()}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Far-right vertical tab strip */}
+          <div className="w-20 bg-[var(--sketch-card-bg)] border-l border-[var(--sketch-border-color)]/20 py-2 flex flex-col items-center gap-1.5 flex-shrink-0">
+            <RightTabButton active={activeRightTab === "properties"} onClick={() => toggleRightTab("properties")} icon={<Settings2 className="w-5 h-5" />} label="Properties" />
+            <RightTabButton active={activeRightTab === "script"} onClick={() => toggleRightTab("script")} icon={<Type className="w-5 h-5 text-[var(--sketch-accent)]" />} label="Script" />
+            <RightTabButton active={activeRightTab === "voiceover"} onClick={() => toggleRightTab("voiceover")} icon={<Volume2 className="w-5 h-5 text-[var(--sketch-accent)]" />} label="Voiceover" />
+            <RightTabButton active={activeRightTab === "elevenlabs"} onClick={() => toggleRightTab("elevenlabs")} icon={<Crown className="w-5 h-5 text-[var(--sketch-accent)]" />} label="ElevenLabs" />
+            <RightTabButton active={activeRightTab === "captions"} onClick={() => toggleRightTab("captions")} icon={<Type className="w-5 h-5 text-[var(--sketch-accent)]" />} label="Captions" />
+            <RightTabButton active={activeRightTab === "transitions"} onClick={() => toggleRightTab("transitions")} icon={<Film className="w-5 h-5 text-[var(--sketch-accent)]" />} label="Transitions" />
+            <RightTabButton active={activeRightTab === "aiguide"} onClick={() => toggleRightTab("aiguide")} icon={<Bot className="w-5 h-5 text-[var(--sketch-accent)]" />} label="AI Guide" />
+            <div className="flex-1" />
+            <RightTabButton active={activeRightTab === "help"} onClick={() => toggleRightTab("help")} icon={<HelpCircle className="w-5 h-5 text-[var(--sketch-fg-subtle)]" />} label="Help" />
+          </div>
+        </div>
+      </div>
+
+      {/* 4. Bottom Horizontal Timeline */}
+      <footer
+        onDragOver={(e) => {
+          if (e.dataTransfer?.types?.includes("Files")) {
+            e.preventDefault();
+            setIsTimelineDragOver(true);
+          }
+        }}
+        onDragLeave={() => setIsTimelineDragOver(false)}
+        onDrop={(e) => {
+          if (e.dataTransfer?.files?.length) {
+            e.preventDefault();
+            setIsTimelineDragOver(false);
+            handleUploadFiles(e.dataTransfer.files);
+          }
+        }}
+        className={`w-full bg-[var(--sketch-card-bg)] border-t border-[var(--sketch-border-color)]/20 p-3 flex flex-col gap-2 flex-shrink-0 select-none transition-all ${
+          isTimelineDragOver ? "ring-2 ring-[#FBBF24] bg-[#FBBF24]/5" : ""
+        }`}
+      >
+        {/* Hidden File Selector Input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files) handleUploadFiles(e.target.files);
+          }}
+        />
+
+        {/* Controls row */}
+        <div className="flex items-center justify-between text-xs text-[var(--sketch-fg-muted)] px-1">
+          {/* Left: Show timing */}
+          <div className="flex items-center gap-1">
+            <button className="flex items-center gap-1 hover:bg-[var(--sketch-fg-subtle)]/10 px-2.5 py-1 rounded transition-colors text-[11px] font-semibold cursor-pointer">
+              <span>Show timing</span>
+              <ChevronDown className="w-3 h-3" />
+            </button>
+          </div>
+
+          {/* Center: Play and timing */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={props.onContinue}
+              className="w-8 h-8 rounded-full bg-[var(--sketch-btn-bg)] hover:opacity-90 text-white flex items-center justify-center transition-colors cursor-pointer shadow-sm"
+              title="Play"
+            >
+              <ChevronRightIcon className="w-5 h-5 ml-0.5" />
+            </button>
+            <span className="font-mono text-[11px] font-semibold tracking-wide text-[var(--sketch-fg)] bg-[var(--sketch-fg-subtle)]/10 px-2 py-0.5 rounded">
+              00:00.0 / {((props.parentSteps || steps || []).length * (currentAnn?.editorDuration ?? 5.0)).toFixed(1).padStart(4, "0")}
+            </span>
+          </div>
+
+          {/* Right: Zoom slider */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono">Zoom</span>
+            <input
+              type="range"
+              min={50}
+              max={150}
+              defaultValue={100}
+              className="w-20 h-1 bg-[var(--sketch-fg-subtle)]/10 appearance-none rounded cursor-pointer accent-[var(--sketch-accent)]"
+            />
+            <span className="text-[10px] font-mono font-bold text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/10 px-1.5 py-0.5 rounded">100% ▾</span>
+          </div>
+        </div>
+
+        {/* Scene strip */}
+        <div className="relative flex items-center px-1 min-h-[90px] justify-center">
+          {(props.parentSteps || steps || []).length === 0 ? (
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full py-4 border-2 border-dashed border-[var(--sketch-border-color)]/20 rounded-lg flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:border-[var(--sketch-border-color)]/40 transition-colors"
+            >
+              <Upload className="w-6 h-6 text-[var(--sketch-fg-subtle)] animate-bounce" />
+              <p className="text-xs font-semibold text-[var(--sketch-fg-muted)]">
+                Drag & drop screenshots here, or click to choose files
+              </p>
+              <p className="text-[9px] text-[var(--sketch-fg-subtle)]">
+                Files are automatically numbered as Scene 1, Scene 2, etc.
+              </p>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-x-auto scrollbar-thin pb-1 flex gap-3 items-center min-w-0 pr-12">
+              {(props.parentSteps || steps || []).map((step, idx: number) => {
+                const stepId = step.id;
+                const isActive = idx === currentStepIndex;
+                return (
+                  <div
+                    key={stepId}
+                    draggable={true}
+                    onDragStart={(e) => handleSceneDragStart(e, idx)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => handleSceneDrop(e, idx)}
+                    className="flex-shrink-0 flex items-center gap-2 py-1 group/scene relative cursor-grab active:cursor-grabbing"
+                  >
+                    {/* Step Scene Card */}
+                    <div className="relative flex flex-col">
+                      {/* Active Playhead caret */}
+                      {isActive && (
+                        <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#FBBF24] rotate-45 border-t border-l border-[var(--sketch-card-bg)] shadow-sm z-20" />
+                      )}
+                      <button
+                        onClick={() => setCurrentStepIndex(idx)}
+                        className={`relative w-28 aspect-video border-2 rounded-lg transition-all overflow-hidden ${
+                          isActive
+                            ? "border-[#FBBF24] shadow-[0_0_12px_rgba(251,191,36,0.35)]"
+                            : "border-[var(--sketch-border-color)]/20 hover:border-[var(--sketch-border-color)]/40"
+                        }`}
+                      >
+                        <span className="absolute top-1 left-1 font-mono text-[9px] text-white bg-black/60 px-1.5 py-0.5 rounded-md z-10 font-bold leading-none">
+                          {idx + 1}
+                        </span>
+                        {step.screenshotPath ? (
+                          <img
+                            src={step.screenshotPath}
+                            alt={`Step ${idx + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-[var(--sketch-fg-subtle)]/10 flex items-center justify-center">
+                            <Film className="w-4 h-4 text-[var(--sketch-fg-subtle)]" />
+                          </div>
+                        )}
+                      </button>
+
+                      {/* Delete Scene Hover Button */}
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (confirm(`Are you sure you want to delete Scene ${idx + 1}?`)) {
+                            await deleteStep.mutateAsync({ id: stepId });
+                            utils.step.listByProject.invalidate({ projectId: projectIdNum });
+                            if (currentStepIndex >= (props.parentSteps || steps || []).length - 1) {
+                              setCurrentStepIndex(Math.max(0, currentStepIndex - 1));
+                            }
+                          }
+                        }}
+                        className="absolute top-1 right-1 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded flex items-center justify-center z-30 transition-all opacity-0 group-hover/scene:opacity-100 shadow-sm cursor-pointer border border-white/20"
+                        title="Delete Scene"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+
+                    {/* Transition diamond between scenes */}
+                    {idx < (props.parentSteps || steps || []).length - 1 && (
+                      <div className="relative flex items-center justify-center w-8 flex-shrink-0">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenTransitionDropdown(
+                              openTransitionDropdown === stepId ? null : stepId
+                            );
+                          }}
+                          className={`w-5 h-5 flex items-center justify-center rotate-45 border transition-all rounded-sm shrink-0 cursor-pointer shadow-sm ${
+                            openTransitionDropdown === stepId
+                              ? "border-[#FBBF24] bg-[#FBBF24]/10"
+                              : "border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40 hover:bg-gray-50"
+                          }`}
+                          title="Transition"
+                        >
+                          <Film className="w-2.5 h-2.5 -rotate-45 text-[var(--sketch-fg-muted)]" />
+                        </button>
+                        {openTransitionDropdown === stepId && (
+                          <div className="absolute bottom-7 left-1/2 -translate-x-1/2 z-50 bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/20 rounded-lg shadow-lg p-1 min-w-[125px]">
+                            {transitionTypes.map((t) => {
+                              const nextStep = (props.parentSteps || steps || [])[idx + 1];
+                              const currentVal = props.stepTransitions?.[nextStep.id] || props.globalTransition || "fade";
+                              return (
+                                <button
+                                  key={t.value}
+                                  onClick={() => {
+                                    if (nextStep) {
+                                      props.onStepTransitionChange?.(nextStep.id, t.value);
+                                    }
+                                    setOpenTransitionDropdown(null);
+                                  }}
+                                  className={`block w-full text-left px-2.5 py-1.5 text-[10px] font-body rounded-md hover:bg-[var(--sketch-fg-subtle)]/10 ${
+                                    currentVal === t.value ? "text-[var(--sketch-accent)] font-semibold bg-[var(--sketch-accent)]/10" : "text-[var(--sketch-fg-muted)]"
+                                  }`}
+                                >
+                                  {t.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Inline Plus Button for adding scenes */}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="w-28 aspect-video rounded-lg bg-[var(--sketch-fg-subtle)]/5 hover:bg-[var(--sketch-fg-subtle)]/10 border-2 border-dashed border-[var(--sketch-border-color)]/20 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all flex-shrink-0"
+                title="Add Scene"
+              >
+                <span className="text-xl font-bold text-[var(--sketch-fg-muted)] leading-none">+</span>
+                <span className="text-[9px] font-semibold text-[var(--sketch-fg-subtle)]">Add Scene</span>
+              </button>
+
+              {/* Uploading progress states */}
+              {uploadingFilesCount > 0 && (
+                <div className="flex-shrink-0 flex items-center gap-2 px-3 py-1 bg-[var(--sketch-fg-subtle)]/5 rounded-lg border border-[var(--sketch-border-color)]/10 h-10">
+                  <Loader2 className="w-4 h-4 animate-spin text-[var(--sketch-accent)]" />
+                  <span className="text-[10px] font-semibold text-[var(--sketch-fg-muted)]">
+                    Uploading {uploadingFilesCount} files...
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </footer>
+      {/* Mega Render Progress Dialog Popup */}
+      <Dialog open={showRenderModal} onOpenChange={(open) => {
+        if (!open) {
+          const isDone = renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete";
+          const isErr = renderStatus?.projectStatus === "error" || renderStatus?.job?.status === "error" || startRenderError;
+          if (isDone || isErr) {
+            setShowRenderModal(false);
+            setRenderStarted(false);
+          }
+        }
+      }}>
+        <DialogContent className="border border-[var(--sketch-border-color)]/25 bg-white dark:bg-[#0B1E1B] bg-opacity-100 max-w-2xl rounded-2xl shadow-2xl p-8 flex flex-col gap-6 text-center select-none outline-none">
+          <DialogHeader className="text-center flex flex-col items-center">
+            <div className="relative inline-block">
+              <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
+                Rendering Video
+              </span>
+              {!(renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete") && 
+               !(renderStatus?.projectStatus === "error" || renderStatus?.job?.status === "error" || startRenderError) && (
+                <span className="font-hand text-xl text-[var(--sketch-fg-muted)] absolute -top-7 left-36 rotate-[3deg] animate-float hidden sm:block">
+                  Generating magic... ✨
+                </span>
+              )}
+            </div>
+            <DialogTitle className="text-2xl font-bold mt-4 text-[var(--sketch-fg)]">
+              {renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete"
+                ? "Video complete!"
+                : renderStatus?.projectStatus === "error" || renderStatus?.job?.status === "error" || startRenderError
+                  ? "Something went wrong"
+                  : "Generating your video…"}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-[var(--sketch-fg-muted)] mt-1.5 leading-relaxed max-w-md">
+              {renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete"
+                ? "Redirecting to preview page..."
+                : renderStatus?.projectStatus === "error" || renderStatus?.job?.status === "error" || startRenderError
+                  ? renderStatus?.job?.message || startRenderError || "An error occurred during rendering."
+                  : "This takes 2-5 minutes. You can safely close this — your video will render in the background."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {startRenderError && (
+            <div className="mt-2 p-4 border border-red-500/30 bg-red-500/5 rounded-xl text-center">
+              <div className="flex items-center gap-2 justify-center text-red-600 font-medium">
+                <AlertTriangle className="w-5 h-5" />
+                <span>{startRenderError}</span>
+              </div>
+              <button
+                onClick={() => {
+                  setShowRenderModal(false);
+                  setRenderStarted(false);
+                }}
+                className="mt-4 px-4 py-2 bg-[var(--sketch-fg-subtle)]/10 hover:bg-[var(--sketch-fg-subtle)]/20 text-[var(--sketch-fg)] text-xs font-bold rounded-lg transition-colors cursor-pointer"
+              >
+                Go Back to Editor
+              </button>
+            </div>
+          )}
+
+          {!startRenderError && (
+            <div className="mt-2 text-center w-full">
+              {/* Progress bar */}
+              <div className="w-full bg-[var(--sketch-fg-subtle)]/5 border border-[var(--sketch-border-color)]/10 rounded-full h-3 overflow-hidden p-0.5 mb-6">
+                <div
+                  className={`h-full transition-all duration-500 rounded-full ${
+                    renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete"
+                      ? "bg-emerald-500"
+                      : renderStatus?.projectStatus === "error" || renderStatus?.job?.status === "error"
+                        ? "bg-red-500"
+                        : "bg-[#FBBF24]"
+                  }`}
+                  style={{
+                    width: `${
+                      renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete"
+                        ? 100
+                        : Math.min((renderStatus?.job ? ((renderStatus.job.currentStep || 0) / (renderStatus.job.totalSteps || 1)) * 100 : 0) + 5, 95)
+                    }%`
+                  }}
+                />
+              </div>
+
+              {renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete" ? (
+                <div className="p-6 bg-emerald-500/5 border border-emerald-500/20 rounded-xl flex flex-col items-center">
+                  <CheckCircle className="w-10 h-10 text-emerald-600 mb-3" />
+                  <h4 className="font-bold text-lg text-[var(--sketch-fg)]">Complete!</h4>
+                  <p className="text-xs text-[var(--sketch-fg-muted)] mt-1.5">
+                    Your video is ready. Preparing export screen...
+                  </p>
+                </div>
+              ) : renderStatus?.projectStatus === "error" || renderStatus?.job?.status === "error" ? (
+                <div className="p-6 bg-red-500/5 border border-red-500/20 rounded-xl flex flex-col items-center">
+                  <AlertTriangle className="w-10 h-10 text-red-600 mb-3" />
+                  <h4 className="font-bold text-lg text-[var(--sketch-fg)]">Render Failed</h4>
+                  <p className="text-xs text-[var(--sketch-fg-muted)] mt-1.5 max-w-sm">
+                    {renderStatus?.job?.message || "An unexpected error occurred."}
+                  </p>
+                  <div className="flex gap-3 mt-4">
+                    <button
+                      onClick={() => {
+                        setShowRenderModal(false);
+                        setRenderStarted(false);
+                      }}
+                      className="px-4 py-2 bg-[var(--sketch-fg-subtle)]/10 hover:bg-[var(--sketch-fg-subtle)]/20 text-[var(--sketch-fg)] text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                    >
+                      Back to Editor
+                    </button>
+                    <button
+                      onClick={() => {
+                        setRenderStarted(false);
+                        setTimeout(() => setRenderStarted(true), 100);
+                      }}
+                      className="px-4 py-2 bg-[#FBBF24] hover:bg-[#F59E0B] text-black text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                    >
+                      Retry
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2.5 max-w-md mx-auto">
+                  {renderStages.map((stage, i) => {
+                    const Icon = stage.icon;
+                    const currentStage = renderStatus?.job?.stage || "queued";
+                    const currentStageIndex = renderStages.findIndex((s) => s.key === currentStage);
+                    const isActive = i === currentStageIndex;
+                    const isDone = i < currentStageIndex;
+
+                    return (
+                      <div
+                        key={stage.key}
+                        className={`p-3 border rounded-xl flex items-center gap-4 transition-all duration-200 ${
+                          isActive
+                            ? "border-[#FBBF24] bg-[#FBBF24]/5"
+                            : isDone
+                              ? "border-emerald-500/40 bg-emerald-500/5"
+                              : "border-[var(--sketch-border-color)]/10 bg-[var(--sketch-card-bg)]/50 opacity-40"
+                        }`}
+                      >
+                        <div
+                          className={`w-8 h-8 flex items-center justify-center border rounded-lg flex-shrink-0 ${
+                            isActive
+                              ? "border-[#FBBF24] bg-[#FBBF24]/10"
+                              : isDone
+                                ? "border-emerald-500 bg-emerald-500/10 text-emerald-600"
+                                : "border-[var(--sketch-border-color)]/25 bg-[var(--sketch-card-bg)]"
+                          }`}
+                        >
+                          {isDone ? (
+                            <CheckCircle className="w-4 h-4 text-emerald-600" />
+                          ) : isActive ? (
+                            <Loader2 className="w-4 h-4 text-[var(--sketch-fg)] animate-spin" />
+                          ) : (
+                            <Icon className="w-4 h-4 text-[var(--sketch-fg-muted)]" />
+                          )}
+                        </div>
+                        <div className="flex-1 text-left">
+                          <span
+                            className={`text-xs font-bold ${
+                              isActive
+                                ? "text-[var(--sketch-fg)]"
+                                : isDone
+                                  ? "text-emerald-600"
+                                  : "text-[var(--sketch-fg-subtle)]"
+                            }`}
+                          >
+                            {stage.label}
+                          </span>
+                          {isActive && (
+                            <p className="font-mono text-[9px] text-[var(--sketch-fg-muted)] mt-0.5">
+                              {renderStatus?.job?.message || "Processing..."}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -3782,7 +4640,9 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 /*  Sub-components                                                     */
 /* ------------------------------------------------------------------ */
 
-function ToolIconButton({
+
+
+function ToolbarToolButton({
   active,
   onClick,
   icon,
@@ -3797,14 +4657,63 @@ function ToolIconButton({
     <button
       onClick={onClick}
       title={label}
-      className={`flex items-center justify-center w-full aspect-square border-2 transition-all rounded-md ${active
-        ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/10 shadow-[2px_2px_0px_0px_#FBBF24]"
-        : "border-[var(--sketch-fg-subtle)]/30 hover:border-[var(--sketch-border-color)]/40 hover:bg-[var(--sketch-fg-subtle)]/5"
-        }`}
+      className={`p-1.5 hover:bg-[var(--sketch-fg-subtle)]/20 rounded text-[var(--sketch-fg)] transition-all flex items-center justify-center cursor-pointer ${
+        active ? "bg-blue-100 text-[var(--sketch-accent)]" : ""
+      }`}
     >
       {icon}
     </button>
   );
 }
 
+function RightTabButton({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full py-2.5 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all border-l-2 ${
+        active
+          ? "bg-[#FBBF24]/10 text-[var(--sketch-fg)] border-[#FBBF24]"
+          : "bg-transparent text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] hover:bg-[var(--sketch-fg-subtle)]/5 border-transparent"
+      }`}
+    >
+      <div className="flex items-center justify-center">
+        {icon}
+      </div>
+      <span className="text-[9px] font-bold tracking-normal leading-none text-center">
+        {label}
+      </span>
+    </button>
+  );
+}
 
+async function uploadFile(
+  file: File,
+  folder = "screenshots"
+): Promise<{ key: string; url: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("folder", folder);
+
+  const response = await fetch("/api/upload", {
+    method: "POST",
+    body: formData,
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: "Upload failed" }));
+    throw new Error(error.error || `Upload failed (${response.status})`);
+  }
+
+  return response.json();
+}

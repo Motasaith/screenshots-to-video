@@ -1,11 +1,7 @@
 import { create } from "zustand";
 
 export type WizardStep =
-  | "setup"
-  | "upload"
-  | "script"
   | "preview"
-  | "voice"
   | "render"
   | "export";
 
@@ -85,7 +81,7 @@ const initialState: Omit<
   | "setError"
   | "reset"
 > = {
-  currentStep: "setup",
+  currentStep: "preview",
   projectId: null,
   isLoading: false,
   error: null,
@@ -147,11 +143,7 @@ export const useWizardStore = create<WizardState>((set) => ({
 }));
 
 export const stepOrder: WizardStep[] = [
-  "setup",
-  "upload",
-  "script",
   "preview",
-  "voice",
   "render",
   "export",
 ];
@@ -159,11 +151,7 @@ export const stepOrder: WizardStep[] = [
 export const stepIndex = (step: WizardStep) => stepOrder.indexOf(step);
 
 export const stepLabels: Record<WizardStep, string> = {
-  setup: "Setup",
-  upload: "Upload",
-  script: "Script",
   preview: "Preview",
-  voice: "Voice",
   render: "Render",
   export: "Export",
 };

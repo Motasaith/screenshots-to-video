@@ -98,7 +98,7 @@ export default function StepSetup() {
           aspectRatio,
         });
       }
-      navigate(`/create/${id}/upload`);
+      navigate(`/create/${id}/preview`);
     } catch {
       setErrors({ submit: "Failed to save project. Please try again." });
     }

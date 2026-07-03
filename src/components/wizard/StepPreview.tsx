@@ -2,11 +2,6 @@ import { useState } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useWizardStore, type TransitionType } from "@/hooks/useWizardStore";
 import { trpc } from "@/providers/trpc";
-import {
-  ChevronRight,
-  ChevronLeft,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { StepEditorPanel } from "./StepEditorPanel";
 
 export default function StepPreview() {
@@ -95,7 +90,7 @@ export default function StepPreview() {
       captionColor,
     });
 
-    navigate(`/create/${projectIdNum}/voice`);
+    navigate(`/create/${projectIdNum}/render`);
   };
 
   return (
@@ -125,7 +120,7 @@ export default function StepPreview() {
             description: s.description,
             transition: s.transition,
           }))}
-          onBack={() => navigate(`/create/${projectIdNum}/script`)}
+          onBack={() => navigate("/dashboard")}
           onContinue={handleContinue}
           isSaving={updateProject.isPending || updateStep.isPending}
         />
