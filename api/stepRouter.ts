@@ -4,6 +4,7 @@ import { getDb } from "./queries/connection";
 import { steps, projects } from "@db/schema";
 import { eq, and } from "drizzle-orm";
 import { detectGibberish } from "./lib/gibberish";
+import { checkMediaSafety } from "./lib/llm";
 
 export const stepRouter = createRouter({
   create: authedQuery
@@ -102,6 +103,18 @@ export const stepRouter = createRouter({
         zoomRectY: z.number().min(0).max(100).nullish(),
         zoomRectWidth: z.number().min(0).max(100).nullish(),
         zoomRectHeight: z.number().min(0).max(100).nullish(),
+        editorHighlights: z
+          .array(
+            z.object({
+              id: z.string(),
+              x: z.number(),
+              y: z.number(),
+              w: z.number(),
+              h: z.number(),
+              color: z.string().optional(),
+            })
+          )
+          .nullish(),
         editorCaptionText: z.string().nullish(),
         editorCaptionPosition: z.string().nullish(),
         editorCaptionStyle: z.string().nullish(),
@@ -288,5 +301,44 @@ export const stepRouter = createRouter({
 
       await getDb().delete(steps).where(eq(steps.id, input.id));
       return { success: true };
+    }),
+
+  // ── AI Safety & Copyright Check ──
+  checkSafety: authedQuery
+    .use(rateLimitByUser(60_000, 10))
+    .input(z.object({ stepId: z.number(), mediaUrl: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      // Verify ownership
+      const [step] = await getDb()
+        .select()
+        .from(steps)
+        .where(eq(steps.id, input.stepId))
+        .limit(1);
+
+      if (!step) throw new Error("Step not found");
+
+      const [project] = await getDb()
+        .select()
+        .from(projects)
+        .where(
+          and(eq(projects.id, step.projectId), eq(projects.userId, ctx.user!.id))
+        )
+        .limit(1);
+
+      if (!project) throw new Error("Not authorized");
+
+      // Run the Vision LLM safety check
+      const result = await checkMediaSafety(input.mediaUrl);
+
+      // Save the result to the step in the database
+      await getDb()
+        .update(steps)
+        .set({
+          isSafe: result.isSafe && result.isClear ? 1 : 0,
+          safetyReason: result.reason,
+        })
+        .where(eq(steps.id, input.stepId));
+
+      return result;
     }),
 });

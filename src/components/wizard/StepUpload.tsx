@@ -17,6 +17,7 @@ import {
   MonitorPlay,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { nanoid } from "nanoid";
 import { detectGibberish } from "@/lib/gibberish";
 import {
@@ -908,7 +909,7 @@ export default function StepUpload() {
                                 const data = await res.json();
                                 setIntroVideoPath(data.url);
                               } catch {
-                                alert("Failed to upload intro video");
+                                toast.error("Failed to upload intro video");
                               } finally {
                                 setIsUploadingIntro(false);
                               }
@@ -1123,7 +1124,7 @@ export default function StepUpload() {
                                 const data = await res.json();
                                 setOutroVideoPath(data.url);
                               } catch {
-                                alert("Failed to upload outro video");
+                                toast.error("Failed to upload outro video");
                               } finally {
                                 setIsUploadingOutro(false);
                               }

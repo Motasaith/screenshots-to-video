@@ -22,6 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { toast } from "sonner";
 
 async function uploadFile(
   file: File,
@@ -86,7 +87,7 @@ export default function StudioMedia() {
       });
     } catch (err) {
       console.error(err);
-      alert("Failed to upload file");
+      toast.error("Failed to upload file");
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";

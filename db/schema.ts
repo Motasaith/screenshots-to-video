@@ -94,6 +94,17 @@ export const steps = mysqlTable("steps", {
   zoomRectY: float("zoomRectY"),
   zoomRectWidth: float("zoomRectWidth"),
   zoomRectHeight: float("zoomRectHeight"),
+  // ── Multiple Highlight Regions (decoupled from zoom) ──
+  editorHighlights: json("editorHighlights").$type<
+    Array<{
+      id: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      color?: string;
+    }>
+  >(),
   // ── Canvas Editor fields ──
   editorCaptionText: text("editorCaptionText"),
   editorCaptionPosition: varchar("editorCaptionPosition", { length: 20 }).default("bottom"),
@@ -185,7 +196,7 @@ export const steps = mysqlTable("steps", {
   editorMagnifyCorner: varchar("editorMagnifyCorner", { length: 20 }).default("bottom-right"),
   // ── Color Filter ──
   editorColorFilter: varchar("editorColorFilter", { length: 20 }).default("none"),
-  editorZoomScale: float("editorZoomScale").default(1.6),
+  editorZoomScale: float("editorZoomScale"),
   editorDuration: float("editorDuration"),
   // ── Multi-Zoom (multiple zoom points on one screenshot) ──
   editorMultiZooms: json("editorMultiZooms").$type<

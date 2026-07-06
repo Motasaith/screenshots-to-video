@@ -22,17 +22,22 @@ import os from "os";
 import { nanoid } from "nanoid";
 
 const POLL_INTERVAL_MS = 5000;
-let isRunning = false;
+// Use globalThis to prevent multiple worker instances across HMR reloads
+const globalKey = "__aivideo_worker_running__";
 let pollCount = 0;
 
 let lastErrorMsg = "";
+
+// Whether the worker is currently running (mirrors the global flag)
+let isRunning = false;
 
 /**
  * Start the background render worker.
  * Polls the render_jobs table for queued jobs and processes them.
  */
 export function startRenderWorker(): void {
-  if (isRunning) return;
+  if ((globalThis as any)[globalKey]) return;
+  (globalThis as any)[globalKey] = true;
   isRunning = true;
 
   console.log("[Worker] Render worker started, polling every", POLL_INTERVAL_MS, "ms");
@@ -71,6 +76,7 @@ export function startRenderWorker(): void {
  */
 export function stopRenderWorker(): void {
   isRunning = false;
+  (globalThis as any)[globalKey] = false;
   console.log("[Worker] Render worker stopped");
 }
 
@@ -247,11 +253,13 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
         audioDuration = step.editorDuration;
       }
 
-      // Use zoom target, default to center if not set
-      let zoomX = step.zoomTargetX ?? 50;
-      let zoomY = step.zoomTargetY ?? 50;
+      // Use zoom target — pass undefined if not set so renderer can skip zoom.
+      // Also skip if editorZoomScale is null/1.0 (user hasn't enabled zoom).
+      const effectiveZoomScale = step.editorZoomScale ?? null;
+      let zoomX = (effectiveZoomScale && effectiveZoomScale > 1.0) ? (step.zoomTargetX ?? undefined) : undefined;
+      let zoomY = (effectiveZoomScale && effectiveZoomScale > 1.0) ? (step.zoomTargetY ?? undefined) : undefined;
 
-      if (project.randomize) {
+      if (project.randomize && zoomX !== undefined && zoomY !== undefined) {
         zoomX = Math.max(0, Math.min(100, zoomX + (Math.random() * 20 - 10)));
         zoomY = Math.max(0, Math.min(100, zoomY + (Math.random() * 20 - 10)));
       }
@@ -327,6 +335,7 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
           editorMagnifyScale: step.editorMagnifyScale ?? undefined,
           editorMagnifyCorner: step.editorMagnifyCorner ?? undefined,
           editorColorFilter: step.editorColorFilter ?? undefined,
+          editorHighlights: (step as any).editorHighlights ?? undefined,
           editorOverlayText: step.editorOverlayText ?? undefined,
           editorOverlayX: step.editorOverlayX ?? undefined,
           editorOverlayY: step.editorOverlayY ?? undefined,
@@ -350,6 +359,7 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
           zoomRectY: step.zoomRectY ?? undefined,
           zoomRectW: step.zoomRectWidth ?? undefined,
           zoomRectH: step.zoomRectHeight ?? undefined,
+          editorHighlights: (step as any).editorHighlights ?? undefined,
           outputRes: outputRes,
           captions: {
             enabled: project.captionsEnabled === 1,
@@ -364,8 +374,8 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
           editorCropY: step.editorCropY ?? undefined,
           editorCropW: step.editorCropW ?? undefined,
           editorCropH: step.editorCropH ?? undefined,
-          // Treat null/0/1.0 (legacy schema default) as "unset" so the renderer
-          // falls back to its own 1.6x default and the zoom is actually visible.
+          // Pass editorZoomScale through. null/undefined = no zoom scale set.
+          // 1.0 = user explicitly disabled zoom. Only pass if > 1.0.
           editorZoomScale:
             step.editorZoomScale && step.editorZoomScale > 1.0
               ? step.editorZoomScale

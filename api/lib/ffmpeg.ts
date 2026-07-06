@@ -394,12 +394,20 @@ export async function renderStepVideo(opts: {
   screenshotPath: string;
   audioPath: string;
   audioDuration: number;
-  zoomTargetX: number; // percentage 0-100
-  zoomTargetY: number; // percentage 0-100
-  zoomRectX?: number; // percentage 0-100
+  zoomTargetX?: number; // percentage 0-100 — undefined means no zoom
+  zoomTargetY?: number; // percentage 0-100 — undefined means no zoom
+  zoomRectX?: number; // percentage 0-100 (legacy single rect)
   zoomRectY?: number; // percentage 0-100
   zoomRectW?: number; // percentage 0-100
   zoomRectH?: number; // percentage 0-100
+  editorHighlights?: Array<{
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    color?: string;
+  }>;
   outputRes?: string;
   captions?: { text: string; style: string; size: string; position: string; color: string; enabled: boolean };
   // ── Canvas editor fields ──
@@ -511,9 +519,23 @@ export async function renderStepVideo(opts: {
     // keep fallback values
   }
 
-  // Highlight box (drawn on the ORIGINAL image so it zooms with the content)
+  // Highlight boxes (multiple, drawn on the ORIGINAL image so they zoom with content)
   let drawboxFilter = "";
-  if (
+  // New: multiple highlight boxes from editorHighlights array
+  if (opts.editorHighlights && opts.editorHighlights.length > 0) {
+    const boxes = opts.editorHighlights.map((hl) => {
+      const rx = Math.round((hl.x / 100) * imgWidth);
+      const ry = Math.round((hl.y / 100) * imgHeight);
+      const rw = Math.round((hl.w / 100) * imgWidth);
+      const rh = Math.round((hl.h / 100) * imgHeight);
+      const color = (hl.color || "#FF0099").replace("#", "0x");
+      const thickness = Math.max(6, Math.round(Math.min(imgWidth, imgHeight) * 0.008));
+      return `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=${color}@0.9:t=box:thickness=${thickness}`;
+    });
+    drawboxFilter = boxes.join(",") + ",";
+  }
+  // Legacy: single zoomRect highlight box
+  else if (
     opts.zoomRectX !== undefined &&
     opts.zoomRectY !== undefined &&
     opts.zoomRectW !== undefined &&
@@ -523,7 +545,7 @@ export async function renderStepVideo(opts: {
     const ry = Math.round((opts.zoomRectY / 100) * imgHeight);
     const rw = Math.round((opts.zoomRectW / 100) * imgWidth);
     const rh = Math.round((opts.zoomRectH / 100) * imgHeight);
-    drawboxFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=#f97316@0.95:thickness=5,`;
+    drawboxFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=0xf97316@0.9:t=box:thickness=6,`;
   }
 
   // ── Canvas editor: crop ──
@@ -663,28 +685,33 @@ export async function renderStepVideo(opts: {
   const effW = cropW;
   const effH = cropH;
 
-  // Remap zoom target from original-image percentage to cropped-image percentage.
-  // The zoom target was set relative to the full screenshot, but after cropping
-  // only a sub-region remains. We need to translate the target into the cropped
-  // coordinate space. If the target falls outside the crop, clamp to center.
-  let zoomTargetX = opts.zoomTargetX;
-  let zoomTargetY = opts.zoomTargetY;
-  if (cropFilter) {
-    const targetOrigX = (opts.zoomTargetX / 100) * imgWidth;
-    const targetOrigY = (opts.zoomTargetY / 100) * imgHeight;
-    const localX = targetOrigX - cropX;
-    const localY = targetOrigY - cropY;
-    zoomTargetX = clamp((localX / effW) * 100, 0, 100);
-    zoomTargetY = clamp((localY / effH) * 100, 0, 100);
-  }
-
   // Zoom target in supersampled-canvas pixels
   const geo = fitGeometry(effW, effH, ssW, ssH);
-  const targetXPx = geo.offsetX + (zoomTargetX / 100) * geo.scaledW;
-  const targetYPx = geo.offsetY + (zoomTargetY / 100) * geo.scaledH;
 
-  const maxZoom = opts.editorZoomScale ?? 1.6;
-  const zoomFilter = buildZoomFilter(targetXPx, targetYPx, paddedDuration, outputRes, maxZoom);
+  // ── Zoom is OPTIONAL ──
+  // If zoomTargetX/Y is undefined/null, or editorZoomScale is 1.0 (no zoom),
+  // skip the zoompan filter entirely — the video will be a static image.
+  let zoomFilter = "";
+  const hasZoomTarget = opts.zoomTargetX !== undefined && opts.zoomTargetY !== undefined && opts.zoomTargetX !== null && opts.zoomTargetY !== null;
+  // Only zoom if editorZoomScale is explicitly set and > 1.0.
+  // No default — if editorZoomScale is undefined, don't zoom.
+  const maxZoom = opts.editorZoomScale ?? 1.0;
+
+  if (hasZoomTarget && maxZoom > 1.0) {
+    let zoomTargetX = opts.zoomTargetX!;
+    let zoomTargetY = opts.zoomTargetY!;
+    if (cropFilter) {
+      const targetOrigX = (zoomTargetX / 100) * imgWidth;
+      const targetOrigY = (zoomTargetY / 100) * imgHeight;
+      const localX = targetOrigX - cropX;
+      const localY = targetOrigY - cropY;
+      zoomTargetX = clamp((localX / effW) * 100, 0, 100);
+      zoomTargetY = clamp((localY / effH) * 100, 0, 100);
+    }
+    const targetXPx = geo.offsetX + (zoomTargetX / 100) * geo.scaledW;
+    const targetYPx = geo.offsetY + (zoomTargetY / 100) * geo.scaledH;
+    zoomFilter = buildZoomFilter(targetXPx, targetYPx, paddedDuration, outputRes, maxZoom);
+  }
 
   // ── Canvas editor: text overlay ──
   let overlayFilter = "";
@@ -724,12 +751,22 @@ export async function renderStepVideo(opts: {
     }
   }
 
+  // Build the filter chain — strip leading commas from each part to avoid double commas
+  const overlayChain = `overlay=(W-w)/2:(H-h)/2`;
+  // When zoomFilter is empty (no zoom), zoompan doesn't downscale from supersampled
+  // to output resolution, so we need an explicit scale step.
+  const downscaleFilter = zoomFilter ? "" : `scale=${outW}:${outH}:flags=lanczos`;
+  // Build post-zoom filter parts, stripping leading/trailing commas, filtering out empty ones
+  const stripComma = (s: string) => s.replace(/^,+/, "").replace(/,+$/, "");
+  const postZoomParts = [zoomFilter, overlayFilter, watermarkFilter, badgeFilter, magnifyFilter, captionsFilter, downscaleFilter]
+    .map(stripComma)
+    .filter((f) => f && f.length > 0);
+  const postZoomChain = postZoomParts.join(",");
   const filterComplex =
     `[0:v]${drawboxFilter}${blurFilter}${redactFilter}${pixelateFilter}${spotlightFilter}${colorFilter}${cropFilter}split=2[bg][fg];` +
     `[bg]scale=${ssW}:${ssH}:force_original_aspect_ratio=increase:flags=lanczos,crop=${ssW}:${ssH},boxblur=40:40[bg_blurred];` +
     `[fg]scale=${ssW}:${ssH}:force_original_aspect_ratio=decrease:flags=lanczos[fg_scaled];` +
-    `[bg_blurred][fg_scaled]overlay=(W-w)/2:(H-h)/2,` +
-    `${zoomFilter}${overlayFilter}${watermarkFilter}${badgeFilter}${magnifyFilter}${captionsFilter},format=yuv420p[v];` +
+    `[bg_blurred][fg_scaled]${overlayChain}${postZoomChain ? "," + postZoomChain : ""},format=yuv420p[v];` +
     `[1:a]${buildAudioFilter()}[a]`;
 
   const args = [
@@ -791,9 +828,23 @@ async function renderStepVideoFallback(
     // keep fallback values
   }
 
-  // Highlight box on the original image
+  // Highlight boxes (multiple, drawn on the ORIGINAL image so they zoom with content)
   let drawboxFilter = "";
-  if (
+  // New: multiple highlight boxes from editorHighlights array
+  if (opts.editorHighlights && opts.editorHighlights.length > 0) {
+    const boxes = opts.editorHighlights.map((hl) => {
+      const rx = Math.round((hl.x / 100) * imgWidth);
+      const ry = Math.round((hl.y / 100) * imgHeight);
+      const rw = Math.round((hl.w / 100) * imgWidth);
+      const rh = Math.round((hl.h / 100) * imgHeight);
+      const color = (hl.color || "#FF0099").replace("#", "0x");
+      const thickness = Math.max(6, Math.round(Math.min(imgWidth, imgHeight) * 0.008));
+      return `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=${color}@0.9:t=box:thickness=${thickness}`;
+    });
+    drawboxFilter = boxes.join(",") + ",";
+  }
+  // Legacy: single zoomRect highlight box
+  else if (
     opts.zoomRectX !== undefined &&
     opts.zoomRectY !== undefined &&
     opts.zoomRectW !== undefined &&
@@ -803,7 +854,7 @@ async function renderStepVideoFallback(
     const ry = Math.round((opts.zoomRectY / 100) * imgHeight);
     const rw = Math.round((opts.zoomRectW / 100) * imgWidth);
     const rh = Math.round((opts.zoomRectH / 100) * imgHeight);
-    drawboxFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=#f97316@0.95:thickness=5,`;
+    drawboxFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=0xf97316@0.9:t=box:thickness=6,`;
   }
 
   // ── Canvas editor: crop (fallback) ──
@@ -944,9 +995,9 @@ async function renderStepVideoFallback(
   const effH = cropH;
 
   // Remap zoom target from original-image percentage to cropped-image percentage
-  let zoomTargetX = opts.zoomTargetX;
-  let zoomTargetY = opts.zoomTargetY;
-  if (cropFilter) {
+  let zoomTargetX = opts.zoomTargetX ?? 50;
+  let zoomTargetY = opts.zoomTargetY ?? 50;
+  if (cropFilter && opts.zoomTargetX !== undefined && opts.zoomTargetY !== undefined) {
     const targetOrigX = (opts.zoomTargetX / 100) * imgWidth;
     const targetOrigY = (opts.zoomTargetY / 100) * imgHeight;
     const localX = targetOrigX - cropX;
@@ -958,11 +1009,11 @@ async function renderStepVideoFallback(
   // Fallback renders at output resolution (no supersampling), so compute
   // zoom target in output-resolution pixels directly.
   const geo = fitGeometry(effW, effH, outW, outH);
-  const targetXPx = geo.offsetX + (zoomTargetX / 100) * geo.scaledW;
-  const targetYPx = geo.offsetY + (zoomTargetY / 100) * geo.scaledH;
-
-  const maxZoom = opts.editorZoomScale ?? 1.6;
-  const zoomFilter = buildZoomFilter(targetXPx, targetYPx, paddedDuration, outputRes, maxZoom);
+  const maxZoom = opts.editorZoomScale ?? 1.0;
+  const hasZoomTarget = opts.zoomTargetX !== undefined && opts.zoomTargetY !== undefined && opts.zoomTargetX !== null && opts.zoomTargetY !== null;
+  const zoomFilter = (hasZoomTarget && maxZoom > 1.0)
+    ? buildZoomFilter(geo.offsetX + (zoomTargetX! / 100) * geo.scaledW, geo.offsetY + (zoomTargetY! / 100) * geo.scaledH, paddedDuration, outputRes, maxZoom)
+    : "";
   const delayMs = Math.round(AUDIO_LEAD_IN * 1000);
 
   // ── Canvas editor: text overlay ──
@@ -1003,6 +1054,12 @@ async function renderStepVideoFallback(
     }
   }
 
+  const stripCommaMz = (s: string) => s.replace(/^,+/, "").replace(/,+$/, "");
+  const mzPostZoomParts = [zoomFilter, overlayFilter, watermarkFilter, badgeFilter, magnifyFilter, captionsFilter]
+    .map(stripCommaMz)
+    .filter((f) => f && f.length > 0);
+  const mzPostZoomChain = mzPostZoomParts.join(",");
+
   const args = [
     "-y",
     "-loop", "1",
@@ -1010,7 +1067,7 @@ async function renderStepVideoFallback(
     "-i", opts.audioPath,
     "-filter_complex",
     `[0:v]${drawboxFilter}${blurFilter}${redactFilter}${pixelateFilter}${spotlightFilter}${colorFilter}${cropFilter}scale=${outW}:${outH}:force_original_aspect_ratio=decrease,` +
-      `pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2,${zoomFilter}${overlayFilter}${watermarkFilter}${badgeFilter}${magnifyFilter}${captionsFilter},format=yuv420p[v];` +
+      `pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2${mzPostZoomChain ? "," + mzPostZoomChain : ""},format=yuv420p[v];` +
       `[1:a]adelay=${delayMs}:all=1,apad=pad_dur=${AUDIO_TAIL}[a]`,
     "-map", "[v]",
     "-map", "[a]",
@@ -1412,6 +1469,14 @@ export async function renderMultiZoomSegments(opts: {
   editorMagnifyScale?: number;
   editorMagnifyCorner?: string;
   editorColorFilter?: string;
+  editorHighlights?: Array<{
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    color?: string;
+  }>;
   editorOverlayText?: string;
   editorOverlayX?: number;
   editorOverlayY?: number;
@@ -1448,6 +1513,7 @@ export async function renderMultiZoomSegments(opts: {
       zoomRectY: z.rectY,
       zoomRectW: z.rectW,
       zoomRectH: z.rectH,
+      editorZoomScale: z.zoomScale,
       outputRes: opts.outputRes,
       captions: opts.captions,
       editorCropX: opts.editorCropX,
@@ -1493,6 +1559,7 @@ export async function renderMultiZoomSegments(opts: {
       editorMagnifyScale: opts.editorMagnifyScale,
       editorMagnifyCorner: opts.editorMagnifyCorner,
       editorColorFilter: opts.editorColorFilter,
+      editorHighlights: opts.editorHighlights,
       editorOverlayText: opts.editorOverlayText,
       editorOverlayX: opts.editorOverlayX,
       editorOverlayY: opts.editorOverlayY,
@@ -1503,7 +1570,6 @@ export async function renderMultiZoomSegments(opts: {
       editorCaptionStyle: opts.editorCaptionStyle,
       editorCaptionColor: opts.editorCaptionColor,
       editorCaptionSize: opts.editorCaptionSize,
-      editorZoomScale: z.zoomScale,
     });
 
     segments.push(segPath);
