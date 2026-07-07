@@ -21,7 +21,6 @@ import {
   ZoomIn,
   ZoomOut,
   GripVertical,
-  Film,
   Loader2,
   Upload,
   ArrowRightLeft,
@@ -137,6 +136,61 @@ export default function Timeline({
       window.removeEventListener("mouseup", handleMouseUp);
     };
   }, [isScrubbing, totalDuration, pxPerSec]);
+  // Playback animation
+  const prevTimeRef = useRef<number>(0);
+  useEffect(() => {
+    if (!isPlaying) return;
+    let animationFrameId: number;
+
+    const playLoop = (timestamp: number) => {
+      if (!prevTimeRef.current) prevTimeRef.current = timestamp;
+      const deltaSec = (timestamp - prevTimeRef.current) / 1000;
+      prevTimeRef.current = timestamp;
+
+      setPlayheadSec((prev) => {
+        const next = prev + deltaSec;
+        if (next >= totalDuration) {
+          if (onPlayToggle) onPlayToggle(); // pause at end
+          return totalDuration;
+        }
+        return next;
+      });
+      animationFrameId = requestAnimationFrame(playLoop);
+    };
+
+    prevTimeRef.current = 0; // reset on start
+    animationFrameId = requestAnimationFrame(playLoop);
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [isPlaying, totalDuration, onPlayToggle]);
+
+  // Sync canvas with playhead time
+  useEffect(() => {
+    if (clips.length === 0) return;
+    let acc = 0;
+    for (let i = 0; i < clips.length; i++) {
+      if (playheadSec >= acc && playheadSec < acc + clips[i].duration) {
+        if (i !== currentIndex) {
+          onClipSelect(i);
+        }
+        break;
+      }
+      acc += clips[i].duration;
+    }
+  }, [playheadSec, clips, currentIndex, onClipSelect]);
+
+  // Sync playhead when currentIndex changes (e.g. clicking a clip or sidebar)
+  useEffect(() => {
+    if (isPlaying || isScrubbing || clips.length === 0) return;
+    let acc = 0;
+    for (let i = 0; i < currentIndex; i++) {
+      if (clips[i]) acc += clips[i].duration;
+    }
+    const currentClipDuration = clips[currentIndex]?.duration || 0;
+    // Jump playhead only if it's currently completely outside the newly selected clip
+    if (playheadSec < acc || playheadSec >= acc + currentClipDuration) {
+      setPlayheadSec(acc);
+    }
+  }, [currentIndex, clips, isPlaying, isScrubbing, playheadSec]);
 
   // Trim handlers
   useEffect(() => {
@@ -252,50 +306,50 @@ export default function Timeline({
     >
       {/* Hidden file input for Add Clip */}
       {/* Controls bar */}
-      <div className="flex items-center justify-between px-3 py-2 gap-3 border-b border-[var(--sketch-border-color)]/30">
-        {/* Left: Play + time */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={onPlayToggle}
-            className="w-7 h-7 rounded-full bg-[var(--sketch-accent)] hover:opacity-90 text-white flex items-center justify-center transition-opacity cursor-pointer shadow-sm"
-            title={isPlaying ? "Pause" : "Play"}
-          >
-            {isPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
-          </button>
-          <span className="text-[11px] font-mono text-[var(--sketch-fg-muted)] tabular-nums">
-            {formatTime(playheadSec)} / {formatTime(totalDuration)}
-          </span>
-        </div>
-
-        {/* Center: Split + Add */}
-        <div className="flex items-center gap-1.5">
+      <div className="flex items-center justify-between px-4 py-2 gap-3 border-b border-[var(--sketch-border-color)]/30">
+        {/* Left: Split + Add */}
+        <div className="flex items-center gap-2 flex-1">
           <button
             onClick={handleSplit}
             disabled={clips.length === 0}
-            className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--sketch-fg-subtle)]/10 hover:bg-[var(--sketch-fg-subtle)]/20 text-[var(--sketch-fg-muted)] transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-semibold bg-[var(--sketch-fg-subtle)]/10 hover:bg-[var(--sketch-fg-subtle)]/20 text-[var(--sketch-fg)] transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
             title="Split clip at playhead"
           >
-            <Scissors className="w-3 h-3" />
+            <Scissors className="w-3.5 h-3.5" />
             Split
           </button>
           <button
             onClick={onAddClip}
-            className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-semibold bg-[var(--sketch-accent)]/15 hover:bg-[var(--sketch-accent)]/25 text-[var(--sketch-fg)] transition-colors cursor-pointer"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-[11px] font-semibold bg-[var(--sketch-accent)]/15 hover:bg-[var(--sketch-accent)]/25 text-[var(--sketch-accent)] transition-colors cursor-pointer"
             title="Add new clip"
           >
-            <Plus className="w-3 h-3" />
+            <Plus className="w-3.5 h-3.5" />
             Add
           </button>
           {uploadingCount > 0 && (
-            <span className="flex items-center gap-1 text-[10px] text-[var(--sketch-fg-subtle)]">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              Uploading {uploadingCount}...
+            <span className="flex items-center gap-1 text-[11px] text-[var(--sketch-fg-subtle)] ml-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              {uploadingCount}
             </span>
           )}
         </div>
 
+        {/* Center: Play + time */}
+        <div className="flex items-center gap-3 justify-center">
+          <button
+            onClick={onPlayToggle}
+            className="w-9 h-9 rounded-full bg-[var(--sketch-accent)] hover:scale-105 active:scale-95 text-white flex items-center justify-center transition-all cursor-pointer shadow-md"
+            title={isPlaying ? "Pause" : "Play"}
+          >
+            {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
+          </button>
+          <span className="text-[13px] font-mono font-bold text-[var(--sketch-fg)] tabular-nums w-[110px]">
+            {formatTime(playheadSec)} <span className="text-[var(--sketch-fg-muted)] font-normal text-[11px]">/ {formatTime(totalDuration)}</span>
+          </span>
+        </div>
+
         {/* Right: Zoom controls */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 justify-end flex-1">
           <button
             onClick={() => setPxPerSec((p) => Math.max(MIN_PX_PER_SEC, p - 10))}
             className="p-1 rounded hover:bg-[var(--sketch-fg-subtle)]/10 text-[var(--sketch-fg-muted)] cursor-pointer"
@@ -398,15 +452,20 @@ export default function Timeline({
                     onDrop={(e) => handleDrop(e, idx)}
                     onDragEnd={handleDragEnd}
                     onClick={() => onClipSelect(idx)}
-                    className={`relative w-full h-full rounded-md overflow-hidden cursor-grab active:cursor-grabbing border-2 transition-all ${
+                    className={`relative w-full h-full rounded-md overflow-hidden cursor-grab active:cursor-grabbing border-2 transition-all bg-[var(--sketch-panel-bg)] ${
                       isActive
                         ? "border-blue-600 shadow-[0_0_12px_rgba(37,99,235,0.3)] z-10"
                         : "border-[var(--sketch-border-color)]/40 hover:border-[var(--sketch-accent)]/50"
                     } ${isDragOverTarget ? "ring-2 ring-blue-600/40" : ""}`}
-                    style={{
-                      background: clip.thumbnail ? `url(${clip.thumbnail}) center/cover` : "var(--sketch-panel-bg)",
-                    }}
                   >
+                    {/* Background media */}
+                    {clip.thumbnail && (
+                      clip.isVideo ? (
+                        <video src={clip.thumbnail} className="absolute inset-0 w-full h-full object-cover pointer-events-none" muted playsInline />
+                      ) : (
+                        <div className="absolute inset-0 w-full h-full bg-center bg-cover pointer-events-none" style={{ backgroundImage: `url(${clip.thumbnail})` }} />
+                      )
+                    )}
                     {/* Dark gradient overlay for readability */}
                     <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-transparent to-black/50 pointer-events-none" />
 

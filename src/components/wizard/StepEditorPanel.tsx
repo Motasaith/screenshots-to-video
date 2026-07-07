@@ -210,12 +210,12 @@ type ToolMode = "select" | "highlight" | "zoom" | "overlay" | "crop" | "blur" | 
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-function getImageBounds(container: HTMLDivElement, img: HTMLImageElement) {
+function getImageBounds(container: HTMLDivElement, img: HTMLImageElement | HTMLVideoElement) {
   const containerRect = container.getBoundingClientRect();
   const cw = containerRect.width;
   const ch = containerRect.height;
-  const nw = img.naturalWidth;
-  const nh = img.naturalHeight;
+  const nw = img instanceof HTMLVideoElement ? img.videoWidth : img.naturalWidth;
+  const nh = img instanceof HTMLVideoElement ? img.videoHeight : img.naturalHeight;
   if (!nw || !nh) return null;
 
   const containerAspect = cw / ch;
@@ -420,14 +420,14 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   } | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
-  const imageRef = useRef<HTMLImageElement>(null);
+  const imageRef = useRef<HTMLImageElement | HTMLVideoElement>(null);
   const handleResizeRef = useRef<string | null>(null);
 
   const [bounds, setBounds] = useState<{ visibleW: number; visibleH: number; offsetX: number; offsetY: number } | null>(null);
 
   const updateBounds = useCallback(() => {
     if (canvasRef.current && imageRef.current) {
-      const b = getImageBounds(canvasRef.current, imageRef.current);
+      const b = getImageBounds(canvasRef.current, imageRef.current as HTMLImageElement | HTMLVideoElement);
       setBounds(b);
     }
   }, []);
@@ -591,8 +591,9 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     let currentOrder = (steps.length || (props.parentSteps || []).length) + 1;
 
     for (const file of sortedFiles) {
+      const isVideoFile = file.type.startsWith("video/");
       // Optimistic: create a local object URL so the image shows immediately
-      const localUrl = URL.createObjectURL(file);
+      const localUrl = URL.createObjectURL(file) + (isVideoFile ? "#video" : "");
 
       // Create the step immediately with the local URL so it shows on canvas
       // We'll update it with the real URL after upload completes
@@ -627,7 +628,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           if (createdStepId) {
             await updateStep.mutateAsync({
               id: createdStepId,
-              screenshotPath: result.url,
+              screenshotPath: result.url + (isVideoFile ? "#video" : ""),
             });
           }
 
@@ -664,7 +665,9 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       thumbnail: s.screenshotPath,
       duration: (s as any).editorDuration ?? 5.0,
       transition: s.transition,
-      isVideo: s.screenshotPath?.includes(".mp4") || s.screenshotPath?.includes("video"),
+      isVideo: s.screenshotPath?.includes(".mp4") || 
+               s.screenshotPath?.includes("video") ||
+               s.screenshotPath?.endsWith("#video"),
     }));
   }, [steps]);
 
@@ -767,6 +770,17 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       setActiveTab(mode);
     }
   }, [mode]);
+
+  useEffect(() => {
+    if (imageRef.current && timelineClips[currentStepIndex]?.isVideo) {
+      const videoElement = imageRef.current as HTMLVideoElement;
+      if (isTimelinePlaying) {
+        videoElement.play().catch(() => {});
+      } else {
+        videoElement.pause();
+      }
+    }
+  }, [isTimelinePlaying, currentStepIndex, timelineClips]);
 
   useEffect(() => {
     updateBounds();
@@ -923,17 +937,21 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     const img = imageRef.current;
     const containerRect = container.getBoundingClientRect();
 
-    if (img && img.naturalWidth && img.naturalHeight) {
-      const boundsVal = getImageBounds(container, img);
-      if (boundsVal) {
-        const mouseX = e.clientX - containerRect.left;
-        const mouseY = e.clientY - containerRect.top;
-        const imgRelX = ((mouseX - boundsVal.offsetX) / boundsVal.visibleW) * 100;
-        const imgRelY = ((mouseY - boundsVal.offsetY) / boundsVal.visibleH) * 100;
-        return {
-          x: clamp(imgRelX, 0, 100),
-          y: clamp(imgRelY, 0, 100),
-        };
+    if (img) {
+      const nw = img instanceof HTMLVideoElement ? img.videoWidth : img.naturalWidth;
+      const nh = img instanceof HTMLVideoElement ? img.videoHeight : img.naturalHeight;
+      if (nw && nh) {
+        const boundsVal = getImageBounds(container, img);
+        if (boundsVal) {
+          const mouseX = e.clientX - containerRect.left;
+          const mouseY = e.clientY - containerRect.top;
+          const imgRelX = ((mouseX - boundsVal.offsetX) / boundsVal.visibleW) * 100;
+          const imgRelY = ((mouseY - boundsVal.offsetY) / boundsVal.visibleH) * 100;
+          return {
+            x: clamp(imgRelX, 0, 100),
+            y: clamp(imgRelY, 0, 100),
+          };
+        }
       }
     }
 
@@ -4687,28 +4705,56 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                       onMouseLeave={handleMouseUp}
                     >
                       {currentStep.screenshotPath ? (
-                        <img
-                          ref={imageRef}
-                          src={currentStep.screenshotPath}
-                          alt={`Step ${currentStepIndex + 1}`}
-                          className="w-full h-full object-contain select-none"
-                          style={{
-                            filter:
-                              currentAnn?.editorColorFilter === "grayscale"
-                                ? "grayscale(100%)"
-                                : currentAnn?.editorColorFilter === "sepia"
-                                  ? "sepia(100%)"
-                                  : currentAnn?.editorColorFilter === "warm"
-                                    ? "sepia(50%) saturate(140%)"
-                                    : currentAnn?.editorColorFilter === "cool"
-                                      ? "hue-rotate(180deg) saturate(80%)"
-                                      : currentAnn?.editorColorFilter === "contrast"
-                                        ? "contrast(150%) saturate(120%)"
-                                        : "none",
-                          }}
-                          draggable={false}
-                          onLoad={updateBounds}
-                        />
+                        timelineClips[currentStepIndex]?.isVideo ? (
+                          <video
+                            ref={imageRef as any}
+                            src={currentStep.screenshotPath}
+                            className="w-full h-full object-contain select-none"
+                            style={{
+                              filter:
+                                currentAnn?.editorColorFilter === "grayscale"
+                                  ? "grayscale(100%)"
+                                  : currentAnn?.editorColorFilter === "sepia"
+                                    ? "sepia(100%)"
+                                    : currentAnn?.editorColorFilter === "warm"
+                                      ? "sepia(50%) saturate(140%)"
+                                      : currentAnn?.editorColorFilter === "cool"
+                                        ? "hue-rotate(180deg) saturate(80%)"
+                                        : currentAnn?.editorColorFilter === "contrast"
+                                          ? "contrast(150%) saturate(120%)"
+                                          : "none",
+                            }}
+                            autoPlay={isTimelinePlaying}
+                            loop
+                            muted
+                            playsInline
+                            draggable={false}
+                            onLoadedData={updateBounds}
+                          />
+                        ) : (
+                          <img
+                            ref={imageRef as any}
+                            src={currentStep.screenshotPath}
+                            alt={`Step ${currentStepIndex + 1}`}
+                            className="w-full h-full object-contain select-none"
+                            style={{
+                              filter:
+                                currentAnn?.editorColorFilter === "grayscale"
+                                  ? "grayscale(100%)"
+                                  : currentAnn?.editorColorFilter === "sepia"
+                                    ? "sepia(100%)"
+                                    : currentAnn?.editorColorFilter === "warm"
+                                      ? "sepia(50%) saturate(140%)"
+                                      : currentAnn?.editorColorFilter === "cool"
+                                        ? "hue-rotate(180deg) saturate(80%)"
+                                        : currentAnn?.editorColorFilter === "contrast"
+                                          ? "contrast(150%) saturate(120%)"
+                                          : "none",
+                            }}
+                            draggable={false}
+                            onLoad={updateBounds}
+                          />
+                        )
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
                           <div className="text-center">
