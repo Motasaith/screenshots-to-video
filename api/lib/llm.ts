@@ -162,6 +162,218 @@ The array MUST have exactly ${steps.length} entries, in the same order as the st
     : steps.map((_, i) => lines[i] || `Proceed with step ${i + 1} as shown on screen.`);
 }
 
+/* ------------------------------------------------------------------ */
+/*  Vision-based script generation (Gemma 4)                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Load an image from a URL or local path and return a base64 data URL.
+ * Reuses the same logic as checkMediaSafety.
+ */
+async function loadImageAsDataUrl(mediaPath: string): Promise<{ dataUrl: string } | null> {
+  const fs = await import("fs/promises");
+  const path = await import("path");
+
+  try {
+    const isVideo = mediaPath.toLowerCase().endsWith(".mp4") || mediaPath.toLowerCase().endsWith(".webm") || mediaPath.toLowerCase().endsWith(".mov");
+
+    if (isVideo) {
+      const buffers = await extractVideoFrames(mediaPath, 2);
+      if (buffers.length === 0) return null;
+      return { dataUrl: `data:image/jpeg;base64,${buffers[0].toString("base64")}` };
+    }
+
+    let buffer: Buffer;
+    let mime = "image/jpeg";
+
+    if (mediaPath.startsWith("http://") || mediaPath.startsWith("https://")) {
+      const resp = await fetch(mediaPath);
+      if (!resp.ok) return null;
+      const contentType = resp.headers.get("content-type") || "";
+      if (contentType.includes("png")) mime = "image/png";
+      else if (contentType.includes("webp")) mime = "image/webp";
+      buffer = Buffer.from(await resp.arrayBuffer());
+    } else {
+      const fullPath = path.resolve(mediaPath);
+      buffer = await fs.readFile(fullPath);
+      if (fullPath.toLowerCase().endsWith(".png")) mime = "image/png";
+      else if (fullPath.toLowerCase().endsWith(".webp")) mime = "image/webp";
+    }
+
+    return { dataUrl: `data:${mime};base64,${buffer.toString("base64")}` };
+  } catch (e) {
+    console.warn("[loadImageAsDataUrl] Failed:", mediaPath, e);
+    return null;
+  }
+}
+
+/**
+ * Generate a narration script for a single step by sending its screenshot
+ * to the vision model (Gemma 4). The model looks at the image and writes
+ * a narration that describes what's shown on screen.
+ *
+ * @param screenshotPath - URL or local path to the screenshot/video
+ * @param stepDescription - Optional user-provided description of this step
+ * @param projectTitle - The project title for context
+ * @param platform - Target platform (youtube, tiktok, etc.)
+ * @param stepNumber - Which step number this is (1-indexed)
+ * @param totalSteps - Total number of steps
+ */
+export async function generateVisionScript(
+  screenshotPath: string,
+  stepDescription: string | null,
+  projectTitle: string,
+  platform: string,
+  stepNumber: number,
+  totalSteps: number
+): Promise<string> {
+  const imageData = await loadImageAsDataUrl(screenshotPath);
+  if (!imageData) {
+    // Fallback to text-only if image can't be loaded
+    return generateSingleStepScript(stepDescription || `Step ${stepNumber}`, projectTitle, platform, stepNumber, totalSteps);
+  }
+
+  const isFirst = stepNumber === 1;
+  const isLast = stepNumber === totalSteps;
+
+  const promptText = `You are a friendly YouTuber recording a screen tutorial voiceover. Look at this screenshot and write the narration for step ${stepNumber} of ${totalSteps}.
+
+Video topic: ${projectTitle}
+Target platform: ${platform}
+${stepDescription ? `User's description of this step: "${stepDescription}"` : "No user description provided — analyze the screenshot and write the narration."}
+
+${isFirst ? "This is the FIRST step: briefly greet the viewer and say what they'll learn (one short sentence), then describe what's shown." : ""}
+${isLast ? "This is the LAST step: describe what's shown, then wrap up naturally (e.g. 'And that's all there is to it!')." : ""}
+
+How a real tutorial narrator talks:
+- Conversational and warm, like explaining to a friend. Use contractions (we're, you'll, it's, don't).
+- Refer to what's on screen: "this button right here", "up in the top corner", "see that menu?".
+- 1-3 sentences. Be specific about the action. No markdown, no emoji, no stage directions.
+- Use punctuation to control speech rhythm: commas for pauses, "..." for thinking, "—" for a beat.
+
+Write ONLY the narration text. No JSON, no quotes, no labels. Just the words the narrator would say.`;
+
+  const contentParts: any[] = [
+    { type: "text", text: promptText },
+    { type: "image_url", image_url: { url: imageData.dataUrl } },
+  ];
+
+  const response = await chatCompletion(
+    [{ role: "user", content: contentParts }],
+    {
+      model: env.visionLlmModel,
+      temperature: 0.8,
+      maxTokens: 200,
+    }
+  );
+
+  // Clean up response
+  let script = response.trim();
+  // Strip code fences if present
+  script = script.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  // Strip surrounding quotes
+  script = script.replace(/^["']|["']$/g, "").trim();
+  // Strip "Narration:" or "Script:" prefixes
+  script = script.replace(/^(narration|script|step \d+)[:\s]*/i, "").trim();
+
+  return script || `Now, let's move on to step ${stepNumber}. As you can see on screen, ${stepDescription || "follow the action shown here"}.`;
+}
+
+/**
+ * Generate a single step's script using text-only model (fallback when no screenshot).
+ */
+async function generateSingleStepScript(
+  stepDescription: string,
+  projectTitle: string,
+  platform: string,
+  stepNumber: number,
+  totalSteps: number
+): Promise<string> {
+  const isFirst = stepNumber === 1;
+  const isLast = stepNumber === totalSteps;
+
+  const prompt = `You are a friendly YouTuber recording a screen tutorial voiceover. Write the narration for step ${stepNumber} of ${totalSteps}.
+
+Video topic: ${projectTitle}
+Target platform: ${platform}
+Step description: "${stepDescription}"
+
+${isFirst ? "This is the FIRST step: briefly greet the viewer and say what they'll learn, then describe the action." : ""}
+${isLast ? "This is the LAST step: describe the action, then wrap up naturally." : ""}
+
+Write ONLY the narration text (1-3 sentences). No JSON, no quotes, no labels. Just the words the narrator would say.`;
+
+  const response = await chatCompletion(
+    [{ role: "user", content: prompt }],
+    { temperature: 0.8, maxTokens: 200 }
+  );
+
+  let script = response.trim().replace(/^["']|["']$/g, "").trim();
+  return script || `Now, let's move on to step ${stepNumber}. ${stepDescription}`;
+}
+
+/**
+ * Hybrid script generation: uses vision model for steps with screenshots,
+ * and text model for steps without screenshots. This allows mixing
+ * screenshots and video clips in the same project.
+ *
+ * @param projectTitle - The project title
+ * @param projectDescription - Optional user-provided video description/purpose
+ * @param platform - Target platform
+ * @param steps - Array of steps with optional screenshots and descriptions
+ * @returns Array of narration scripts, one per step
+ */
+export async function generateHybridScripts(
+  projectTitle: string,
+  projectDescription: string | null,
+  platform: string,
+  steps: Array<{ order: number; description: string; screenshotPath?: string | null }>
+): Promise<string[]> {
+  const totalSteps = steps.length;
+  const scripts: string[] = [];
+
+  for (const step of steps) {
+    const hasScreenshot = step.screenshotPath && !step.screenshotPath.startsWith("blob:");
+
+    if (hasScreenshot) {
+      try {
+        console.log(`[HybridScript] Step ${step.order}: using vision model for screenshot`);
+        const script = await generateVisionScript(
+          step.screenshotPath!,
+          step.description || null,
+          projectDescription || projectTitle,
+          platform,
+          step.order,
+          totalSteps
+        );
+        scripts.push(script);
+      } catch (err) {
+        console.warn(`[HybridScript] Step ${step.order}: vision failed, falling back to text:`, err);
+        const script = await generateSingleStepScript(
+          step.description,
+          projectDescription || projectTitle,
+          platform,
+          step.order,
+          totalSteps
+        );
+        scripts.push(script);
+      }
+    } else {
+      console.log(`[HybridScript] Step ${step.order}: no screenshot, using text model`);
+      const script = await generateSingleStepScript(
+        step.description,
+        projectDescription || projectTitle,
+        platform,
+        step.order,
+        totalSteps
+      );
+      scripts.push(script);
+    }
+  }
+
+  return scripts;
+}
+
 /**
  * Validate a project setup via LLM.
  */

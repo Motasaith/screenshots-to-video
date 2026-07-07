@@ -53,6 +53,8 @@
     --neon-cyan: #005952;
     --neon-violet: #004741;
     --neon-pink: #004741;
+    --teal-500: #0d9488;
+    --teal-600: #0f766e;
     --btn-glow-rgb: 0, 71, 65;
 
     /* Sketchbook-specific custom properties adapted to space colors */
@@ -61,8 +63,10 @@
     --sketch-accent: #005952;
     --sketch-fg-muted: rgba(5, 36, 33, 0.6);
     --sketch-fg-subtle: rgba(5, 36, 33, 0.4);
-    --sketch-border-color: rgba(0, 71, 65, 0.08);
+    --sketch-border-color: rgba(0, 71, 65, 0.15);
     --sketch-card-bg: #ffffff;
+    --sketch-panel-bg: #F8F6F0;
+    --sketch-toolbar-bg: #FAF9F5;
     --sketch-input-bg: #ffffff;
     --sketch-doodle-stroke: %23004741;
     --sketch-doodle-bg: %23ffffff;
@@ -121,6 +125,8 @@
     --neon-cyan: #2dd4bf;
     --neon-violet: #2dd4bf;
     --neon-pink: #2dd4bf;
+    --teal-500: #14b8a6;
+    --teal-600: #0d9488;
     --btn-glow-rgb: 45, 212, 191;
 
     /* Dark sketchbook properties adapted to space colors */
@@ -129,8 +135,10 @@
     --sketch-accent: #2dd4bf;
     --sketch-fg-muted: rgba(240, 237, 228, 0.6);
     --sketch-fg-subtle: rgba(240, 237, 228, 0.4);
-    --sketch-border-color: rgba(45, 212, 191, 0.08);
+    --sketch-border-color: rgba(45, 212, 191, 0.15);
     --sketch-card-bg: rgba(6, 36, 33, 0.45);
+    --sketch-panel-bg: rgba(6, 36, 33, 0.65);
+    --sketch-toolbar-bg: rgba(4, 23, 21, 0.85);
     --sketch-input-bg: rgba(6, 36, 33, 0.45);
     --sketch-doodle-stroke: %232dd4bf;
     --sketch-doodle-bg: %23041715;

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useParams } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { motion, AnimatePresence } from "framer-motion";
@@ -23,7 +23,6 @@ import {
   Moon,
   BadgeCheck,
   Search,
-  Scan,
   HelpCircle,
   Undo2,
   Redo2,
@@ -41,21 +40,14 @@ import {
   Sparkles,
   Bot,
   Save,
-  Copy,
-  Clipboard,
   ZoomIn,
   ZoomOut,
   Maximize,
-  Eye,
-  EyeOff,
-  Layers,
   Plus,
-  Scissors,
-  FlipHorizontal2,
-  FlipVertical2,
-  RotateCw,
-  Keyboard,
   Image as ImageIcon,
+  Clapperboard,
+  Search as SearchIcon,
+  Download,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -69,7 +61,6 @@ import {
 } from "@/components/ui/dialog";
 import {
   AlertDialog,
-  AlertDialogTrigger,
   AlertDialogContent,
   AlertDialogHeader,
   AlertDialogTitle,
@@ -90,6 +81,7 @@ import {
 import { toast } from "sonner";
 import type { TransitionType } from "@/hooks/useWizardStore";
 import AIGuide from "@/components/wizard/AIGuide";
+import Timeline, { type TimelineClip } from "@/components/wizard/Timeline";
 
 /* ------------------------------------------------------------------ */
 /*  Types & Helpers (carried over from old StepAnnotate)              */
@@ -265,6 +257,8 @@ const RESIZE_HANDLES = [
   { name: "w", style: { top: "50%", left: "-6px", transform: "translateY(-50%)", cursor: "ew-resize" } },
 ] as const;
 
+const MIN_SPLIT_DURATION = 1.0; // Minimum duration for a split clip half
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
@@ -302,6 +296,7 @@ export interface StepEditorPanelProps {
 }
 
 const transitionTypes: { value: TransitionType; label: string }[] = [
+  { value: "none", label: "None" },
   { value: "fade", label: "Fade" },
   { value: "slide-left", label: "Slide Left" },
   { value: "slide-right", label: "Slide Right" },
@@ -377,19 +372,39 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const panScrollRef = useRef<{ left: number; top: number }>({ left: 0, top: 0 });
 
-  const [openTransitionDropdown, setOpenTransitionDropdown] = useState<number | null>(null);
-
   // Google Vids replica states
-  const [activeRightTab, setActiveRightTab] = useState<"properties" | "script" | "voiceover" | "elevenlabs" | "captions" | "transitions" | "aiguide" | "safety" | "help" | null>("properties");
+  const [activeRightTab, setActiveRightTab] = useState<"properties" | "script" | "voiceover" | "elevenlabs" | "captions" | "transitions" | "aiguide" | "safety" | "help" | "media" | null>("properties");
+  const [activeTransitionClipId, setActiveTransitionClipId] = useState<number | null>(null);
   const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
   const [projectTitle, setProjectTitle] = useState("Untitled video");
 
+  // Sidebar resize state (CSS-based, replaces PanelGroup for horizontal split)
+  const [sidebarWidth, setSidebarWidth] = useState(320); // px
+  const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!sidebarResizeRef.current) return;
+      const delta = sidebarResizeRef.current.startX - e.clientX;
+      const newWidth = Math.max(240, Math.min(800, sidebarResizeRef.current.startWidth + delta));
+      setSidebarWidth(newWidth);
+    };
+    const handleMouseUp = () => { sidebarResizeRef.current = null; document.body.style.cursor = ""; document.body.style.userSelect = ""; };
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => { window.removeEventListener("mousemove", handleMouseMove); window.removeEventListener("mouseup", handleMouseUp); };
+  }, []);
+
+  const handleSidebarResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    sidebarResizeRef.current = { startX: e.clientX, startWidth: sidebarWidth };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
 
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isTimelineDragOver, setIsTimelineDragOver] = useState(false);
   const [uploadingFilesCount, setUploadingFilesCount] = useState(0);
-  const [draggedSceneIndex, setDraggedSceneIndex] = useState<number | null>(null);
 
   const [history, setHistory] = useState<Record<number, StepAnnotation>[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -448,7 +463,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
   const handlePlayPreview = async (e: React.MouseEvent, voiceId: string) => {
     e.stopPropagation();
-    
+
     if (playingId === voiceId) {
       audioRef.pause();
       setPlayingId(null);
@@ -638,31 +653,87 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     }
   };
 
-  const handleSceneDragStart = (e: React.DragEvent, index: number) => {
-    setDraggedSceneIndex(index);
-    e.dataTransfer.effectAllowed = "move";
+  // ── NLE Timeline handlers ──
+
+  // Convert steps to TimelineClip[]
+  const timelineClips: TimelineClip[] = useMemo(() => {
+    return steps.map((s) => ({
+      id: s.id,
+      order: s.order,
+      name: s.description || `Scene ${s.order}`,
+      thumbnail: s.screenshotPath,
+      duration: (s as any).editorDuration ?? 5.0,
+      transition: s.transition,
+      isVideo: s.screenshotPath?.includes(".mp4") || s.screenshotPath?.includes("video"),
+    }));
+  }, [steps]);
+
+  // Reorder via new timeline (same logic as handleSceneDrop but with indices)
+  const handleTimelineReorder = async (fromIndex: number, toIndex: number) => {
+    const stepList = [...steps];
+    const draggedItem = stepList[fromIndex];
+    stepList.splice(fromIndex, 1);
+    stepList.splice(toIndex, 0, draggedItem);
+    for (let i = 0; i < stepList.length; i++) {
+      await updateStep.mutateAsync({ id: stepList[i].id, order: i + 1 });
+    }
+    utils.step.listByProject.invalidate({ projectId: projectIdNum });
+    utils.project.getById.invalidate({ id: projectIdNum });
   };
 
+  // Trim clip (change duration)
+  const handleTimelineTrim = async (index: number, newDuration: number) => {
+    const step = steps[index];
+    if (!step) return;
+    await updateStep.mutateAsync({ id: step.id, editorDuration: newDuration });
+    utils.project.getById.invalidate({ id: projectIdNum });
+  };
 
-  const handleSceneDrop = async (e: React.DragEvent, targetIndex: number) => {
-    e.preventDefault();
-    if (draggedSceneIndex === null || draggedSceneIndex === targetIndex) return;
+  // Split clip at playhead position
+  const handleTimelineSplit = async (index: number, splitAtSeconds: number) => {
+    const step = steps[index];
+    if (!step) return;
+    const originalDuration = (step as any).editorDuration ?? 5.0;
+    const firstDur = Math.max(MIN_SPLIT_DURATION, splitAtSeconds);
+    const secondDur = Math.max(MIN_SPLIT_DURATION, originalDuration - splitAtSeconds);
 
-    const stepList = [...steps];
-    const draggedItem = stepList[draggedSceneIndex];
-    stepList.splice(draggedSceneIndex, 1);
-    stepList.splice(targetIndex, 0, draggedItem);
+    // Update the original clip's duration
+    await updateStep.mutateAsync({ id: step.id, editorDuration: firstDur });
 
-    for (let i = 0; i < stepList.length; i++) {
-      const step = stepList[i];
-      await updateStep.mutateAsync({
-        id: step.id,
-        order: i + 1,
-      });
+    // Create a new step after this one
+    const newStep = await createStep.mutateAsync({
+      projectId: projectIdNum,
+      order: step.order + 0.5, // Will be renumbered
+      description: `${step.description} (cont.)`,
+      screenshotPath: step.screenshotPath || undefined,
+    });
+
+    // Set the new step's duration
+    if (newStep?.id) {
+      await updateStep.mutateAsync({ id: newStep.id, editorDuration: secondDur });
     }
 
-    setDraggedSceneIndex(null);
+    // Renumber all steps
     utils.step.listByProject.invalidate({ projectId: projectIdNum });
+    utils.project.getById.invalidate({ id: projectIdNum });
+    toast.success(`Split clip at ${splitAtSeconds.toFixed(1)}s`);
+  };
+
+  // Delete clip via timeline
+  const handleTimelineDelete = (index: number) => {
+    setDeleteSceneIdx(index);
+  };
+
+  // Add clip via timeline
+  const handleTimelineAdd = () => {
+    fileInputRef.current?.click();
+  };
+
+  // Play/pause state
+  const [isTimelinePlaying, setIsTimelinePlaying] = useState(false);
+
+  const handleTimelinePlayToggle = () => {
+    setIsTimelinePlaying((p) => !p);
   };
 
   const [tempDesc, setTempDesc] = useState("");
@@ -1459,15 +1530,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const canvasDim = getCanvasDimensions();
 
 
-  const rect = currentAnn
-    ? {
-      x: currentAnn.zoomRectX,
-      y: currentAnn.zoomRectY,
-      w: currentAnn.zoomRectWidth,
-      h: currentAnn.zoomRectHeight,
-    }
-    : null;
-
   const tempRect =
     isDragging && dragStart && dragCurrent
       ? {
@@ -1502,7 +1564,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
   /* Î“Ã¶Ã‡Î“Ã¶Ã‡ Render helpers Î“Ã¶Ã‡Î“Ã¶Ã‡ */
 
-  
+
   const renderPropertiesContent = () => {
     if (!currentStep) return null;
     return (
@@ -1512,632 +1574,92 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           Properties — {mode}
         </h3>
         <div className="space-y-4">
-            {/* Caption Properties */}
-            {activeTab === "caption" && (
-              <div className="space-y-3">
-                <div>
-                  <Label className="text-xs font-mono">Caption Text</Label>
-                  <Textarea
-                    value={currentAnn?.editorCaptionText || ""}
-                    onChange={(e) =>
-                      setAnnotations((prev) => ({
-                        ...prev,
-                        [currentStep!.id]: {
-                          ...prev[currentStep!.id],
-                          editorCaptionText: e.target.value,
-                        },
-                      }))
-                    }
-                    onBlur={() => pushHistory(annotations)}
-                    placeholder="Enter caption for this step..."
-                    className="mt-1 text-sm min-h-[80px]"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-mono">Position</Label>
-                    <Select
-                      value={currentAnn?.editorCaptionPosition || "bottom"}
-                      onValueChange={(v) => {
-                        pushHistory({
-                          ...annotations,
-                          [currentStep!.id]: {
-                            ...(annotations[currentStep!.id] || {}),
-                            editorCaptionPosition: v,
-                          },
-                        });
-                      }}
-                    >
-                      <SelectTrigger className="mt-1 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="top">Top</SelectItem>
-                        <SelectItem value="bottom">Bottom</SelectItem>
-                        <SelectItem value="center">Center</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-mono">Style</Label>
-                    <Select
-                      value={currentAnn?.editorCaptionStyle || "standard"}
-                      onValueChange={(v) => {
-                        pushHistory({
-                          ...annotations,
-                          [currentStep!.id]: {
-                            ...(annotations[currentStep!.id] || {}),
-                            editorCaptionStyle: v,
-                          },
-                        });
-                      }}
-                    >
-                      <SelectTrigger className="mt-1 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="standard">Standard</SelectItem>
-                        <SelectItem value="subtitle">Subtitle</SelectItem>
-                        <SelectItem value="title">Title</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-mono">Color</Label>
-                    <div className="flex items-center gap-2 mt-1">
-                      <input
-                        type="color"
-                        value={currentAnn?.editorCaptionColor || "#FFFFFF"}
-                        onChange={(e) =>
-                          setAnnotations((prev) => ({
-                            ...prev,
-                            [currentStep!.id]: {
-                              ...prev[currentStep!.id],
-                              editorCaptionColor: e.target.value,
-                            },
-                          }))
-                        }
-                        onBlur={() => pushHistory(annotations)}
-                        className="w-8 h-8 rounded border border-[var(--sketch-fg-subtle)]/30"
-                      />
-                      <span className="text-xs font-mono text-[var(--sketch-fg-muted)]">
-                        {currentAnn?.editorCaptionColor || "#FFFFFF"}
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-mono">Size</Label>
-                    <Select
-                      value={currentAnn?.editorCaptionSize || "medium"}
-                      onValueChange={(v) => {
-                        pushHistory({
-                          ...annotations,
-                          [currentStep!.id]: {
-                            ...(annotations[currentStep!.id] || {}),
-                            editorCaptionSize: v,
-                          },
-                        });
-                      }}
-                    >
-                      <SelectTrigger className="mt-1 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="small">Small</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="large">Large</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {currentAnn?.editorCaptionText && (
-                  <button
-                    onClick={() => handleClear("editorCaptionText")}
-                    className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    Clear caption
-                  </button>
-                )}
+          {/* Caption Properties */}
+          {activeTab === "caption" && (
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs font-mono">Caption Text</Label>
+                <Textarea
+                  value={currentAnn?.editorCaptionText || ""}
+                  onChange={(e) =>
+                    setAnnotations((prev) => ({
+                      ...prev,
+                      [currentStep!.id]: {
+                        ...prev[currentStep!.id],
+                        editorCaptionText: e.target.value,
+                      },
+                    }))
+                  }
+                  onBlur={() => pushHistory(annotations)}
+                  placeholder="Enter caption for this step..."
+                  className="mt-1 text-sm min-h-[80px]"
+                />
               </div>
-            )}
 
-            {/* Overlay Properties */}
-            {activeTab === "overlay" && (
-              <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label className="text-xs font-mono">Overlay Text</Label>
-                  <Textarea
-                    value={currentAnn?.editorOverlayText || ""}
-                    onChange={(e) =>
-                      setAnnotations((prev) => ({
-                        ...prev,
-                        [currentStep!.id]: {
-                          ...prev[currentStep!.id],
-                          editorOverlayText: e.target.value,
-                        },
-                      }))
-                    }
-                    onBlur={() => pushHistory(annotations)}
-                    placeholder="Text to overlay on image..."
-                    className="mt-1 text-sm min-h-[60px]"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-mono">X Position (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorOverlayX ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorOverlayX: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs font-mono">Y Position (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorOverlayY ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorOverlayY: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-mono">Color</Label>
-                    <div className="flex items-center gap-2 mt-1">
-                      <input
-                        type="color"
-                        value={currentAnn?.editorOverlayColor || "#FFFFFF"}
-                        onChange={(e) =>
-                          setAnnotations((prev) => ({
-                            ...prev,
-                            [currentStep!.id]: {
-                              ...prev[currentStep!.id],
-                              editorOverlayColor: e.target.value,
-                            },
-                          }))
-                        }
-                        onBlur={() => pushHistory(annotations)}
-                        className="w-8 h-8 rounded border border-[var(--sketch-fg-subtle)]/30"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-mono">Size</Label>
-                    <Select
-                      value={currentAnn?.editorOverlaySize || "medium"}
-                      onValueChange={(v) => {
-                        pushHistory({
-                          ...annotations,
-                          [currentStep!.id]: {
-                            ...(annotations[currentStep!.id] || {}),
-                            editorOverlaySize: v,
-                          },
-                        });
-                      }}
-                    >
-                      <SelectTrigger className="mt-1 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="small">Small</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="large">Large</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <p className="text-[10px] text-[var(--sketch-fg-muted)]">
-                  ≡ Select "Text Overlay" tool and click on canvas to set position
-                </p>
-
-                {currentAnn?.editorOverlayText && (
-                  <button
-                    onClick={() => {
-                      handleClear("editorOverlayText");
-                      handleClear("editorOverlayX");
-                      handleClear("editorOverlayY");
-                    }}
-                    className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    Clear overlay
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Crop Properties */}
-            {activeTab === "crop" && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-mono">X (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorCropX ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorCropX: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs font-mono">Y (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorCropY ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorCropY: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-mono">Width (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorCropW ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorCropW: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs font-mono">Height (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorCropH ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorCropH: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                </div>
-
-                <p className="text-[10px] text-[var(--sketch-fg-muted)]">
-                  ≡ The green box shows the area to keep. Drag the edges to resize, or drag inside to move. Everything dimmed will be removed.
-                </p>
-
-                {currentAnn?.editorCropX != null && (
-                  <button
-                    onClick={() => {
-                      handleClear("editorCropX");
-                      handleClear("editorCropY");
-                      handleClear("editorCropW");
-                      handleClear("editorCropH");
-                    }}
-                    className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    Clear crop
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Blur Properties */}
-            {activeTab === "blur" && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-mono">X (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorBlurX ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorBlurX: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs font-mono">Y (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorBlurY ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorBlurY: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-mono">Width (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorBlurW ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorBlurW: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs font-mono">Height (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorBlurH ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorBlurH: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <Label className="text-xs font-mono">Blur Intensity</Label>
-                  <div className="flex items-center gap-3 mt-1">
-                    <Slider
-                      value={[currentAnn?.editorBlurIntensity ?? 20]}
-                      min={5}
-                      max={60}
-                      step={1}
-                      onValueChange={([v]) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorBlurIntensity: v,
-                          },
-                        }))
-                      }
-                      onValueCommit={([v]) => {
-                        pushHistory({
-                          ...annotations,
-                          [currentStep!.id]: {
-                            ...(annotations[currentStep!.id] || {}),
-                            editorBlurIntensity: v,
-                          },
-                        });
-                      }}
-                      className="flex-1"
-                    />
-                    <span className="text-xs font-mono w-10 text-right">
-                      {currentAnn?.editorBlurIntensity || 20}px
-                    </span>
-                  </div>
-                </div>
-
-                <p className="text-[10px] text-[var(--sketch-fg-muted)]">
-                  ≡ Select "Blur" tool and drag on canvas to add a blur region. You can add multiple blur regions.
-                </p>
-
-                {currentAnn?.editorBlurs && currentAnn.editorBlurs.length > 0 && (
-                  <button
-                    onClick={() => {
-                      const next = {
+                  <Label className="text-xs font-mono">Position</Label>
+                  <Select
+                    value={currentAnn?.editorCaptionPosition || "bottom"}
+                    onValueChange={(v) => {
+                      pushHistory({
                         ...annotations,
-                        [currentStep.id]: {
-                          ...(annotations[currentStep.id] || {}),
-                          editorBlurs: [],
+                        [currentStep!.id]: {
+                          ...(annotations[currentStep!.id] || {}),
+                          editorCaptionPosition: v,
                         },
-                      };
-                      pushHistory(next);
+                      });
                     }}
-                    className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
                   >
-                    <Trash2 className="w-3 h-3" />
-                    Clear all blurs ({currentAnn.editorBlurs.length})
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Redact Properties */}
-            {activeTab === "redact" && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-mono">X (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorRedactX ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorRedactX: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs font-mono">Y (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorRedactY ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorRedactY: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
+                    <SelectTrigger className="mt-1 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="top">Top</SelectItem>
+                      <SelectItem value="bottom">Bottom</SelectItem>
+                      <SelectItem value="center">Center</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-mono">Width (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorRedactW ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorRedactW: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs font-mono">Height (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorRedactH ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorRedactH: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                </div>
-
                 <div>
-                  <Label className="text-xs font-mono">Redact Color</Label>
+                  <Label className="text-xs font-mono">Style</Label>
+                  <Select
+                    value={currentAnn?.editorCaptionStyle || "standard"}
+                    onValueChange={(v) => {
+                      pushHistory({
+                        ...annotations,
+                        [currentStep!.id]: {
+                          ...(annotations[currentStep!.id] || {}),
+                          editorCaptionStyle: v,
+                        },
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="mt-1 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="standard">Standard</SelectItem>
+                      <SelectItem value="subtitle">Subtitle</SelectItem>
+                      <SelectItem value="title">Title</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs font-mono">Color</Label>
                   <div className="flex items-center gap-2 mt-1">
                     <input
                       type="color"
-                      value={currentAnn?.editorRedactColor || "#000000"}
+                      value={currentAnn?.editorCaptionColor || "#FFFFFF"}
                       onChange={(e) =>
                         setAnnotations((prev) => ({
                           ...prev,
                           [currentStep!.id]: {
                             ...prev[currentStep!.id],
-                            editorRedactColor: e.target.value,
+                            editorCaptionColor: e.target.value,
                           },
                         }))
                       }
@@ -2145,433 +1667,683 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                       className="w-8 h-8 rounded border border-[var(--sketch-fg-subtle)]/30"
                     />
                     <span className="text-xs font-mono text-[var(--sketch-fg-muted)]">
-                      {currentAnn?.editorRedactColor || "#000000"}
+                      {currentAnn?.editorCaptionColor || "#FFFFFF"}
                     </span>
                   </div>
                 </div>
-
-                <p className="text-[10px] text-[var(--sketch-fg-muted)]">
-                  ≡ Select "Redact" tool and drag on canvas to cover sensitive info completely
-                </p>
-
-                {currentAnn?.editorRedactX != null && (
-                  <button
-                    onClick={() => {
-                      handleClear("editorRedactX");
-                      handleClear("editorRedactY");
-                      handleClear("editorRedactW");
-                      handleClear("editorRedactH");
-                      handleClear("editorRedactColor");
-                    }}
-                    className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    Clear redaction
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Watermark Properties */}
-            {activeTab === "watermark" && (
-              <div className="space-y-3">
                 <div>
-                  <Label className="text-xs font-mono">Watermark Text</Label>
+                  <Label className="text-xs font-mono">Size</Label>
+                  <Select
+                    value={currentAnn?.editorCaptionSize || "medium"}
+                    onValueChange={(v) => {
+                      pushHistory({
+                        ...annotations,
+                        [currentStep!.id]: {
+                          ...(annotations[currentStep!.id] || {}),
+                          editorCaptionSize: v,
+                        },
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="mt-1 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="small">Small</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="large">Large</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {currentAnn?.editorCaptionText && (
+                <button
+                  onClick={() => handleClear("editorCaptionText")}
+                  className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Clear caption
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Overlay Properties */}
+          {activeTab === "overlay" && (
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs font-mono">Overlay Text</Label>
+                <Textarea
+                  value={currentAnn?.editorOverlayText || ""}
+                  onChange={(e) =>
+                    setAnnotations((prev) => ({
+                      ...prev,
+                      [currentStep!.id]: {
+                        ...prev[currentStep!.id],
+                        editorOverlayText: e.target.value,
+                      },
+                    }))
+                  }
+                  onBlur={() => pushHistory(annotations)}
+                  placeholder="Text to overlay on image..."
+                  className="mt-1 text-sm min-h-[60px]"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs font-mono">X Position (%)</Label>
                   <Input
-                    value={currentAnn?.editorWatermarkText || ""}
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorOverlayX ?? ""}
                     onChange={(e) =>
                       setAnnotations((prev) => ({
                         ...prev,
                         [currentStep!.id]: {
                           ...prev[currentStep!.id],
-                          editorWatermarkText: e.target.value,
+                          editorOverlayX: Number(e.target.value),
                         },
                       }))
                     }
                     onBlur={() => pushHistory(annotations)}
-                    placeholder="@username or brand name"
-                    className="mt-1 text-sm"
+                    className="mt-1 text-xs"
                   />
                 </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-mono">Position</Label>
-                    <Select
-                      value={currentAnn?.editorWatermarkPosition || "bottom-right"}
-                      onValueChange={(v) => {
-                        pushHistory({
-                          ...annotations,
-                          [currentStep!.id]: {
-                            ...(annotations[currentStep!.id] || {}),
-                            editorWatermarkPosition: v,
-                          },
-                        });
-                      }}
-                    >
-                      <SelectTrigger className="mt-1 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="top-left">Top Left</SelectItem>
-                        <SelectItem value="top-right">Top Right</SelectItem>
-                        <SelectItem value="bottom-left">Bottom Left</SelectItem>
-                        <SelectItem value="bottom-right">Bottom Right</SelectItem>
-                        <SelectItem value="center">Center</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-mono">Size</Label>
-                    <Select
-                      value={currentAnn?.editorWatermarkSize || "small"}
-                      onValueChange={(v) => {
-                        pushHistory({
-                          ...annotations,
-                          [currentStep!.id]: {
-                            ...(annotations[currentStep!.id] || {}),
-                            editorWatermarkSize: v,
-                          },
-                        });
-                      }}
-                    >
-                      <SelectTrigger className="mt-1 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="small">Small</SelectItem>
-                        <SelectItem value="medium">Medium</SelectItem>
-                        <SelectItem value="large">Large</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-mono">Color</Label>
-                    <div className="flex items-center gap-2 mt-1">
-                      <input
-                        type="color"
-                        value={currentAnn?.editorWatermarkColor || "#FFFFFF"}
-                        onChange={(e) =>
-                          setAnnotations((prev) => ({
-                            ...prev,
-                            [currentStep!.id]: {
-                              ...prev[currentStep!.id],
-                              editorWatermarkColor: e.target.value,
-                            },
-                          }))
-                        }
-                        onBlur={() => pushHistory(annotations)}
-                        className="w-8 h-8 rounded border border-[var(--sketch-fg-subtle)]/30"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-xs font-mono">Opacity</Label>
-                    <div className="flex items-center gap-3 mt-1">
-                      <Slider
-                        value={[Math.round((currentAnn?.editorWatermarkOpacity ?? 0.5) * 100)]}
-                        min={10}
-                        max={100}
-                        step={5}
-                        onValueChange={([v]) =>
-                          setAnnotations((prev) => ({
-                            ...prev,
-                            [currentStep!.id]: {
-                              ...prev[currentStep!.id],
-                              editorWatermarkOpacity: v / 100,
-                            },
-                          }))
-                        }
-                        onValueCommit={([v]) => {
-                          pushHistory({
-                            ...annotations,
-                            [currentStep!.id]: {
-                              ...(annotations[currentStep!.id] || {}),
-                              editorWatermarkOpacity: v / 100,
-                            },
-                          });
-                        }}
-                        className="flex-1"
-                      />
-                      <span className="text-xs font-mono w-10 text-right">
-                        {Math.round((currentAnn?.editorWatermarkOpacity ?? 0.5) * 100)}%
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {currentAnn?.editorWatermarkText && (
-                  <button
-                    onClick={() => {
-                      handleClear("editorWatermarkText");
-                      handleClear("editorWatermarkPosition");
-                      handleClear("editorWatermarkSize");
-                      handleClear("editorWatermarkColor");
-                      handleClear("editorWatermarkOpacity");
-                    }}
-                    className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    Clear watermark
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Pixelate Properties */}
-            {activeTab === "pixelate" && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-mono">X (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorPixelateX ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorPixelateX: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs font-mono">Y (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorPixelateY ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorPixelateY: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-mono">Width (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorPixelateW ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorPixelateW: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs font-mono">Height (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorPixelateH ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorPixelateH: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                </div>
-
                 <div>
-                  <Label className="text-xs font-mono">Block Size</Label>
-                  <div className="flex items-center gap-3 mt-1">
-                    <Slider
-                      value={[currentAnn?.editorPixelateBlockSize ?? 20]}
-                      min={5}
-                      max={60}
-                      step={1}
-                      onValueChange={([v]) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorPixelateBlockSize: v,
-                          },
-                        }))
-                      }
-                      onValueCommit={([v]) => {
-                        pushHistory({
-                          ...annotations,
-                          [currentStep!.id]: {
-                            ...(annotations[currentStep!.id] || {}),
-                            editorPixelateBlockSize: v,
-                          },
-                        });
-                      }}
-                      className="flex-1"
-                    />
-                    <span className="text-xs font-mono w-10 text-right">
-                      {currentAnn?.editorPixelateBlockSize || 20}px
-                    </span>
-                  </div>
-                </div>
-
-                <p className="text-[10px] text-[var(--sketch-fg-muted)]">
-                  ≡ Select "Pixelate" tool and drag on canvas to mosaic sensitive UI. You can add multiple pixelate regions.
-                </p>
-
-                {currentAnn?.editorPixelates && currentAnn.editorPixelates.length > 0 && (
-                  <button
-                    onClick={() => {
-                      const next = {
-                        ...annotations,
-                        [currentStep.id]: {
-                          ...(annotations[currentStep.id] || {}),
-                          editorPixelates: [],
+                  <Label className="text-xs font-mono">Y Position (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorOverlayY ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorOverlayY: Number(e.target.value),
                         },
-                      };
-                      pushHistory(next);
-                    }}
-                    className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    Clear all pixelate ({currentAnn.editorPixelates.length})
-                  </button>
-                )}
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
               </div>
-            )}
 
-            {/* Spotlight Properties */}
-            {activeTab === "spotlight" && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-mono">X (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorSpotlightX ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorSpotlightX: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs font-mono">Y (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorSpotlightY ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorSpotlightY: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-mono">Width (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorSpotlightW ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorSpotlightW: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs font-mono">Height (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorSpotlightH ?? ""}
-                      onChange={(e) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorSpotlightH: Number(e.target.value),
-                          },
-                        }))
-                      }
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                </div>
-
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label className="text-xs font-mono">Dim Intensity</Label>
+                  <Label className="text-xs font-mono">Color</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="color"
+                      value={currentAnn?.editorOverlayColor || "#FFFFFF"}
+                      onChange={(e) =>
+                        setAnnotations((prev) => ({
+                          ...prev,
+                          [currentStep!.id]: {
+                            ...prev[currentStep!.id],
+                            editorOverlayColor: e.target.value,
+                          },
+                        }))
+                      }
+                      onBlur={() => pushHistory(annotations)}
+                      className="w-8 h-8 rounded border border-[var(--sketch-fg-subtle)]/30"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs font-mono">Size</Label>
+                  <Select
+                    value={currentAnn?.editorOverlaySize || "medium"}
+                    onValueChange={(v) => {
+                      pushHistory({
+                        ...annotations,
+                        [currentStep!.id]: {
+                          ...(annotations[currentStep!.id] || {}),
+                          editorOverlaySize: v,
+                        },
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="mt-1 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="small">Small</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="large">Large</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <p className="text-[10px] text-[var(--sketch-fg-muted)]">
+                ≡ Select "Text Overlay" tool and click on canvas to set position
+              </p>
+
+              {currentAnn?.editorOverlayText && (
+                <button
+                  onClick={() => {
+                    handleClear("editorOverlayText");
+                    handleClear("editorOverlayX");
+                    handleClear("editorOverlayY");
+                  }}
+                  className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Clear overlay
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Crop Properties */}
+          {activeTab === "crop" && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs font-mono">X (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorCropX ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorCropX: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-mono">Y (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorCropY ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorCropY: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs font-mono">Width (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorCropW ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorCropW: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-mono">Height (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorCropH ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorCropH: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+              </div>
+
+              <p className="text-[10px] text-[var(--sketch-fg-muted)]">
+                ≡ The green box shows the area to keep. Drag the edges to resize, or drag inside to move. Everything dimmed will be removed.
+              </p>
+
+              {currentAnn?.editorCropX != null && (
+                <button
+                  onClick={() => {
+                    handleClear("editorCropX");
+                    handleClear("editorCropY");
+                    handleClear("editorCropW");
+                    handleClear("editorCropH");
+                  }}
+                  className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Clear crop
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Blur Properties */}
+          {activeTab === "blur" && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs font-mono">X (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorBlurX ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorBlurX: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-mono">Y (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorBlurY ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorBlurY: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs font-mono">Width (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorBlurW ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorBlurW: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-mono">Height (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorBlurH ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorBlurH: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs font-mono">Blur Intensity</Label>
+                <div className="flex items-center gap-3 mt-1">
+                  <Slider
+                    value={[currentAnn?.editorBlurIntensity ?? 20]}
+                    min={5}
+                    max={60}
+                    step={1}
+                    onValueChange={([v]) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorBlurIntensity: v,
+                        },
+                      }))
+                    }
+                    onValueCommit={([v]) => {
+                      pushHistory({
+                        ...annotations,
+                        [currentStep!.id]: {
+                          ...(annotations[currentStep!.id] || {}),
+                          editorBlurIntensity: v,
+                        },
+                      });
+                    }}
+                    className="flex-1"
+                  />
+                  <span className="text-xs font-mono w-10 text-right">
+                    {currentAnn?.editorBlurIntensity || 20}px
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-[10px] text-[var(--sketch-fg-muted)]">
+                ≡ Select "Blur" tool and drag on canvas to add a blur region. You can add multiple blur regions.
+              </p>
+
+              {currentAnn?.editorBlurs && currentAnn.editorBlurs.length > 0 && (
+                <button
+                  onClick={() => {
+                    const next = {
+                      ...annotations,
+                      [currentStep.id]: {
+                        ...(annotations[currentStep.id] || {}),
+                        editorBlurs: [],
+                      },
+                    };
+                    pushHistory(next);
+                  }}
+                  className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Clear all blurs ({currentAnn.editorBlurs.length})
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Redact Properties */}
+          {activeTab === "redact" && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs font-mono">X (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorRedactX ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorRedactX: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-mono">Y (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorRedactY ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorRedactY: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs font-mono">Width (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorRedactW ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorRedactW: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-mono">Height (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorRedactH ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorRedactH: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs font-mono">Redact Color</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    type="color"
+                    value={currentAnn?.editorRedactColor || "#000000"}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorRedactColor: e.target.value,
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="w-8 h-8 rounded border border-[var(--sketch-fg-subtle)]/30"
+                  />
+                  <span className="text-xs font-mono text-[var(--sketch-fg-muted)]">
+                    {currentAnn?.editorRedactColor || "#000000"}
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-[10px] text-[var(--sketch-fg-muted)]">
+                ≡ Select "Redact" tool and drag on canvas to cover sensitive info completely
+              </p>
+
+              {currentAnn?.editorRedactX != null && (
+                <button
+                  onClick={() => {
+                    handleClear("editorRedactX");
+                    handleClear("editorRedactY");
+                    handleClear("editorRedactW");
+                    handleClear("editorRedactH");
+                    handleClear("editorRedactColor");
+                  }}
+                  className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Clear redaction
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Watermark Properties */}
+          {activeTab === "watermark" && (
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs font-mono">Watermark Text</Label>
+                <Input
+                  value={currentAnn?.editorWatermarkText || ""}
+                  onChange={(e) =>
+                    setAnnotations((prev) => ({
+                      ...prev,
+                      [currentStep!.id]: {
+                        ...prev[currentStep!.id],
+                        editorWatermarkText: e.target.value,
+                      },
+                    }))
+                  }
+                  onBlur={() => pushHistory(annotations)}
+                  placeholder="@username or brand name"
+                  className="mt-1 text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs font-mono">Position</Label>
+                  <Select
+                    value={currentAnn?.editorWatermarkPosition || "bottom-right"}
+                    onValueChange={(v) => {
+                      pushHistory({
+                        ...annotations,
+                        [currentStep!.id]: {
+                          ...(annotations[currentStep!.id] || {}),
+                          editorWatermarkPosition: v,
+                        },
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="mt-1 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="top-left">Top Left</SelectItem>
+                      <SelectItem value="top-right">Top Right</SelectItem>
+                      <SelectItem value="bottom-left">Bottom Left</SelectItem>
+                      <SelectItem value="bottom-right">Bottom Right</SelectItem>
+                      <SelectItem value="center">Center</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-xs font-mono">Size</Label>
+                  <Select
+                    value={currentAnn?.editorWatermarkSize || "small"}
+                    onValueChange={(v) => {
+                      pushHistory({
+                        ...annotations,
+                        [currentStep!.id]: {
+                          ...(annotations[currentStep!.id] || {}),
+                          editorWatermarkSize: v,
+                        },
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="mt-1 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="small">Small</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="large">Large</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs font-mono">Color</Label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="color"
+                      value={currentAnn?.editorWatermarkColor || "#FFFFFF"}
+                      onChange={(e) =>
+                        setAnnotations((prev) => ({
+                          ...prev,
+                          [currentStep!.id]: {
+                            ...prev[currentStep!.id],
+                            editorWatermarkColor: e.target.value,
+                          },
+                        }))
+                      }
+                      onBlur={() => pushHistory(annotations)}
+                      className="w-8 h-8 rounded border border-[var(--sketch-fg-subtle)]/30"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-xs font-mono">Opacity</Label>
                   <div className="flex items-center gap-3 mt-1">
                     <Slider
-                      value={[Math.round((currentAnn?.editorSpotlightIntensity ?? 0.6) * 100)]}
+                      value={[Math.round((currentAnn?.editorWatermarkOpacity ?? 0.5) * 100)]}
                       min={10}
-                      max={90}
+                      max={100}
                       step={5}
                       onValueChange={([v]) =>
                         setAnnotations((prev) => ({
                           ...prev,
                           [currentStep!.id]: {
                             ...prev[currentStep!.id],
-                            editorSpotlightIntensity: v / 100,
+                            editorWatermarkOpacity: v / 100,
                           },
                         }))
                       }
@@ -2580,349 +2352,753 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                           ...annotations,
                           [currentStep!.id]: {
                             ...(annotations[currentStep!.id] || {}),
-                            editorSpotlightIntensity: v / 100,
+                            editorWatermarkOpacity: v / 100,
                           },
                         });
                       }}
                       className="flex-1"
                     />
                     <span className="text-xs font-mono w-10 text-right">
-                      {Math.round((currentAnn?.editorSpotlightIntensity ?? 0.6) * 100)}%
+                      {Math.round((currentAnn?.editorWatermarkOpacity ?? 0.5) * 100)}%
                     </span>
                   </div>
                 </div>
-
-                <p className="text-[10px] text-[var(--sketch-fg-muted)]">
-                  ≡ Select "Spotlight" tool and drag to highlight a region while dimming everything else. You can add multiple spotlight regions.
-                </p>
-
-                {currentAnn?.editorSpotlights && currentAnn.editorSpotlights.length > 0 && (
-                  <button
-                    onClick={() => {
-                      const next = {
-                        ...annotations,
-                        [currentStep.id]: {
-                          ...(annotations[currentStep.id] || {}),
-                          editorSpotlights: [],
-                        },
-                      };
-                      pushHistory(next);
-                    }}
-                    className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    Clear all spotlights ({currentAnn.editorSpotlights.length})
-                  </button>
-                )}
               </div>
-            )}
 
-            {/* Badge Properties */}
-            {activeTab === "badge" && (
-              <div className="space-y-3">
+              {currentAnn?.editorWatermarkText && (
+                <button
+                  onClick={() => {
+                    handleClear("editorWatermarkText");
+                    handleClear("editorWatermarkPosition");
+                    handleClear("editorWatermarkSize");
+                    handleClear("editorWatermarkColor");
+                    handleClear("editorWatermarkOpacity");
+                  }}
+                  className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Clear watermark
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Pixelate Properties */}
+          {activeTab === "pixelate" && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <Label className="text-xs font-mono">Badge Number</Label>
+                  <Label className="text-xs font-mono">X (%)</Label>
                   <Input
                     type="number"
-                    min={1}
-                    max={99}
-                    value={currentAnn?.editorBadgeNumber ?? ""}
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorPixelateX ?? ""}
                     onChange={(e) =>
                       setAnnotations((prev) => ({
                         ...prev,
                         [currentStep!.id]: {
                           ...prev[currentStep!.id],
-                          editorBadgeNumber: Number(e.target.value),
+                          editorPixelateX: Number(e.target.value),
                         },
                       }))
                     }
                     onBlur={() => pushHistory(annotations)}
-                    className="mt-1 text-sm"
+                    className="mt-1 text-xs"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <Label className="text-xs font-mono">X (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorBadgeX ?? ""}
-                      onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorBadgeX: Number(e.target.value) } }))}
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs font-mono">Y (%)</Label>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={100}
-                      value={currentAnn?.editorBadgeY ?? ""}
-                      onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorBadgeY: Number(e.target.value) } }))}
-                      onBlur={() => pushHistory(annotations)}
-                      className="mt-1 text-xs"
-                    />
-                  </div>
-                </div>
                 <div>
-                  <Label className="text-xs font-mono">Color</Label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <input
-                      type="color"
-                      value={currentAnn?.editorBadgeColor || "#FBBF24"}
-                      onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorBadgeColor: e.target.value } }))}
-                      onBlur={() => pushHistory(annotations)}
-                      className="w-8 h-8 rounded border border-[var(--sketch-fg-subtle)]/30"
-                    />
-                    <span className="text-xs font-mono text-[var(--sketch-fg-muted)]">{currentAnn?.editorBadgeColor || "#FBBF24"}</span>
-                  </div>
+                  <Label className="text-xs font-mono">Y (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorPixelateY ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorPixelateY: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
                 </div>
-                <p className="text-[10px] text-[var(--sketch-fg-muted)]">≡ Select "Badge" tool and click on canvas to place</p>
-                {currentAnn?.editorBadgeNumber != null && (
-                  <button onClick={() => { handleClear("editorBadgeNumber"); handleClear("editorBadgeX"); handleClear("editorBadgeY"); handleClear("editorBadgeColor"); }} className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"><Trash2 className="w-3 h-3" /> Clear badge</button>
-                )}
               </div>
-            )}
 
-            {/* Magnify Properties */}
-            {activeTab === "magnify" && (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-2">
-                  <div><Label className="text-xs font-mono">X (%)</Label><Input type="number" min={0} max={100} value={currentAnn?.editorMagnifyX ?? ""} onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorMagnifyX: Number(e.target.value) } }))} onBlur={() => pushHistory(annotations)} className="mt-1 text-xs" /></div>
-                  <div><Label className="text-xs font-mono">Y (%)</Label><Input type="number" min={0} max={100} value={currentAnn?.editorMagnifyY ?? ""} onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorMagnifyY: Number(e.target.value) } }))} onBlur={() => pushHistory(annotations)} className="mt-1 text-xs" /></div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div><Label className="text-xs font-mono">Width (%)</Label><Input type="number" min={0} max={100} value={currentAnn?.editorMagnifyW ?? ""} onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorMagnifyW: Number(e.target.value) } }))} onBlur={() => pushHistory(annotations)} className="mt-1 text-xs" /></div>
-                  <div><Label className="text-xs font-mono">Height (%)</Label><Input type="number" min={0} max={100} value={currentAnn?.editorMagnifyH ?? ""} onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorMagnifyH: Number(e.target.value) } }))} onBlur={() => pushHistory(annotations)} className="mt-1 text-xs" /></div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs font-mono">Width (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorPixelateW ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorPixelateW: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
                 </div>
                 <div>
-                  <Label className="text-xs font-mono">Zoom Scale</Label>
-                  <div className="flex items-center gap-3 mt-1">
-                    <Slider
-                      value={[currentAnn?.editorMagnifyScale ?? 2]}
-                      min={1.5}
-                      max={5}
-                      step={0.5}
-                      onValueChange={([v]) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorMagnifyScale: v } }))}
-                      onValueCommit={([v]) => {
-                        pushHistory({
-                          ...annotations,
+                  <Label className="text-xs font-mono">Height (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorPixelateH ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorPixelateH: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs font-mono">Block Size</Label>
+                <div className="flex items-center gap-3 mt-1">
+                  <Slider
+                    value={[currentAnn?.editorPixelateBlockSize ?? 20]}
+                    min={5}
+                    max={60}
+                    step={1}
+                    onValueChange={([v]) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorPixelateBlockSize: v,
+                        },
+                      }))
+                    }
+                    onValueCommit={([v]) => {
+                      pushHistory({
+                        ...annotations,
+                        [currentStep!.id]: {
+                          ...(annotations[currentStep!.id] || {}),
+                          editorPixelateBlockSize: v,
+                        },
+                      });
+                    }}
+                    className="flex-1"
+                  />
+                  <span className="text-xs font-mono w-10 text-right">
+                    {currentAnn?.editorPixelateBlockSize || 20}px
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-[10px] text-[var(--sketch-fg-muted)]">
+                ≡ Select "Pixelate" tool and drag on canvas to mosaic sensitive UI. You can add multiple pixelate regions.
+              </p>
+
+              {currentAnn?.editorPixelates && currentAnn.editorPixelates.length > 0 && (
+                <button
+                  onClick={() => {
+                    const next = {
+                      ...annotations,
+                      [currentStep.id]: {
+                        ...(annotations[currentStep.id] || {}),
+                        editorPixelates: [],
+                      },
+                    };
+                    pushHistory(next);
+                  }}
+                  className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Clear all pixelate ({currentAnn.editorPixelates.length})
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Spotlight Properties */}
+          {activeTab === "spotlight" && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs font-mono">X (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorSpotlightX ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorSpotlightX: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-mono">Y (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorSpotlightY ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorSpotlightY: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs font-mono">Width (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorSpotlightW ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorSpotlightW: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-mono">Height (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorSpotlightH ?? ""}
+                    onChange={(e) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorSpotlightH: Number(e.target.value),
+                        },
+                      }))
+                    }
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs font-mono">Dim Intensity</Label>
+                <div className="flex items-center gap-3 mt-1">
+                  <Slider
+                    value={[Math.round((currentAnn?.editorSpotlightIntensity ?? 0.6) * 100)]}
+                    min={10}
+                    max={90}
+                    step={5}
+                    onValueChange={([v]) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorSpotlightIntensity: v / 100,
+                        },
+                      }))
+                    }
+                    onValueCommit={([v]) => {
+                      pushHistory({
+                        ...annotations,
+                        [currentStep!.id]: {
+                          ...(annotations[currentStep!.id] || {}),
+                          editorSpotlightIntensity: v / 100,
+                        },
+                      });
+                    }}
+                    className="flex-1"
+                  />
+                  <span className="text-xs font-mono w-10 text-right">
+                    {Math.round((currentAnn?.editorSpotlightIntensity ?? 0.6) * 100)}%
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-[10px] text-[var(--sketch-fg-muted)]">
+                ≡ Select "Spotlight" tool and drag to highlight a region while dimming everything else. You can add multiple spotlight regions.
+              </p>
+
+              {currentAnn?.editorSpotlights && currentAnn.editorSpotlights.length > 0 && (
+                <button
+                  onClick={() => {
+                    const next = {
+                      ...annotations,
+                      [currentStep.id]: {
+                        ...(annotations[currentStep.id] || {}),
+                        editorSpotlights: [],
+                      },
+                    };
+                    pushHistory(next);
+                  }}
+                  className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Clear all spotlights ({currentAnn.editorSpotlights.length})
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Badge Properties */}
+          {activeTab === "badge" && (
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs font-mono">Badge Number</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={99}
+                  value={currentAnn?.editorBadgeNumber ?? ""}
+                  onChange={(e) =>
+                    setAnnotations((prev) => ({
+                      ...prev,
+                      [currentStep!.id]: {
+                        ...prev[currentStep!.id],
+                        editorBadgeNumber: Number(e.target.value),
+                      },
+                    }))
+                  }
+                  onBlur={() => pushHistory(annotations)}
+                  className="mt-1 text-sm"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label className="text-xs font-mono">X (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorBadgeX ?? ""}
+                    onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorBadgeX: Number(e.target.value) } }))}
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-mono">Y (%)</Label>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={currentAnn?.editorBadgeY ?? ""}
+                    onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorBadgeY: Number(e.target.value) } }))}
+                    onBlur={() => pushHistory(annotations)}
+                    className="mt-1 text-xs"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs font-mono">Color</Label>
+                <div className="flex items-center gap-2 mt-1">
+                  <input
+                    type="color"
+                    value={currentAnn?.editorBadgeColor || "#FBBF24"}
+                    onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorBadgeColor: e.target.value } }))}
+                    onBlur={() => pushHistory(annotations)}
+                    className="w-8 h-8 rounded border border-[var(--sketch-fg-subtle)]/30"
+                  />
+                  <span className="text-xs font-mono text-[var(--sketch-fg-muted)]">{currentAnn?.editorBadgeColor || "#FBBF24"}</span>
+                </div>
+              </div>
+              <p className="text-[10px] text-[var(--sketch-fg-muted)]">≡ Select "Badge" tool and click on canvas to place</p>
+              {currentAnn?.editorBadgeNumber != null && (
+                <button onClick={() => { handleClear("editorBadgeNumber"); handleClear("editorBadgeX"); handleClear("editorBadgeY"); handleClear("editorBadgeColor"); }} className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"><Trash2 className="w-3 h-3" /> Clear badge</button>
+              )}
+            </div>
+          )}
+
+          {/* Magnify Properties */}
+          {activeTab === "magnify" && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div><Label className="text-xs font-mono">X (%)</Label><Input type="number" min={0} max={100} value={currentAnn?.editorMagnifyX ?? ""} onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorMagnifyX: Number(e.target.value) } }))} onBlur={() => pushHistory(annotations)} className="mt-1 text-xs" /></div>
+                <div><Label className="text-xs font-mono">Y (%)</Label><Input type="number" min={0} max={100} value={currentAnn?.editorMagnifyY ?? ""} onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorMagnifyY: Number(e.target.value) } }))} onBlur={() => pushHistory(annotations)} className="mt-1 text-xs" /></div>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div><Label className="text-xs font-mono">Width (%)</Label><Input type="number" min={0} max={100} value={currentAnn?.editorMagnifyW ?? ""} onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorMagnifyW: Number(e.target.value) } }))} onBlur={() => pushHistory(annotations)} className="mt-1 text-xs" /></div>
+                <div><Label className="text-xs font-mono">Height (%)</Label><Input type="number" min={0} max={100} value={currentAnn?.editorMagnifyH ?? ""} onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorMagnifyH: Number(e.target.value) } }))} onBlur={() => pushHistory(annotations)} className="mt-1 text-xs" /></div>
+              </div>
+              <div>
+                <Label className="text-xs font-mono">Zoom Scale</Label>
+                <div className="flex items-center gap-3 mt-1">
+                  <Slider
+                    value={[currentAnn?.editorMagnifyScale ?? 2]}
+                    min={1.5}
+                    max={5}
+                    step={0.5}
+                    onValueChange={([v]) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorMagnifyScale: v } }))}
+                    onValueCommit={([v]) => {
+                      pushHistory({
+                        ...annotations,
+                        [currentStep!.id]: {
+                          ...(annotations[currentStep!.id] || {}),
+                          editorMagnifyScale: v,
+                        },
+                      });
+                    }}
+                    className="flex-1"
+                  />
+                  <span className="text-xs font-mono w-10 text-right">{currentAnn?.editorMagnifyScale?.toFixed(1) || "2.0"}x</span>
+                </div>
+              </div>
+              <div>
+                <Label className="text-xs font-mono">Corner Position</Label>
+                <Select
+                  value={currentAnn?.editorMagnifyCorner || "bottom-right"}
+                  onValueChange={(v) => {
+                    pushHistory({
+                      ...annotations,
+                      [currentStep!.id]: {
+                        ...(annotations[currentStep!.id] || {}),
+                        editorMagnifyCorner: v,
+                      },
+                    });
+                  }}
+                >
+                  <SelectTrigger className="mt-1 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="top-left">Top Left</SelectItem>
+                    <SelectItem value="top-right">Top Right</SelectItem>
+                    <SelectItem value="bottom-left">Bottom Left</SelectItem>
+                    <SelectItem value="bottom-right">Bottom Right</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-[10px] text-[var(--sketch-fg-muted)]">≡ Select "Magnify" tool and click on canvas to set target</p>
+              {currentAnn?.editorMagnifyX != null && (
+                <button onClick={() => { handleClear("editorMagnifyX"); handleClear("editorMagnifyY"); handleClear("editorMagnifyW"); handleClear("editorMagnifyH"); handleClear("editorMagnifyScale"); handleClear("editorMagnifyCorner"); }} className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"><Trash2 className="w-3 h-3" /> Clear magnify</button>
+              )}
+            </div>
+          )}
+
+          {/* Filter Properties */}
+          {activeTab === "filter" && (
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs font-mono">Color Filter</Label>
+                <Select
+                  value={currentAnn?.editorColorFilter || "none"}
+                  onValueChange={(v) => {
+                    pushHistory({
+                      ...annotations,
+                      [currentStep!.id]: {
+                        ...(annotations[currentStep!.id] || {}),
+                        editorColorFilter: v,
+                      },
+                    });
+                  }}
+                >
+                  <SelectTrigger className="mt-1 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">None (Original)</SelectItem>
+                    <SelectItem value="grayscale">Grayscale</SelectItem>
+                    <SelectItem value="sepia">Sepia</SelectItem>
+                    <SelectItem value="warm">Warm</SelectItem>
+                    <SelectItem value="cool">Cool</SelectItem>
+                    <SelectItem value="contrast">High Contrast</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-[10px] text-[var(--sketch-fg-muted)]">≡ Applies to the entire screenshot for this step</p>
+              {currentAnn?.editorColorFilter && currentAnn.editorColorFilter !== "none" && (
+                <button onClick={() => handleClear("editorColorFilter")} className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"><Trash2 className="w-3 h-3" /> Clear filter</button>
+              )}
+            </div>
+          )}
+
+          {/* Multi-Zoom Properties */}
+          {activeTab === "multizoom" && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-mono">Zoom Points ({currentAnn?.editorMultiZooms?.length || 0})</Label>
+                <button
+                  onClick={() => {
+                    const nextState = {
+                      ...annotations,
+                      [currentStep!.id]: {
+                        ...(annotations[currentStep!.id] || {}),
+                        editorMultiZooms: [],
+                      },
+                    };
+                    pushHistory(nextState);
+                  }}
+                  className="text-[10px] text-red-500 hover:text-red-600"
+                >
+                  Clear all
+                </button>
+              </div>
+
+              <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                {currentAnn?.editorMultiZooms?.map((mz, idx) => (
+                  <div key={mz.id} className="p-2 border border-[var(--sketch-fg-subtle)]/20 rounded bg-[var(--sketch-fg-subtle)]/5">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-mono font-semibold">Point {idx + 1}</span>
+                      <button
+                        onClick={() => {
+                          setAnnotations((prev) => {
+                            const stepAnn = prev[currentStep.id] || {};
+                            const updated = {
+                              ...stepAnn,
+                              editorMultiZooms: stepAnn.editorMultiZooms?.filter((z) => z.id !== mz.id) || [],
+                            };
+                            const nextStateFull = { ...prev, [currentStep.id]: updated };
+                            pushHistory(nextStateFull);
+                            return nextStateFull;
+                          });
+                        }}
+                        className="text-[10px] text-red-500 hover:text-red-600"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1">
+                      <div><Label className="text-[10px] font-mono">X</Label><Input type="number" min={0} max={100} value={mz.targetX} onChange={(e) => {
+                        const v = Number(e.target.value);
+                        setAnnotations((prev) => ({
+                          ...prev,
                           [currentStep!.id]: {
-                            ...(annotations[currentStep!.id] || {}),
-                            editorMagnifyScale: v,
+                            ...prev[currentStep!.id],
+                            editorMultiZooms: prev[currentStep!.id]?.editorMultiZooms?.map((z) => z.id === mz.id ? { ...z, targetX: v } : z) || [],
                           },
-                        });
-                      }}
-                      className="flex-1"
-                    />
-                    <span className="text-xs font-mono w-10 text-right">{currentAnn?.editorMagnifyScale?.toFixed(1) || "2.0"}x</span>
-                  </div>
-                </div>
-                <div>
-                  <Label className="text-xs font-mono">Corner Position</Label>
-                  <Select
-                    value={currentAnn?.editorMagnifyCorner || "bottom-right"}
-                    onValueChange={(v) => {
-                      pushHistory({
-                        ...annotations,
-                        [currentStep!.id]: {
-                          ...(annotations[currentStep!.id] || {}),
-                          editorMagnifyCorner: v,
-                        },
-                      });
-                    }}
-                  >
-                    <SelectTrigger className="mt-1 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="top-left">Top Left</SelectItem>
-                      <SelectItem value="top-right">Top Right</SelectItem>
-                      <SelectItem value="bottom-left">Bottom Left</SelectItem>
-                      <SelectItem value="bottom-right">Bottom Right</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <p className="text-[10px] text-[var(--sketch-fg-muted)]">≡ Select "Magnify" tool and click on canvas to set target</p>
-                {currentAnn?.editorMagnifyX != null && (
-                  <button onClick={() => { handleClear("editorMagnifyX"); handleClear("editorMagnifyY"); handleClear("editorMagnifyW"); handleClear("editorMagnifyH"); handleClear("editorMagnifyScale"); handleClear("editorMagnifyCorner"); }} className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"><Trash2 className="w-3 h-3" /> Clear magnify</button>
-                )}
-              </div>
-            )}
-
-            {/* Filter Properties */}
-            {activeTab === "filter" && (
-              <div className="space-y-3">
-                <div>
-                  <Label className="text-xs font-mono">Color Filter</Label>
-                  <Select
-                    value={currentAnn?.editorColorFilter || "none"}
-                    onValueChange={(v) => {
-                      pushHistory({
-                        ...annotations,
-                        [currentStep!.id]: {
-                          ...(annotations[currentStep!.id] || {}),
-                          editorColorFilter: v,
-                        },
-                      });
-                    }}
-                  >
-                    <SelectTrigger className="mt-1 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">None (Original)</SelectItem>
-                      <SelectItem value="grayscale">Grayscale</SelectItem>
-                      <SelectItem value="sepia">Sepia</SelectItem>
-                      <SelectItem value="warm">Warm</SelectItem>
-                      <SelectItem value="cool">Cool</SelectItem>
-                      <SelectItem value="contrast">High Contrast</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <p className="text-[10px] text-[var(--sketch-fg-muted)]">≡ Applies to the entire screenshot for this step</p>
-                {currentAnn?.editorColorFilter && currentAnn.editorColorFilter !== "none" && (
-                  <button onClick={() => handleClear("editorColorFilter")} className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"><Trash2 className="w-3 h-3" /> Clear filter</button>
-                )}
-              </div>
-            )}
-
-            {/* Multi-Zoom Properties */}
-            {activeTab === "multizoom" && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs font-mono">Zoom Points ({currentAnn?.editorMultiZooms?.length || 0})</Label>
-                  <button
-                    onClick={() => {
-                      const nextState = {
-                        ...annotations,
-                        [currentStep!.id]: {
-                          ...(annotations[currentStep!.id] || {}),
-                          editorMultiZooms: [],
-                        },
-                      };
-                      pushHistory(nextState);
-                    }}
-                    className="text-[10px] text-red-500 hover:text-red-600"
-                  >
-                    Clear all
-                  </button>
-                </div>
-
-                <div className="space-y-2 max-h-[300px] overflow-y-auto">
-                  {currentAnn?.editorMultiZooms?.map((mz, idx) => (
-                    <div key={mz.id} className="p-2 border border-[var(--sketch-fg-subtle)]/20 rounded bg-[var(--sketch-fg-subtle)]/5">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-mono font-semibold">Point {idx + 1}</span>
-                        <button
-                          onClick={() => {
-                            setAnnotations((prev) => {
-                              const stepAnn = prev[currentStep.id] || {};
-                              const updated = {
-                                ...stepAnn,
-                                editorMultiZooms: stepAnn.editorMultiZooms?.filter((z) => z.id !== mz.id) || [],
-                              };
-                              const nextStateFull = { ...prev, [currentStep.id]: updated };
-                              pushHistory(nextStateFull);
-                              return nextStateFull;
+                        }));
+                      }} onBlur={() => pushHistory(annotations)} className="text-[10px] h-6" /></div>
+                      <div><Label className="text-[10px] font-mono">Y</Label><Input type="number" min={0} max={100} value={mz.targetY} onChange={(e) => {
+                        const v = Number(e.target.value);
+                        setAnnotations((prev) => ({
+                          ...prev,
+                          [currentStep!.id]: {
+                            ...prev[currentStep!.id],
+                            editorMultiZooms: prev[currentStep!.id]?.editorMultiZooms?.map((z) => z.id === mz.id ? { ...z, targetY: v } : z) || [],
+                          },
+                        }));
+                      }} onBlur={() => pushHistory(annotations)} className="text-[10px] h-6" /></div>
+                    </div>
+                    <div className="mt-1">
+                      <Label className="text-[10px] font-mono">Zoom Scale</Label>
+                      <div className="flex items-center gap-2">
+                        <Slider
+                          value={[mz.zoomScale || 2]}
+                          min={1}
+                          max={4}
+                          step={0.1}
+                          onValueChange={([v]) => {
+                            setAnnotations((prev) => ({
+                              ...prev,
+                              [currentStep!.id]: {
+                                ...prev[currentStep!.id],
+                                editorMultiZooms: prev[currentStep!.id]?.editorMultiZooms?.map((z) => z.id === mz.id ? { ...z, zoomScale: v } : z) || [],
+                              },
+                            }));
+                          }}
+                          onValueCommit={([v]) => {
+                            pushHistory({
+                              ...annotations,
+                              [currentStep!.id]: {
+                                ...(annotations[currentStep!.id] || {}),
+                                editorMultiZooms: annotations[currentStep!.id]?.editorMultiZooms?.map((z) => z.id === mz.id ? { ...z, zoomScale: v } : z) || [],
+                              },
                             });
                           }}
-                          className="text-[10px] text-red-500 hover:text-red-600"
-                        >
-                          Remove
-                        </button>
+                          className="flex-1"
+                        />
+                        <span className="text-[10px] font-mono w-8">{(mz.zoomScale || 2).toFixed(1)}x</span>
                       </div>
-                      <div className="grid grid-cols-2 gap-1">
-                        <div><Label className="text-[10px] font-mono">X</Label><Input type="number" min={0} max={100} value={mz.targetX} onChange={(e) => {
-                          const v = Number(e.target.value);
-                          setAnnotations((prev) => ({
-                            ...prev,
+                    </div>
+                    <div className="mt-1">
+                      <Label className="text-[10px] font-mono">Duration (sec)</Label>
+                      <Input type="number" min={1} max={20} step={0.5} value={mz.duration || 3} onChange={(e) => {
+                        const v = Number(e.target.value);
+                        setAnnotations((prev) => ({
+                          ...prev,
+                          [currentStep!.id]: {
+                            ...prev[currentStep!.id],
+                            editorMultiZooms: prev[currentStep!.id]?.editorMultiZooms?.map((z) => z.id === mz.id ? { ...z, duration: v } : z) || [],
+                          },
+                        }));
+                      }} onBlur={() => pushHistory(annotations)} className="text-[10px] h-6" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <p className="text-[10px] text-[var(--sketch-fg-muted)]">≡ Select "Multi-Zoom" tool and click on canvas to add points. Each point becomes a separate zoom segment.</p>
+            </div>
+          )}
+
+          {/* Highlight Properties (multiple boxes) */}
+          {activeTab === "highlight" && (
+            <div className="space-y-3">
+              <p className="text-[10px] text-[var(--sketch-fg-muted)]">
+                Drag on the canvas to add a highlight box. You can add multiple highlights.
+              </p>
+              {(currentAnn?.editorHighlights || []).length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-xs font-mono">Active Highlights ({(currentAnn?.editorHighlights || []).length})</Label>
+                  {(currentAnn?.editorHighlights || []).map((hl, idx) => (
+                    <div key={hl.id} className="flex items-center justify-between text-xs bg-[var(--sketch-fg-subtle)]/10 rounded px-2 py-1">
+                      <span className="font-mono">Box {idx + 1}: {hl.w.toFixed(1)}% × {hl.h.toFixed(1)}%</span>
+                      <button
+                        onClick={() => {
+                          const next = {
+                            ...annotations,
                             [currentStep!.id]: {
-                              ...prev[currentStep!.id],
-                              editorMultiZooms: prev[currentStep!.id]?.editorMultiZooms?.map((z) => z.id === mz.id ? { ...z, targetX: v } : z) || [],
+                              ...(annotations[currentStep!.id] || {}),
+                              editorHighlights: (currentAnn?.editorHighlights || []).filter((r) => r.id !== hl.id),
                             },
-                          }));
-                        }} onBlur={() => pushHistory(annotations)} className="text-[10px] h-6" /></div>
-                        <div><Label className="text-[10px] font-mono">Y</Label><Input type="number" min={0} max={100} value={mz.targetY} onChange={(e) => {
-                          const v = Number(e.target.value);
-                          setAnnotations((prev) => ({
-                            ...prev,
-                            [currentStep!.id]: {
-                              ...prev[currentStep!.id],
-                              editorMultiZooms: prev[currentStep!.id]?.editorMultiZooms?.map((z) => z.id === mz.id ? { ...z, targetY: v } : z) || [],
-                            },
-                          }));
-                        }} onBlur={() => pushHistory(annotations)} className="text-[10px] h-6" /></div>
-                      </div>
-                      <div className="mt-1">
-                        <Label className="text-[10px] font-mono">Zoom Scale</Label>
-                        <div className="flex items-center gap-2">
-                          <Slider
-                            value={[mz.zoomScale || 2]}
-                            min={1}
-                            max={4}
-                            step={0.1}
-                            onValueChange={([v]) => {
-                              setAnnotations((prev) => ({
-                                ...prev,
-                                [currentStep!.id]: {
-                                  ...prev[currentStep!.id],
-                                  editorMultiZooms: prev[currentStep!.id]?.editorMultiZooms?.map((z) => z.id === mz.id ? { ...z, zoomScale: v } : z) || [],
-                                },
-                              }));
-                            }}
-                            onValueCommit={([v]) => {
-                              pushHistory({
-                                ...annotations,
-                                [currentStep!.id]: {
-                                  ...(annotations[currentStep!.id] || {}),
-                                  editorMultiZooms: annotations[currentStep!.id]?.editorMultiZooms?.map((z) => z.id === mz.id ? { ...z, zoomScale: v } : z) || [],
-                                },
-                              });
-                            }}
-                            className="flex-1"
-                          />
-                          <span className="text-[10px] font-mono w-8">{(mz.zoomScale || 2).toFixed(1)}x</span>
-                        </div>
-                      </div>
-                      <div className="mt-1">
-                        <Label className="text-[10px] font-mono">Duration (sec)</Label>
-                        <Input type="number" min={1} max={20} step={0.5} value={mz.duration || 3} onChange={(e) => {
-                          const v = Number(e.target.value);
-                          setAnnotations((prev) => ({
-                            ...prev,
-                            [currentStep!.id]: {
-                              ...prev[currentStep!.id],
-                              editorMultiZooms: prev[currentStep!.id]?.editorMultiZooms?.map((z) => z.id === mz.id ? { ...z, duration: v } : z) || [],
-                            },
-                          }));
-                        }} onBlur={() => pushHistory(annotations)} className="text-[10px] h-6" />
-                      </div>
+                          };
+                          pushHistory(next);
+                        }}
+                        className="text-red-500 hover:text-red-600"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
                     </div>
                   ))}
                 </div>
+              )}
+              <button
+                onClick={() => {
+                  const next = {
+                    ...annotations,
+                    [currentStep!.id]: {
+                      ...(annotations[currentStep!.id] || {}),
+                      editorHighlights: [],
+                    },
+                  };
+                  pushHistory(next);
+                }}
+                className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
+                disabled={(currentAnn?.editorHighlights || []).length === 0}
+              >
+                <Trash2 className="w-3 h-3" />
+                Clear all highlights
+              </button>
+            </div>
+          )}
 
-                <p className="text-[10px] text-[var(--sketch-fg-muted)]">≡ Select "Multi-Zoom" tool and click on canvas to add points. Each point becomes a separate zoom segment.</p>
-              </div>
-            )}
-
-            {/* Highlight Properties (multiple boxes) */}
-            {activeTab === "highlight" && (
-              <div className="space-y-3">
-                <p className="text-[10px] text-[var(--sketch-fg-muted)]">
-                  Drag on the canvas to add a highlight box. You can add multiple highlights.
+          {/* Zoom Properties */}
+          {activeTab === "multizoom" && (
+            <div className="space-y-3">
+              <div>
+                <Label className="text-xs font-mono">Zoom Scale</Label>
+                <div className="flex items-center gap-3 mt-1">
+                  <Slider
+                    value={[currentAnn?.editorZoomScale ?? 1.0]}
+                    min={1}
+                    max={3}
+                    step={0.1}
+                    onValueChange={([v]) =>
+                      setAnnotations((prev) => ({
+                        ...prev,
+                        [currentStep!.id]: {
+                          ...prev[currentStep!.id],
+                          editorZoomScale: v,
+                        },
+                      }))
+                    }
+                    onValueCommit={([v]) => {
+                      pushHistory({
+                        ...annotations,
+                        [currentStep!.id]: {
+                          ...(annotations[currentStep!.id] || {}),
+                          editorZoomScale: v,
+                        },
+                      });
+                    }}
+                    className="flex-1"
+                  />
+                  <span className="text-xs font-mono w-10 text-right">
+                    {currentAnn?.editorZoomScale?.toFixed(1) || "1.0"}x
+                  </span>
+                </div>
+                <p className="text-[10px] text-[var(--sketch-fg-muted)] mt-1">
+                  Set to 1.0x to disable zoom (static image)
                 </p>
-                {(currentAnn?.editorHighlights || []).length > 0 && (
-                  <div className="space-y-2">
-                    <Label className="text-xs font-mono">Active Highlights ({(currentAnn?.editorHighlights || []).length})</Label>
-                    {(currentAnn?.editorHighlights || []).map((hl, idx) => (
-                      <div key={hl.id} className="flex items-center justify-between text-xs bg-[var(--sketch-fg-subtle)]/10 rounded px-2 py-1">
-                        <span className="font-mono">Box {idx + 1}: {hl.w.toFixed(1)}% × {hl.h.toFixed(1)}%</span>
+              </div>
+
+              <div>
+                <Label className="text-xs font-mono">Duration Override (sec)</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={60}
+                  step={0.5}
+                  value={currentAnn?.editorDuration ?? ""}
+                  onChange={(e) =>
+                    setAnnotations((prev) => ({
+                      ...prev,
+                      [currentStep!.id]: {
+                        ...prev[currentStep!.id],
+                        editorDuration: Number(e.target.value),
+                      },
+                    }))
+                  }
+                  onBlur={() => pushHistory(annotations)}
+                  placeholder="Auto"
+                  className="mt-1 text-xs"
+                />
+                <p className="text-[10px] text-[var(--sketch-fg-muted)] mt-1">
+                  Leave empty to use audio duration
+                </p>
+              </div>
+
+              <div className="pt-2 border-t border-[var(--sketch-fg-subtle)]/20">
+                <p className="text-[10px] text-[var(--sketch-fg-muted)] mb-2">
+                  Zoom points ({(currentAnn?.editorMultiZooms || []).length}):
+                </p>
+                {(currentAnn?.editorMultiZooms || []).length > 0 ? (
+                  <div className="space-y-1">
+                    {(currentAnn?.editorMultiZooms || []).map((mz, idx) => (
+                      <div key={mz.id} className="flex items-center justify-between text-xs font-mono text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/10 rounded px-2 py-1">
+                        <span>Point {idx + 1}: {mz.targetX.toFixed(1)}%, {mz.targetY.toFixed(1)}%</span>
                         <button
                           onClick={() => {
                             const next = {
                               ...annotations,
                               [currentStep!.id]: {
                                 ...(annotations[currentStep!.id] || {}),
-                                editorHighlights: (currentAnn?.editorHighlights || []).filter((r) => r.id !== hl.id),
+                                editorMultiZooms: (currentAnn?.editorMultiZooms || []).filter((r) => r.id !== mz.id),
                               },
                             };
                             pushHistory(next);
@@ -2934,230 +3110,274 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                       </div>
                     ))}
                   </div>
+                ) : (
+                  <p className="text-xs text-[var(--sketch-fg-subtle)]">No zoom points. Click on canvas with Zoom tool.</p>
                 )}
-                <button
-                  onClick={() => {
-                    const next = {
-                      ...annotations,
-                      [currentStep!.id]: {
-                        ...(annotations[currentStep!.id] || {}),
-                        editorHighlights: [],
-                      },
-                    };
-                    pushHistory(next);
-                  }}
-                  className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
-                  disabled={(currentAnn?.editorHighlights || []).length === 0}
-                >
-                  <Trash2 className="w-3 h-3" />
-                  Clear all highlights
-                </button>
               </div>
-            )}
 
-            {/* Zoom Properties */}
-            {activeTab === "multizoom" && (
-              <div className="space-y-3">
-                <div>
-                  <Label className="text-xs font-mono">Zoom Scale</Label>
-                  <div className="flex items-center gap-3 mt-1">
-                    <Slider
-                      value={[currentAnn?.editorZoomScale ?? 1.0]}
-                      min={1}
-                      max={3}
-                      step={0.1}
-                      onValueChange={([v]) =>
-                        setAnnotations((prev) => ({
-                          ...prev,
-                          [currentStep!.id]: {
-                            ...prev[currentStep!.id],
-                            editorZoomScale: v,
-                          },
-                        }))
-                      }
-                      onValueCommit={([v]) => {
-                        pushHistory({
-                          ...annotations,
-                          [currentStep!.id]: {
-                            ...(annotations[currentStep!.id] || {}),
-                            editorZoomScale: v,
-                          },
-                        });
-                      }}
-                      className="flex-1"
-                    />
-                    <span className="text-xs font-mono w-10 text-right">
-                      {currentAnn?.editorZoomScale?.toFixed(1) || "1.0"}x
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-[var(--sketch-fg-muted)] mt-1">
-                    Set to 1.0x to disable zoom (static image)
-                  </p>
-                </div>
+              <button
+                onClick={() => {
+                  handleClear("zoomTargetX");
+                  handleClear("zoomTargetY");
+                  const next = {
+                    ...annotations,
+                    [currentStep!.id]: {
+                      ...(annotations[currentStep!.id] || {}),
+                      editorMultiZooms: [],
+                      editorZoomScale: null,
+                    },
+                  };
+                  pushHistory(next);
+                }}
+                className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
+              >
+                <Trash2 className="w-3 h-3" />
+                Clear all zoom points
+              </button>
+            </div>
+          )}
 
-                <div>
-                  <Label className="text-xs font-mono">Duration Override (sec)</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    max={60}
-                    step={0.5}
-                    value={currentAnn?.editorDuration ?? ""}
-                    onChange={(e) =>
-                      setAnnotations((prev) => ({
-                        ...prev,
-                        [currentStep!.id]: {
-                          ...prev[currentStep!.id],
-                          editorDuration: Number(e.target.value),
-                        },
-                      }))
-                    }
-                    onBlur={() => pushHistory(annotations)}
-                    placeholder="Auto"
-                    className="mt-1 text-xs"
-                  />
-                  <p className="text-[10px] text-[var(--sketch-fg-muted)] mt-1">
-                    Leave empty to use audio duration
-                  </p>
-                </div>
-
-                <div className="pt-2 border-t border-[var(--sketch-fg-subtle)]/20">
-                  <p className="text-[10px] text-[var(--sketch-fg-muted)] mb-2">
-                    Zoom points ({(currentAnn?.editorMultiZooms || []).length}):
-                  </p>
-                  {(currentAnn?.editorMultiZooms || []).length > 0 ? (
-                    <div className="space-y-1">
-                      {(currentAnn?.editorMultiZooms || []).map((mz, idx) => (
-                        <div key={mz.id} className="flex items-center justify-between text-xs font-mono text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/10 rounded px-2 py-1">
-                          <span>Point {idx + 1}: {mz.targetX.toFixed(1)}%, {mz.targetY.toFixed(1)}%</span>
-                          <button
-                            onClick={() => {
-                              const next = {
-                                ...annotations,
-                                [currentStep!.id]: {
-                                  ...(annotations[currentStep!.id] || {}),
-                                  editorMultiZooms: (currentAnn?.editorMultiZooms || []).filter((r) => r.id !== mz.id),
-                                },
-                              };
-                              pushHistory(next);
-                            }}
-                            className="text-red-500 hover:text-red-600"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs text-[var(--sketch-fg-subtle)]">No zoom points. Click on canvas with Zoom tool.</p>
-                  )}
-                </div>
-
-                <button
-                  onClick={() => {
-                    handleClear("zoomTargetX");
-                    handleClear("zoomTargetY");
-                    const next = {
-                      ...annotations,
-                      [currentStep!.id]: {
-                        ...(annotations[currentStep!.id] || {}),
-                        editorMultiZooms: [],
-                        editorZoomScale: null,
-                      },
-                    };
-                    pushHistory(next);
-                  }}
-                  className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
-                >
-                  <Trash2 className="w-3 h-3" />
-                  Clear all zoom points
-                </button>
-              </div>
-            )}
-
-            {/* No Tool Selected / select / pan placeholder */}
-            {(activeTab === "select" || activeTab === "pan") && (
-              <div className="flex flex-col items-center justify-center py-8 text-center border-2 border-dashed border-[var(--sketch-fg-subtle)]/20 rounded-lg">
-                <MousePointer className="w-8 h-8 text-[var(--sketch-fg-subtle)]/40 mb-2" />
-                <p className="text-sm font-medium text-[var(--sketch-fg)]">No tool selected</p>
-                <p className="text-xs text-[var(--sketch-fg-muted)] mt-1 max-w-[280px]">
-                  Click a tool in the sidebar or click/drag an annotation on the canvas to edit its properties.
-                </p>
-              </div>
-            )}
-          </div>
+          {/* No Tool Selected / select / pan placeholder */}
+          {(activeTab === "select" || activeTab === "pan") && (
+            <div className="flex flex-col items-center justify-center py-8 text-center border-2 border-dashed border-[var(--sketch-fg-subtle)]/20 rounded-lg">
+              <MousePointer className="w-8 h-8 text-[var(--sketch-fg-subtle)]/40 mb-2" />
+              <p className="text-sm font-medium text-[var(--sketch-fg)]">No tool selected</p>
+              <p className="text-xs text-[var(--sketch-fg-muted)] mt-1 max-w-[280px]">
+                Click a tool in the sidebar or click/drag an annotation on the canvas to edit its properties.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     );
   };
 
-  const toggleRightTab = (tab: "properties" | "script" | "voiceover" | "elevenlabs" | "captions" | "transitions" | "aiguide" | "safety" | "help") => {
+  const toggleRightTab = (tab: "properties" | "script" | "voiceover" | "elevenlabs" | "captions" | "transitions" | "aiguide" | "safety" | "help" | "media") => {
     setActiveRightTab((prev) => (prev === tab ? null : tab));
   };
+
+  // Script generation state
+  const [scriptMode, setScriptMode] = useState<"ai" | "manual">("ai");
+  const [manualScriptText, setManualScriptText] = useState("");
+  const [videoPurpose, setVideoPurpose] = useState("");
+  const regenerateStep = trpc.ai.regenerateStepScript.useMutation();
 
   const renderScriptContent = () => {
     if (!currentStep) return null;
     return (
       <div className="space-y-4">
-        <div>
-          <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-1">Scene Description</Label>
-          <Textarea
-            value={tempDesc}
-            onChange={(e) => setTempDesc(e.target.value)}
-            onBlur={handleSaveStepText}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                (e.target as HTMLTextAreaElement).blur();
-              }
-            }}
-            placeholder="Describe what happens in this scene..."
-            className="text-xs min-h-[70px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)]"
-          />
-        </div>
-        <div>
-          <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-1">Narration Script (TTS)</Label>
-          <Textarea
-            value={tempScript}
-            onChange={(e) => setTempScript(e.target.value)}
-            onBlur={handleSaveStepText}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                (e.target as HTMLTextAreaElement).blur();
-              }
-            }}
-            placeholder="Type narration script for this scene..."
-            className="text-xs min-h-[110px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)]"
-          />
-        </div>
-        <div className="pt-3 border-t border-[var(--sketch-border-color)]/20 mt-3">
+        {/* Mode toggle: AI vs Manual */}
+        <div className="flex items-center gap-1 p-0.5 bg-[var(--sketch-bg)] rounded-lg border border-[var(--sketch-border-color)]/20">
           <button
-            onClick={async () => {
-              try {
-                await generateScript.mutateAsync({ projectId: projectIdNum });
-                utils.step.listByProject.invalidate({ projectId: projectIdNum });
-              } catch (err: any) {
-                toast.error(err.message || "Failed to generate scripts. Make sure descriptions are set and not keyboard-mashed.");
-              }
-            }}
-            disabled={generateScript.isPending}
-            className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-[#FBBF24] hover:bg-[#F59E0B] disabled:opacity-50 text-black text-xs font-bold rounded-md shadow-sm transition-all cursor-pointer border border-black/10"
+            onClick={() => setScriptMode("ai")}
+            className={`flex-1 py-1.5 px-2 rounded-md text-[10px] font-bold transition-all ${scriptMode === "ai"
+                ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-fg)]"
+                : "text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg-muted)]"
+              }`}
           >
-            {generateScript.isPending ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Generating Scripts...</span>
-              </>
-            ) : (
-              <>
-                <span>✨ Generate Scripts for All Scenes</span>
-              </>
-            )}
+            ✨ AI Generate
           </button>
-          <p className="text-[10px] text-[var(--sketch-fg-muted)] mt-1.5 leading-relaxed">
-            Automatically generate narration scripts for all scenes using AI based on your descriptions.
-          </p>
+          <button
+            onClick={() => setScriptMode("manual")}
+            className={`flex-1 py-1.5 px-2 rounded-md text-[10px] font-bold transition-all ${scriptMode === "manual"
+                ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-fg)]"
+                : "text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg-muted)]"
+              }`}
+          >
+            ✍️ Write / Paste
+          </button>
         </div>
+
+        {scriptMode === "ai" ? (
+          <>
+            {/* Video Purpose / Description */}
+            <div>
+              <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-1">
+                Video Purpose <span className="text-[var(--sketch-fg-subtle)] font-normal">(optional, improves AI scripts)</span>
+              </Label>
+              <Textarea
+                value={videoPurpose}
+                onChange={(e) => setVideoPurpose(e.target.value)}
+                placeholder="e.g. A tutorial showing how to set up a React project with Vite for beginners..."
+                className="text-xs min-h-[50px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)]"
+              />
+              <p className="text-[9px] text-[var(--sketch-fg-subtle)] mt-1 leading-relaxed">
+                💡 Tip: Give your project a descriptive title in the top bar. The AI uses it + this purpose + your screenshots to write better scripts.
+              </p>
+            </div>
+
+            {/* Scene Description */}
+            <div>
+              <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-1">Scene Description</Label>
+              <Textarea
+                value={tempDesc}
+                onChange={(e) => setTempDesc(e.target.value)}
+                onBlur={handleSaveStepText}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    (e.target as HTMLTextAreaElement).blur();
+                  }
+                }}
+                placeholder="Describe what happens in this scene..."
+                className="text-xs min-h-[70px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)]"
+              />
+              <p className="text-[9px] text-[var(--sketch-fg-subtle)] mt-1">
+                If provided, the AI uses this as context. If empty, the AI analyzes the screenshot directly.
+              </p>
+            </div>
+
+            {/* Narration Script (TTS) */}
+            <div>
+              <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-1">Narration Script (TTS)</Label>
+              <Textarea
+                value={tempScript}
+                onChange={(e) => setTempScript(e.target.value)}
+                onBlur={handleSaveStepText}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    (e.target as HTMLTextAreaElement).blur();
+                  }
+                }}
+                placeholder="AI-generated narration will appear here..."
+                className="text-xs min-h-[110px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)]"
+              />
+            </div>
+
+            {/* Generate buttons */}
+            <div className="pt-3 border-t border-[var(--sketch-border-color)]/20 mt-3 space-y-2">
+              {/* Generate all */}
+              <button
+                onClick={async () => {
+                  try {
+                    await generateScript.mutateAsync({ projectId: projectIdNum });
+                    utils.step.listByProject.invalidate({ projectId: projectIdNum });
+                    utils.project.getById.invalidate({ id: projectIdNum });
+                    toast.success("Scripts generated! Vision AI analyzed your screenshots.");
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to generate scripts.");
+                  }
+                }}
+                disabled={generateScript.isPending}
+                className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-[#FBBF24] hover:bg-[#F59E0B] disabled:opacity-50 text-black text-xs font-bold rounded-md shadow-sm transition-all cursor-pointer border border-black/10"
+              >
+                {generateScript.isPending ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>AI is analyzing screenshots...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>✨ Generate All Scripts (Vision AI)</span>
+                  </>
+                )}
+              </button>
+
+              {/* Regenerate just this step */}
+              <button
+                onClick={async () => {
+                  try {
+                    const result = await regenerateStep.mutateAsync({ stepId: currentStep.id });
+                    if (result?.script) {
+                      setTempScript(result.script);
+                      utils.project.getById.invalidate({ id: projectIdNum });
+                      toast.success("Script regenerated for this scene!");
+                    }
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to regenerate script.");
+                  }
+                }}
+                disabled={regenerateStep.isPending}
+                className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-[var(--sketch-accent)]/10 hover:bg-[var(--sketch-accent)]/20 disabled:opacity-50 text-[var(--sketch-fg)] text-[10px] font-semibold rounded-md transition-all cursor-pointer border border-[var(--sketch-accent)]/20"
+              >
+                {regenerateStep.isPending ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span>Regenerating this scene...</span>
+                  </>
+                ) : (
+                  <span>↻ Regenerate this scene only</span>
+                )}
+              </button>
+
+              <p className="text-[10px] text-[var(--sketch-fg-muted)] leading-relaxed">
+                The AI looks at each screenshot with Gemma 4 vision and writes narration. For video clips, add a description so the AI knows what to narrate.
+              </p>
+            </div>
+          </>
+        ) : (
+          /* Manual script mode — paste from Claude, ChatGPT, etc. */
+          <>
+            <div className="p-2.5 bg-[var(--sketch-accent)]/8 border border-[var(--sketch-accent)]/20 rounded-lg">
+              <p className="text-[10px] text-[var(--sketch-fg-muted)] leading-relaxed">
+                💡 Write your script in Claude, ChatGPT, or any AI tool, then paste it here. Each line/paragraph becomes a scene's narration.
+              </p>
+            </div>
+
+            <div>
+              <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-1">
+                Paste Full Script <span className="text-[var(--sketch-fg-subtle)] font-normal">(one paragraph per scene)</span>
+              </Label>
+              <Textarea
+                value={manualScriptText}
+                onChange={(e) => setManualScriptText(e.target.value)}
+                placeholder={`Paste your script here. Example:\n\nWelcome to this tutorial on React setup. Today we'll learn how to create a new project.\n\nFirst, open your terminal and run npm create vite.\n\nNext, select React from the framework options...\n\nAnd that's it! You now have a React project ready to go.`}
+                className="text-xs min-h-[180px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)] font-mono"
+              />
+            </div>
+
+            <button
+              onClick={async () => {
+                if (!manualScriptText.trim()) {
+                  toast.error("Paste a script first!");
+                  return;
+                }
+                // Split by double newlines (paragraphs) or single newlines
+                const paragraphs = manualScriptText
+                  .trim()
+                  .split(/\n\s*\n/)
+                  .map((p) => p.trim())
+                  .filter((p) => p.length > 5);
+
+                // If only one paragraph, try splitting by single newlines
+                const scenes = paragraphs.length > 1
+                  ? paragraphs
+                  : manualScriptText.trim().split("\n").map((s) => s.trim()).filter((s) => s.length > 5);
+
+                if (scenes.length === 0) {
+                  toast.error("Could not parse scenes from the script. Make sure each scene is on a separate line or paragraph.");
+                  return;
+                }
+
+                // Apply scripts to existing steps
+                for (let i = 0; i < steps.length && i < scenes.length; i++) {
+                  await updateStep.mutateAsync({
+                    id: steps[i].id,
+                    userEditedScript: scenes[i],
+                    aiScript: scenes[i],
+                  });
+                }
+
+                // If there are more scenes than steps, create new steps
+                if (scenes.length > steps.length) {
+                  toast.info(`Script has ${scenes.length} scenes but only ${steps.length} steps exist. Extra scenes were not applied — create more scenes first.`);
+                }
+
+                utils.project.getById.invalidate({ id: projectIdNum });
+                utils.step.listByProject.invalidate({ projectId: projectIdNum });
+                toast.success(`Applied ${Math.min(scenes.length, steps.length)} scripts to scenes!`);
+                setManualScriptText("");
+              }}
+              className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-[#FBBF24] hover:bg-[#F59E0B] text-black text-xs font-bold rounded-md shadow-sm transition-all cursor-pointer border border-black/10"
+            >
+              Apply Script to Scenes
+            </button>
+            <p className="text-[10px] text-[var(--sketch-fg-muted)] leading-relaxed">
+              Each paragraph (separated by blank line) or line becomes one scene's narration. The script is applied to existing scenes in order.
+            </p>
+          </>
+        )}
       </div>
     );
   };
@@ -3177,11 +3397,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 <div
                   key={v.id}
                   onClick={() => setSelectedVoice(v.id)}
-                  className={`p-2 border rounded-lg flex items-center justify-between text-xs transition-all cursor-pointer ${
-                    isSelected
+                  className={`p-2 border rounded-lg flex items-center justify-between text-xs transition-all cursor-pointer ${isSelected
                       ? "border-[#FBBF24] bg-[#FBBF24]/5"
                       : "border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
-                  }`}
+                    }`}
                 >
                   <div className="flex flex-col">
                     <span className="font-semibold text-[var(--sketch-fg)]">{v.name}</span>
@@ -3255,7 +3474,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         {/* ElevenLabs voice list */}
         <div className="space-y-2">
           <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block">Select ElevenLabs Voice</Label>
-          
+
           {/* Credit Check Indicators */}
           <div className="p-2 bg-[var(--sketch-fg-subtle)]/5 rounded-lg border border-[var(--sketch-border-color)]/15 text-[10px] leading-relaxed text-[var(--sketch-fg-muted)] mb-1">
             {credits.isLoading ? (
@@ -3286,11 +3505,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 <div
                   key={v.id}
                   onClick={() => setSelectedVoice(v.id)}
-                  className={`p-2 border rounded-lg flex items-center justify-between text-xs transition-all cursor-pointer ${
-                    isSelected
+                  className={`p-2 border rounded-lg flex items-center justify-between text-xs transition-all cursor-pointer ${isSelected
                       ? "border-[#FBBF24] bg-[#FBBF24]/5"
                       : "border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
-                  }`}
+                    }`}
                 >
                   <div className="flex flex-col">
                     <div className="flex items-center gap-1.5">
@@ -3423,9 +3641,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   <button
                     key={c}
                     onClick={() => props.onCaptionColorChange?.(c)}
-                    className={`w-6 h-6 rounded-full border-2 ${
-                      props.captionColor === c ? "border-[var(--sketch-accent)]" : "border-[var(--sketch-border-color)]/20"
-                    } hover:scale-105 transition-transform`}
+                    className={`w-6 h-6 rounded-full border-2 ${props.captionColor === c ? "border-[var(--sketch-accent)]" : "border-[var(--sketch-border-color)]/20"
+                      } hover:scale-105 transition-transform`}
                     style={{ backgroundColor: c }}
                     title={c}
                   />
@@ -3439,20 +3656,48 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   };
 
   const renderTransitionsContent = () => {
+    const isSpecificClip = activeTransitionClipId !== null;
+    const clipIndex = isSpecificClip ? timelineClips.findIndex(s => s.id === activeTransitionClipId) : -1;
+    const clipTitle = clipIndex >= 0 ? `Scene ${clipIndex + 1}` : "";
+    const currentTransitionValue = isSpecificClip && clipIndex >= 0 
+      ? (props.stepTransitions?.[activeTransitionClipId] || props.globalTransition)
+      : props.globalTransition;
+
     return (
       <div className="space-y-4">
+        {isSpecificClip && (
+          <div className="flex items-center justify-between bg-blue-50/50 dark:bg-blue-900/20 p-2 rounded-lg border border-blue-100 dark:border-blue-800">
+            <span className="text-xs font-semibold text-blue-800 dark:text-blue-300">
+              Editing transition for {clipTitle}
+            </span>
+            <button 
+              onClick={() => setActiveTransitionClipId(null)}
+              className="text-[10px] bg-blue-100 dark:bg-blue-800 hover:bg-blue-200 dark:hover:bg-blue-700 text-blue-700 dark:text-blue-200 px-2 py-1 rounded transition-colors"
+            >
+              Back to Global
+            </button>
+          </div>
+        )}
+
         <div>
-          <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-2">Global Transition</Label>
+          <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-2">
+            {isSpecificClip ? "Transition Type" : "Global Transition"}
+          </Label>
           <div className="grid grid-cols-2 gap-1.5">
             {transitionTypes.map((t) => (
               <button
                 key={t.value}
-                onClick={() => props.onGlobalTransitionChange?.(t.value)}
-                className={`py-1.5 px-2 border text-center transition-all text-[10px] font-semibold rounded-md cursor-pointer ${
-                  props.globalTransition === t.value
-                    ? "border-[var(--sketch-accent)] bg-[var(--sketch-accent)]/10 text-[var(--sketch-accent)] font-bold"
+                onClick={() => {
+                  if (isSpecificClip && clipIndex >= 0) {
+                    props.onStepTransitionChange?.(activeTransitionClipId, t.value);
+                  } else {
+                    props.onGlobalTransitionChange?.(t.value);
+                  }
+                }}
+                className={`py-1.5 px-2 border text-center transition-all text-[10px] font-semibold rounded-md cursor-pointer ${currentTransitionValue === t.value
+                    ? "border-blue-600 bg-blue-600/10 text-blue-600 font-bold"
                     : "border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg-muted)] hover:bg-[var(--sketch-fg-subtle)]/10"
-                }`}
+                  }`}
               >
                 {t.label}
               </button>
@@ -3480,6 +3725,175 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
             />
             <span className="font-mono text-[9px] text-[var(--sketch-fg-subtle)] w-6">2.0s</span>
           </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Pexels Media Search ──
+  const [pexelsQuery, setPexelsQuery] = useState("");
+  const [pexelsMediaType, setPexelsMediaType] = useState<"both" | "image" | "video">("both");
+  const [importingPexelsId, setImportingPexelsId] = useState<number | null>(null);
+  const pexelsSearch = trpc.studio.searchMedia.useQuery(
+    { query: pexelsQuery, mediaType: pexelsMediaType, perPage: 12 },
+    { enabled: pexelsQuery.length > 2 && activeRightTab === "media", refetchOnMount: false }
+  );
+
+  // Download a Pexels media URL, convert to File, and import as a new timeline step
+  const handleImportPexelsMedia = async (media: { id: number; src: string; type: string; photographer?: string; thumbnail?: string }) => {
+    setImportingPexelsId(media.id);
+    try {
+      // Fetch the media from Pexels
+      const response = await fetch(media.src, { mode: "cors" });
+      if (!response.ok) throw new Error(`Failed to download media (${response.status})`);
+      const blob = await response.blob();
+
+      // Determine file extension from content type
+      const contentType = blob.type || (media.type === "video" ? "video/mp4" : "image/jpeg");
+      const ext = contentType.includes("video") ? ".mp4" : contentType.includes("png") ? ".png" : ".jpg";
+      const filename = `pexels_${media.id}_${(media.photographer || "media").replace(/[^a-zA-Z0-9]/g, "")}${ext}`;
+
+      // Create a File object from the blob
+      const file = new File([blob], filename, { type: contentType });
+
+      // Use the existing handleUploadFiles to create a step with this media
+      const fileList = { 0: file, length: 1, item: () => file } as unknown as FileList;
+      await handleUploadFiles(fileList);
+
+      toast.success(`Imported ${media.type === "video" ? "video" : "photo"} from Pexels into timeline`);
+    } catch (err: any) {
+      console.error("Failed to import Pexels media:", err);
+      toast.error(`Failed to import: ${err.message || "Download failed"}`);
+    } finally {
+      setImportingPexelsId(null);
+    }
+  };
+
+  const renderMediaContent = () => {
+    return (
+      <div className="flex flex-col h-full gap-3">
+        {/* Search bar */}
+        <div className="flex flex-col gap-2 flex-shrink-0">
+          <div className="relative">
+            <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--sketch-fg-subtle)]" />
+            <Input
+              type="text"
+              value={pexelsQuery}
+              onChange={(e) => setPexelsQuery(e.target.value)}
+              placeholder="Search Pexels stock media..."
+              className="text-xs pl-8 pr-3 py-2 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/30 rounded-lg"
+              onKeyDown={(e) => { if (e.key === "Enter" && pexelsQuery.length > 2) pexelsSearch.refetch(); }}
+            />
+          </div>
+          {/* Media type toggle */}
+          <div className="flex items-center gap-1">
+            {(["both", "image", "video"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setPexelsMediaType(t)}
+                className={`px-2.5 py-1 rounded-md text-[10px] font-semibold capitalize border transition-all ${pexelsMediaType === t
+                    ? "bg-[var(--sketch-accent)]/15 border-[var(--sketch-accent)]/40 text-[var(--sketch-fg)]"
+                    : "bg-transparent border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg-subtle)] hover:bg-[var(--sketch-border-color)]/10"
+                  }`}
+              >
+                {t === "both" ? "All" : t === "image" ? "Photos" : "Videos"}
+              </button>
+            ))}
+          </div>
+          <p className="text-[9px] text-[var(--sketch-fg-subtle)] leading-tight">
+            Click any media to import it into your timeline. You can also drag it onto the timeline.
+          </p>
+        </div>
+
+        {/* Results */}
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1">
+          {pexelsQuery.length <= 2 ? (
+            <div className="flex flex-col items-center justify-center h-full text-center py-8">
+              <Clapperboard className="w-8 h-8 text-[var(--sketch-fg-subtle)] mb-2" />
+              <p className="text-xs text-[var(--sketch-fg-muted)]">Search for stock photos and videos from Pexels</p>
+              <p className="text-[10px] text-[var(--sketch-fg-subtle)] mt-1">Try "nature", "city", "technology", "ocean"...</p>
+            </div>
+          ) : pexelsSearch.isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-5 h-5 animate-spin text-[var(--sketch-fg-subtle)]" />
+            </div>
+          ) : pexelsSearch.data && pexelsSearch.data.length > 0 ? (
+            <div className="grid grid-cols-2 gap-2">
+              {pexelsSearch.data.map((media: any, idx: number) => (
+                <div
+                  key={`${media.id}-${idx}`}
+                  className={`relative group rounded-lg overflow-hidden border cursor-pointer transition-all ${importingPexelsId === media.id
+                      ? "border-[var(--sketch-accent)] ring-2 ring-[var(--sketch-accent)]/30"
+                      : "border-[var(--sketch-border-color)]/20 hover:border-[var(--sketch-accent)]/50 hover:scale-[1.03]"
+                    }`}
+                  draggable
+                  onDragStart={(e) => {
+                    // Set drag data for timeline drop
+                    e.dataTransfer.setData("application/x-pexels-media", JSON.stringify({
+                      id: media.id,
+                      src: media.src,
+                      type: media.type,
+                      photographer: media.photographer,
+                      thumbnail: media.thumbnail,
+                    }));
+                    e.dataTransfer.effectAllowed = "copy";
+                  }}
+                  onClick={() => handleImportPexelsMedia(media)}
+                >
+                  <div className="aspect-video bg-[var(--sketch-bg)] flex items-center justify-center">
+                    {media.thumbnail || media.src ? (
+                      <img
+                        src={media.thumbnail || media.src}
+                        alt={media.photographer || "Pexels media"}
+                        className="w-full h-full object-cover"
+                        loading="lazy"
+                      />
+                    ) : (
+                      <ImageIcon className="w-6 h-6 text-[var(--sketch-fg-subtle)]" />
+                    )}
+                  </div>
+                  {/* Type badge */}
+                  <div className="absolute top-1 left-1">
+                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded text-white ${media.type === "video" ? "bg-red-500/80" : "bg-blue-500/80"
+                      }`}>
+                      {media.type === "video" ? "VIDEO" : "PHOTO"}
+                    </span>
+                  </div>
+                  {/* Importing spinner overlay */}
+                  {importingPexelsId === media.id && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <Loader2 className="w-5 h-5 animate-spin text-white" />
+                    </div>
+                  )}
+                  {/* Hover overlay with import hint */}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
+                    <Download className="w-4 h-4 text-white" />
+                    <span className="text-[9px] text-white font-semibold">Click to import</span>
+                  </div>
+                  {/* Photographer credit */}
+                  <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-1.5 py-0.5">
+                    <p className="text-[8px] text-white/80 truncate">by {media.photographer || "Pexels"}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <p className="text-xs text-[var(--sketch-fg-muted)]">No results found</p>
+              <p className="text-[10px] text-[var(--sketch-fg-subtle)] mt-1">Try a different search term</p>
+            </div>
+          )}
+        </div>
+
+        {/* Upload button */}
+        <div className="flex-shrink-0 border-t border-[var(--sketch-border-color)]/20 pt-2">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold py-2 px-3 rounded-lg bg-[var(--sketch-accent)]/10 hover:bg-[var(--sketch-accent)]/20 text-[var(--sketch-fg)] border border-[var(--sketch-accent)]/20 transition-colors cursor-pointer"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            Upload your own media
+          </button>
         </div>
       </div>
     );
@@ -3596,20 +4010,18 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         {safetyResult && (
           <div className="space-y-2 pt-2 border-t border-[var(--sketch-fg-subtle)]/20">
             <p className="text-[10px] text-[var(--sketch-fg-subtle)] uppercase tracking-wider">Result</p>
-            <div className={`rounded-lg p-3 space-y-2 ${
-              safetyResult.isSafe && safetyResult.isClear
+            <div className={`rounded-lg p-3 space-y-2 ${safetyResult.isSafe && safetyResult.isClear
                 ? "bg-green-500/10 border border-green-500/30"
                 : "bg-red-500/10 border border-red-500/30"
-            }`}>
+              }`}>
               <div className="flex items-center gap-2">
                 {safetyResult.isSafe && safetyResult.isClear ? (
                   <CheckCircle className="w-4 h-4 text-green-500" />
                 ) : (
                   <AlertTriangle className="w-4 h-4 text-red-500" />
                 )}
-                <span className={`text-xs font-bold ${
-                  safetyResult.isSafe && safetyResult.isClear ? "text-green-600" : "text-red-500"
-                }`}>
+                <span className={`text-xs font-bold ${safetyResult.isSafe && safetyResult.isClear ? "text-green-600" : "text-red-500"
+                  }`}>
                   {safetyResult.isSafe && safetyResult.isClear
                     ? "Safe & Clear"
                     : !safetyResult.isSafe
@@ -3659,7 +4071,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   return (
     <div className="w-full h-full flex flex-col bg-[var(--sketch-bg)] text-[var(--sketch-fg)] select-none font-sans overflow-hidden">
       {/* 1. Main Top Header Bar */}
-      <header className="w-full bg-[var(--sketch-card-bg)] border-b border-[var(--sketch-border-color)]/20 px-4 py-2 flex flex-col gap-1.5 flex-shrink-0">
+      <header className="w-full bg-[var(--sketch-toolbar-bg)] border-b-2 border-[var(--sketch-border-color)] px-4 py-2 flex flex-col gap-1.5 flex-shrink-0">
         <div className="flex items-center justify-between">
           {/* Left: Logo, Title row */}
           <div className="flex items-center gap-3">
@@ -4111,7 +4523,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
             animate={{ height: 42, opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="w-full bg-[var(--sketch-card-bg)]/80 border-b border-[var(--sketch-border-color)]/20 px-4 flex items-center justify-between flex-shrink-0 select-none overflow-hidden h-[42px]"
+            className="w-full bg-[var(--sketch-panel-bg)] border-b-2 border-[var(--sketch-border-color)] px-4 flex items-center justify-between flex-shrink-0 select-none overflow-hidden h-[42px]"
           >
             {/* Left: Fit, Undo/Redo, Tools */}
             <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -4228,39 +4640,40 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         </button>
       )}
 
-      {/* 3. Main Split Workspace */}
-      <div className="flex-1 flex min-h-0 relative">
-        {/* Left/Center Workspace: Canvas container */}
-        <div className="flex-1 flex flex-col bg-[var(--sketch-bg)] relative min-w-0 p-4">
-          <div className="flex-1 w-full relative min-h-0 flex flex-col overflow-hidden">
-            {currentStep && (
-              <div
-                ref={scrollContainerRef}
-                className={`w-full flex-grow flex-1 min-h-0 border border-[var(--sketch-border-color)]/20 rounded-md bg-[var(--sketch-bg)] relative ${
-                  canvasScale > 1.0
-                    ? "overflow-auto"
-                    : "overflow-hidden flex items-center justify-center p-2"
-                }`}
-              >
+      {/* 3. Main Split Workspace — canvas+timeline (left) | sidebar+tabs (right) */}
+      <div className="flex-1 flex flex-row items-stretch min-h-0 w-full overflow-hidden">
+
+        {/* LEFT COLUMN: Canvas + Timeline stacked vertically */}
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+          {/* Canvas area */}
+          <div className="flex-1 flex flex-col bg-[var(--sketch-bg)] relative min-w-0 p-4 min-h-0">
+            <div className="flex-1 w-full relative min-h-0 flex flex-col overflow-hidden">
+              {currentStep && (
                 <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    minWidth: "100%",
-                    minHeight: "100%",
-                    padding: "40px",
-                  }}
+                  ref={scrollContainerRef}
+                  className={`w-full flex-grow flex-1 min-h-0 border border-[var(--sketch-border-color)]/20 rounded-md bg-[var(--sketch-bg)] relative ${canvasScale > 1.0
+                      ? "overflow-auto"
+                      : "overflow-hidden flex items-center justify-center p-2"
+                    }`}
                 >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      minWidth: "100%",
+                      minHeight: "100%",
+                      padding: "40px",
+                    }}
+                  >
                     <div
                       ref={canvasRef}
-                      className={`relative overflow-hidden border border-[var(--sketch-border-color)]/35 bg-[#000000] shadow-2xl flex-shrink-0 select-none ${
-                        mode === "pan"
+                      className={`relative overflow-hidden border border-[var(--sketch-border-color)]/35 bg-[#000000] shadow-2xl flex-shrink-0 select-none ${mode === "pan"
                           ? "cursor-grab active:cursor-grabbing"
                           : mode === "select"
                             ? "cursor-default"
                             : "cursor-crosshair"
-                      }`}
+                        }`}
                       style={{
                         width: `${canvasDim.width}px`,
                         height: `${canvasDim.height}px`,
@@ -4318,1081 +4731,907 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                             pointerEvents: "none",
                           }}
                         >
-                          {/* Highlight boxes (multiple, like blur) */}
-                          {(currentAnn?.editorHighlights || []).map((hl, idx) => (
-                            <div
-                              key={hl.id}
-                              className="absolute cursor-move select-none group"
-                              style={{
-                                left: `${hl.x}%`,
-                                top: `${hl.y}%`,
-                                width: `${hl.w}%`,
-                                height: `${hl.h}%`,
-                                border: `3px solid ${hl.color || "#FF0099"}`,
-                                pointerEvents: overlayPointer("highlight"),
-                                backgroundColor: "rgba(255,0,153,0.12)",
-                                boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
-                              }}
-                              onMouseDown={(e) => {
-                                if ((e.target as HTMLElement).dataset.handle) return;
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setMode("highlight");
-                                const coords = getCanvasCoords(e);
-                                if (!coords) return;
-                                setDragItem({
-                                  type: "highlightArr",
-                                  id: hl.id,
-                                  startX: coords.x,
-                                  startY: coords.y,
-                                  initialX: hl.x,
-                                  initialY: hl.y,
-                                  initialW: hl.w,
-                                  initialH: hl.h,
-                                });
-                              }}
-                            >
-                              <div className="absolute top-1 left-1 bg-[#FF0099] text-white text-[10px] font-mono px-1 rounded font-bold">
-                                Highlight {idx + 1}
-                              </div>
-                              <button
-                                className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  const next = {
-                                    ...annotations,
-                                    [currentStep.id]: {
-                                      ...(annotations[currentStep.id] || {}),
-                                      editorHighlights: (currentAnn?.editorHighlights || []).filter((r) => r.id !== hl.id),
-                                    },
-                                  };
-                                  pushHistory(next);
-                                }}
-                              >
-                                ×
-                              </button>
-                              {RESIZE_HANDLES.map((h) => (
-                                <div
-                                  key={h.name}
-                                  data-handle={h.name}
-                                  className="absolute w-3 h-3 bg-white border-2 border-[#FF0099] rounded-sm pointer-events-auto"
-                                  style={{ ...h.style, zIndex: 10 }}
-                                  onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setMode("highlight");
-                                    const coords = getCanvasCoords(e);
-                                    if (!coords) return;
-                                    setDragItem({
-                                      type: "highlightArr",
-                                      id: hl.id,
-                                      startX: coords.x,
-                                      startY: coords.y,
-                                      initialX: hl.x,
-                                      initialY: hl.y,
-                                      initialW: hl.w,
-                                      initialH: hl.h,
-                                    });
-                                    handleResizeRef.current = h.name;
-                                  }}
-                                />
-                              ))}
-                            </div>
-                          ))}
-
-                          {/* Temp drag rect */}
-                          {tempRect && (
-                            <div
-                              className="absolute pointer-events-none select-none"
-                              style={{
-                                left: `${tempRect.x}%`,
-                                top: `${tempRect.y}%`,
-                                width: `${tempRect.w}%`,
-                                height: `${tempRect.h}%`,
-                                border: "3px dashed #00E5FF",
-                                backgroundColor: "rgba(0,229,255,0.10)",
-                                boxShadow: "0 0 0 1px rgba(255,255,255,0.7)",
-                              }}
-                            />
-                          )}
-
-                          {/* Crop overlay — Canva style with dimmed outside + edge handles */}
-                          {cropRect && cropRect.x != null && cropRect.y != null && cropRect.w != null && cropRect.h != null && (
-                            <>
-                              {/* Dimmed area outside the crop (4 rectangles: top, bottom, left, right) */}
-                              <div className="absolute pointer-events-none" style={{ left: 0, top: 0, width: "100%", height: "100%", overflow: "hidden" }}>
-                                {/* Top */}
-                                <div style={{ position: "absolute", left: 0, top: 0, width: "100%", height: `${cropRect.y}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
-                                {/* Bottom */}
-                                <div style={{ position: "absolute", left: 0, top: `${cropRect.y + cropRect.h}%`, width: "100%", height: `${100 - cropRect.y - cropRect.h}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
-                                {/* Left */}
-                                <div style={{ position: "absolute", left: 0, top: `${cropRect.y}%`, width: `${cropRect.x}%`, height: `${cropRect.h}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
-                                {/* Right */}
-                                <div style={{ position: "absolute", left: `${cropRect.x + cropRect.w}%`, top: `${cropRect.y}%`, width: `${100 - cropRect.x - cropRect.w}%`, height: `${cropRect.h}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
-                              </div>
-
-                              {/* Crop selection rectangle — draggable to move, with edge handles to resize */}
+                            {/* Highlight boxes (multiple, like blur) */}
+                            {(currentAnn?.editorHighlights || []).map((hl, idx) => (
                               <div
-                                className="absolute cursor-move select-none"
+                                key={hl.id}
+                                className="absolute cursor-move select-none group"
                                 style={{
-                                  left: `${cropRect.x}%`,
-                                  top: `${cropRect.y}%`,
-                                  width: `${cropRect.w}%`,
-                                  height: `${cropRect.h}%`,
-                                  border: "3px solid #00E676",
-                                  pointerEvents: overlayPointer("crop"),
-                                  boxShadow: "0 0 0 1px rgba(255,255,255,0.9)",
+                                  left: `${hl.x}%`,
+                                  top: `${hl.y}%`,
+                                  width: `${hl.w}%`,
+                                  height: `${hl.h}%`,
+                                  border: `3px solid ${hl.color || "#FF0099"}`,
+                                  pointerEvents: overlayPointer("highlight"),
+                                  backgroundColor: "rgba(255,0,153,0.12)",
+                                  boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
                                 }}
                                 onMouseDown={(e) => {
-                                  // Only drag if clicking inside (not on handles)
                                   if ((e.target as HTMLElement).dataset.handle) return;
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  setMode("crop");
+                                  setMode("highlight");
                                   const coords = getCanvasCoords(e);
                                   if (!coords) return;
                                   setDragItem({
-                                    type: "crop",
+                                    type: "highlightArr",
+                                    id: hl.id,
                                     startX: coords.x,
                                     startY: coords.y,
-                                    initialX: currentAnn?.editorCropX ?? 0,
-                                    initialY: currentAnn?.editorCropY ?? 0,
-                                    initialW: currentAnn?.editorCropW ?? 0,
-                                    initialH: currentAnn?.editorCropH ?? 0,
+                                    initialX: hl.x,
+                                    initialY: hl.y,
+                                    initialW: hl.w,
+                                    initialH: hl.h,
                                   });
                                 }}
                               >
-                                <div className="absolute top-1 left-1 bg-[#00E676] text-black text-[10px] font-mono px-1 rounded font-bold">
-                                  Crop — keep this area
+                                <div className="absolute top-1 left-1 bg-[#FF0099] text-white text-[10px] font-mono px-1 rounded font-bold">
+                                  Highlight {idx + 1}
                                 </div>
-
-                                {/* Edge handles — 8 resize handles (corners + midpoints) */}
+                                <button
+                                  className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    const next = {
+                                      ...annotations,
+                                      [currentStep.id]: {
+                                        ...(annotations[currentStep.id] || {}),
+                                        editorHighlights: (currentAnn?.editorHighlights || []).filter((r) => r.id !== hl.id),
+                                      },
+                                    };
+                                    pushHistory(next);
+                                  }}
+                                >
+                                  ×
+                                </button>
                                 {RESIZE_HANDLES.map((h) => (
                                   <div
                                     key={h.name}
                                     data-handle={h.name}
-                                    className="absolute w-3 h-3 bg-[var(--sketch-card-bg)] border-2 border-[#00E676] rounded-sm pointer-events-auto"
+                                    className="absolute w-3 h-3 bg-white border-2 border-[#FF0099] rounded-sm pointer-events-auto"
                                     style={{ ...h.style, zIndex: 10 }}
                                     onMouseDown={(e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
-                                      setMode("crop");
+                                      setMode("highlight");
                                       const coords = getCanvasCoords(e);
                                       if (!coords) return;
                                       setDragItem({
-                                        type: "crop",
+                                        type: "highlightArr",
+                                        id: hl.id,
                                         startX: coords.x,
                                         startY: coords.y,
-                                        initialX: currentAnn?.editorCropX ?? 0,
-                                        initialY: currentAnn?.editorCropY ?? 0,
-                                        initialW: currentAnn?.editorCropW ?? 0,
-                                        initialH: currentAnn?.editorCropH ?? 0,
+                                        initialX: hl.x,
+                                        initialY: hl.y,
+                                        initialW: hl.w,
+                                        initialH: hl.h,
                                       });
-                                      // Store which handle is being dragged via a custom property
                                       handleResizeRef.current = h.name;
                                     }}
                                   />
                                 ))}
                               </div>
-                            </>
-                          )}
+                            ))}
 
-                          {/* Blur overlays (multiple regions) */}
-                          {(currentAnn?.editorBlurs || []).map((blurRegion, idx) => (
-                            <div
-                              key={blurRegion.id}
-                              className="absolute cursor-move overflow-hidden select-none group"
-                              style={{
-                                left: `${blurRegion.x}%`,
-                                top: `${blurRegion.y}%`,
-                                width: `${blurRegion.w}%`,
-                                height: `${blurRegion.h}%`,
-                                border: "3px solid #FF4081",
-                                pointerEvents: overlayPointer("blur"),
-                                boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
-                              }}
-                              onMouseDown={(e) => {
-                                if ((e.target as HTMLElement).dataset.handle) return;
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setMode("blur");
-                                const coords = getCanvasCoords(e);
-                                if (!coords) return;
-                                setDragItem({
-                                  type: "blurArr",
-                                  id: blurRegion.id,
-                                  startX: coords.x,
-                                  startY: coords.y,
-                                  initialX: blurRegion.x,
-                                  initialY: blurRegion.y,
-                                  initialW: blurRegion.w,
-                                  initialH: blurRegion.h,
-                                });
-                              }}
-                            >
+                            {/* Temp drag rect */}
+                            {tempRect && (
                               <div
-                                className="w-full h-full"
+                                className="absolute pointer-events-none select-none"
                                 style={{
-                                  backdropFilter: `blur(${blurRegion.intensity ?? currentAnn?.editorBlurIntensity ?? 20}px)`,
-                                  WebkitBackdropFilter: `blur(${blurRegion.intensity ?? currentAnn?.editorBlurIntensity ?? 20}px)`,
-                                  backgroundColor: "rgba(255,255,255,0.05)",
+                                  left: `${tempRect.x}%`,
+                                  top: `${tempRect.y}%`,
+                                  width: `${tempRect.w}%`,
+                                  height: `${tempRect.h}%`,
+                                  border: "3px dashed #00E5FF",
+                                  backgroundColor: "rgba(0,229,255,0.10)",
+                                  boxShadow: "0 0 0 1px rgba(255,255,255,0.7)",
                                 }}
                               />
-                              <div className="absolute top-1 left-1 bg-[#FF4081] text-white text-[10px] font-mono px-1 rounded font-bold">
-                                Blur {idx + 1}
-                              </div>
-                              <button
-                                className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  const next = {
-                                    ...annotations,
-                                    [currentStep.id]: {
-                                      ...(annotations[currentStep.id] || {}),
-                                      editorBlurs: (currentAnn?.editorBlurs || []).filter((r) => r.id !== blurRegion.id),
-                                    },
-                                  };
-                                  pushHistory(next);
-                                }}
-                              >
-                                ×
-                              </button>
-                              {RESIZE_HANDLES.map((h) => (
-                                <div
-                                  key={h.name}
-                                  data-handle={h.name}
-                                  className="absolute w-3 h-3 bg-white border-2 border-[#FF4081] rounded-sm pointer-events-auto"
-                                  style={{ ...h.style, zIndex: 10 }}
-                                  onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setMode("blur");
-                                    const coords = getCanvasCoords(e);
-                                    if (!coords) return;
-                                    setDragItem({
-                                      type: "blurArr",
-                                      id: blurRegion.id,
-                                      startX: coords.x,
-                                      startY: coords.y,
-                                      initialX: blurRegion.x,
-                                      initialY: blurRegion.y,
-                                      initialW: blurRegion.w,
-                                      initialH: blurRegion.h,
-                                    });
-                                    handleResizeRef.current = h.name;
-                                  }}
-                                />
-                              ))}
-                            </div>
-                          ))}
+                            )}
 
-                          {/* Redact overlay */}
-                          {redactRect && redactRect.x != null && (
-                            <div
-                              className="absolute cursor-move select-none group"
-                              style={{
-                                left: `${redactRect.x}%`,
-                                top: `${redactRect.y}%`,
-                                width: `${redactRect.w}%`,
-                                height: `${redactRect.h}%`,
-                                backgroundColor: currentAnn?.editorRedactColor || "#000000",
-                                pointerEvents: overlayPointer("redact"),
-                                border: "3px solid #FFFFFF",
-                                boxShadow: "0 0 0 1px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.4)",
-                              }}
-                              onMouseDown={(e) => {
-                                if ((e.target as HTMLElement).dataset.handle) return;
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setMode("redact");
-                                const coords = getCanvasCoords(e);
-                                if (!coords) return;
-                                setDragItem({
-                                  type: "redact",
-                                  startX: coords.x,
-                                  startY: coords.y,
-                                  initialX: currentAnn?.editorRedactX ?? 0,
-                                  initialY: currentAnn?.editorRedactY ?? 0,
-                                  initialW: currentAnn?.editorRedactW ?? 0,
-                                  initialH: currentAnn?.editorRedactH ?? 0,
-                                });
-                              }}
-                            >
-                              <div className="absolute top-1 left-1 bg-gray-900 text-white text-[10px] font-mono px-1 rounded font-bold border border-white/50">
-                                Redacted
-                              </div>
-                              {RESIZE_HANDLES.map((h) => (
-                                <div
-                                  key={h.name}
-                                  data-handle={h.name}
-                                  className="absolute w-3 h-3 bg-white border-2 border-gray-900 rounded-sm pointer-events-auto"
-                                  style={{ ...h.style, zIndex: 10 }}
-                                  onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setMode("redact");
-                                    const coords = getCanvasCoords(e);
-                                    if (!coords) return;
-                                    setDragItem({
-                                      type: "redact",
-                                      startX: coords.x,
-                                      startY: coords.y,
-                                      initialX: currentAnn?.editorRedactX ?? 0,
-                                      initialY: currentAnn?.editorRedactY ?? 0,
-                                      initialW: currentAnn?.editorRedactW ?? 0,
-                                      initialH: currentAnn?.editorRedactH ?? 0,
-                                    });
-                                    handleResizeRef.current = h.name;
-                                  }}
-                                />
-                              ))}
-                            </div>
-                          )}
+                            {/* Crop overlay — Canva style with dimmed outside + edge handles */}
+                            {cropRect && cropRect.x != null && cropRect.y != null && cropRect.w != null && cropRect.h != null && (
+                              <>
+                                {/* Dimmed area outside the crop (4 rectangles: top, bottom, left, right) */}
+                                <div className="absolute pointer-events-none" style={{ left: 0, top: 0, width: "100%", height: "100%", overflow: "hidden" }}>
+                                  {/* Top */}
+                                  <div style={{ position: "absolute", left: 0, top: 0, width: "100%", height: `${cropRect.y}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
+                                  {/* Bottom */}
+                                  <div style={{ position: "absolute", left: 0, top: `${cropRect.y + cropRect.h}%`, width: "100%", height: `${100 - cropRect.y - cropRect.h}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
+                                  {/* Left */}
+                                  <div style={{ position: "absolute", left: 0, top: `${cropRect.y}%`, width: `${cropRect.x}%`, height: `${cropRect.h}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
+                                  {/* Right */}
+                                  <div style={{ position: "absolute", left: `${cropRect.x + cropRect.w}%`, top: `${cropRect.y}%`, width: `${100 - cropRect.x - cropRect.w}%`, height: `${cropRect.h}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
+                                </div>
 
-                          {/* Watermark preview */}
-                          {currentAnn?.editorWatermarkText && (
-                            <div
-                              className="absolute pointer-events-none select-none"
-                              style={{
-                                ...(currentAnn.editorWatermarkPosition?.includes("top")
-                                  ? { top: "5%" }
-                                  : { bottom: "5%" }),
-                                ...(currentAnn.editorWatermarkPosition?.includes("left")
-                                  ? { left: "5%" }
-                                  : { right: "5%" }),
-                                ...(currentAnn.editorWatermarkPosition === "center"
-                                  ? { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }
-                                  : {}),
-                              }}
-                            >
-                              <div
-                                className="font-body font-bold whitespace-nowrap"
-                                style={{
-                                  color: currentAnn.editorWatermarkColor || "#FFFFFF",
-                                  fontSize:
-                                    currentAnn.editorWatermarkSize === "small"
-                                      ? "14px"
-                                      : currentAnn.editorWatermarkSize === "large"
-                                        ? "28px"
-                                        : "20px",
-                                  opacity: currentAnn.editorWatermarkOpacity ?? 0.5,
-                                  textShadow: "0 1px 3px rgba(0,0,0,0.5)",
-                                }}
-                              >
-                                {currentAnn.editorWatermarkText}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Pixelate overlays (multiple regions) */}
-                          {(currentAnn?.editorPixelates || []).map((pixRegion, idx) => (
-                            <div
-                              key={pixRegion.id}
-                              className="absolute cursor-move overflow-hidden select-none group"
-                              style={{
-                                left: `${pixRegion.x}%`,
-                                top: `${pixRegion.y}%`,
-                                width: `${pixRegion.w}%`,
-                                height: `${pixRegion.h}%`,
-                                border: "3px solid #00BCD4",
-                                pointerEvents: overlayPointer("pixelate"),
-                                boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
-                              }}
-                              onMouseDown={(e) => {
-                                if ((e.target as HTMLElement).dataset.handle) return;
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setMode("pixelate");
-                                const coords = getCanvasCoords(e);
-                                if (!coords) return;
-                                setDragItem({
-                                  type: "pixelateArr",
-                                  id: pixRegion.id,
-                                  startX: coords.x,
-                                  startY: coords.y,
-                                  initialX: pixRegion.x,
-                                  initialY: pixRegion.y,
-                                  initialW: pixRegion.w,
-                                  initialH: pixRegion.h,
-                                });
-                              }}
-                            >
-                              <div
-                                className="w-full h-full"
-                                style={{
-                                  backgroundImage: `repeating-conic-gradient(#808080 0% 25%, #a0a0a0 0% 50%)`,
-                                  backgroundSize: `${pixRegion.blockSize ?? currentAnn?.editorPixelateBlockSize ?? 20}px ${pixRegion.blockSize ?? currentAnn?.editorPixelateBlockSize ?? 20}px`,
-                                  opacity: 0.7,
-                                }}
-                              />
-                              <div className="absolute top-1 left-1 bg-[#00BCD4] text-white text-[10px] font-mono px-1 rounded font-bold">
-                                Pixelate {idx + 1}
-                              </div>
-                              <button
-                                className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  const next = {
-                                    ...annotations,
-                                    [currentStep.id]: {
-                                      ...(annotations[currentStep.id] || {}),
-                                      editorPixelates: (currentAnn?.editorPixelates || []).filter((r) => r.id !== pixRegion.id),
-                                    },
-                                  };
-                                  pushHistory(next);
-                                }}
-                              >
-                                ×
-                              </button>
-                              {RESIZE_HANDLES.map((h) => (
+                                {/* Crop selection rectangle — draggable to move, with edge handles to resize */}
                                 <div
-                                  key={h.name}
-                                  data-handle={h.name}
-                                  className="absolute w-3 h-3 bg-white border-2 border-[#00BCD4] rounded-sm pointer-events-auto"
-                                  style={{ ...h.style, zIndex: 10 }}
-                                  onMouseDown={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    setMode("pixelate");
-                                    const coords = getCanvasCoords(e);
-                                    if (!coords) return;
-                                    setDragItem({
-                                      type: "pixelateArr",
-                                      id: pixRegion.id,
-                                      startX: coords.x,
-                                      startY: coords.y,
-                                      initialX: pixRegion.x,
-                                      initialY: pixRegion.y,
-                                      initialW: pixRegion.w,
-                                      initialH: pixRegion.h,
-                                    });
-                                    handleResizeRef.current = h.name;
-                                  }}
-                                />
-                              ))}
-                            </div>
-                          ))}
-
-                          {/* Spotlight overlays (multiple regions) */}
-                          {(currentAnn?.editorSpotlights || []).length > 0 && (
-                            <>
-                              {/* Dark overlay covering everything */}
-                              <div
-                                className="absolute pointer-events-none"
-                                style={{
-                                  left: 0,
-                                  top: 0,
-                                  width: "100%",
-                                  height: "100%",
-                                  backgroundColor: `rgba(0,0,0,${Math.max(...(currentAnn?.editorSpotlights || []).map(s => s.intensity ?? currentAnn?.editorSpotlightIntensity ?? 0.6))})`,
-                                  mixBlendMode: "multiply",
-                                }}
-                              />
-                              {/* Each spotlight region "cuts out" the dark overlay */}
-                              {(currentAnn?.editorSpotlights || []).map((spotRegion, idx) => (
-                                <div
-                                  key={spotRegion.id}
-                                  className="absolute cursor-move select-none group"
+                                  className="absolute cursor-move select-none"
                                   style={{
-                                    left: `${spotRegion.x}%`,
-                                    top: `${spotRegion.y}%`,
-                                    width: `${spotRegion.w}%`,
-                                    height: `${spotRegion.h}%`,
-                                    border: "3px solid #FF6D00",
-                                    pointerEvents: overlayPointer("spotlight"),
-                                    borderRadius: "4px",
-                                    boxShadow: `0 0 0 9999px rgba(0,0,0,${spotRegion.intensity ?? currentAnn?.editorSpotlightIntensity ?? 0.6}), 0 0 0 1px rgba(255,255,255,0.9)`,
+                                    left: `${cropRect.x}%`,
+                                    top: `${cropRect.y}%`,
+                                    width: `${cropRect.w}%`,
+                                    height: `${cropRect.h}%`,
+                                    border: "3px solid #00E676",
+                                    pointerEvents: overlayPointer("crop"),
+                                    boxShadow: "0 0 0 1px rgba(255,255,255,0.9)",
                                   }}
                                   onMouseDown={(e) => {
+                                    // Only drag if clicking inside (not on handles)
                                     if ((e.target as HTMLElement).dataset.handle) return;
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    setMode("spotlight");
+                                    setMode("crop");
                                     const coords = getCanvasCoords(e);
                                     if (!coords) return;
                                     setDragItem({
-                                      type: "spotlightArr",
-                                      id: spotRegion.id,
+                                      type: "crop",
                                       startX: coords.x,
                                       startY: coords.y,
-                                      initialX: spotRegion.x,
-                                      initialY: spotRegion.y,
-                                      initialW: spotRegion.w,
-                                      initialH: spotRegion.h,
+                                      initialX: currentAnn?.editorCropX ?? 0,
+                                      initialY: currentAnn?.editorCropY ?? 0,
+                                      initialW: currentAnn?.editorCropW ?? 0,
+                                      initialH: currentAnn?.editorCropH ?? 0,
                                     });
                                   }}
                                 >
-                                  <div className="absolute top-1 left-1 bg-[#FF6D00] text-white text-[10px] font-mono px-1 rounded font-bold">
-                                    Spotlight {idx + 1}
+                                  <div className="absolute top-1 left-1 bg-[#00E676] text-black text-[10px] font-mono px-1 rounded font-bold">
+                                    Crop — keep this area
                                   </div>
-                                  <button
-                                    className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
-                                    onMouseDown={(e) => {
-                                      e.preventDefault();
-                                      e.stopPropagation();
-                                      const next = {
-                                        ...annotations,
-                                        [currentStep.id]: {
-                                          ...(annotations[currentStep.id] || {}),
-                                          editorSpotlights: (currentAnn?.editorSpotlights || []).filter((r) => r.id !== spotRegion.id),
-                                        },
-                                      };
-                                      pushHistory(next);
-                                    }}
-                                  >
-                                    ×
-                                  </button>
+
+                                  {/* Edge handles — 8 resize handles (corners + midpoints) */}
                                   {RESIZE_HANDLES.map((h) => (
                                     <div
                                       key={h.name}
                                       data-handle={h.name}
-                                      className="absolute w-3 h-3 bg-white border-2 border-[#FF6D00] rounded-sm pointer-events-auto"
+                                      className="absolute w-3 h-3 bg-[var(--sketch-card-bg)] border-2 border-[#00E676] rounded-sm pointer-events-auto"
                                       style={{ ...h.style, zIndex: 10 }}
                                       onMouseDown={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
-                                        setMode("spotlight");
+                                        setMode("crop");
                                         const coords = getCanvasCoords(e);
                                         if (!coords) return;
                                         setDragItem({
-                                          type: "spotlightArr",
-                                          id: spotRegion.id,
+                                          type: "crop",
                                           startX: coords.x,
                                           startY: coords.y,
-                                          initialX: spotRegion.x,
-                                          initialY: spotRegion.y,
-                                          initialW: spotRegion.w,
-                                          initialH: spotRegion.h,
+                                          initialX: currentAnn?.editorCropX ?? 0,
+                                          initialY: currentAnn?.editorCropY ?? 0,
+                                          initialW: currentAnn?.editorCropW ?? 0,
+                                          initialH: currentAnn?.editorCropH ?? 0,
                                         });
+                                        // Store which handle is being dragged via a custom property
                                         handleResizeRef.current = h.name;
                                       }}
                                     />
                                   ))}
                                 </div>
-                              ))}
-                            </>
-                          )}
+                              </>
+                            )}
 
-                          {/* Badge overlay */}
-                          {currentAnn?.editorBadgeNumber != null && currentAnn?.editorBadgeX != null && (
-                            <div
-                              className="absolute cursor-move select-none"
-                              style={{
-                                left: `${currentAnn.editorBadgeX}%`,
-                                top: `${currentAnn.editorBadgeY}%`,
-                                transform: "translate(-50%, -50%)",
-                                pointerEvents: overlayPointer("badge"),
-                              }}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setMode("badge");
-                                const coords = getCanvasCoords(e);
-                                if (!coords) return;
-                                setDragItem({
-                                  type: "badge",
-                                  startX: coords.x,
-                                  startY: coords.y,
-                                  initialX: currentAnn?.editorBadgeX ?? 50,
-                                  initialY: currentAnn?.editorBadgeY ?? 50,
-                                });
-                              }}
-                            >
+                            {/* Blur overlays (multiple regions) */}
+                            {(currentAnn?.editorBlurs || []).map((blurRegion, idx) => (
                               <div
-                                className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-lg"
-                                style={{ backgroundColor: currentAnn.editorBadgeColor || "#FBBF24", color: "#000" }}
-                              >
-                                {currentAnn.editorBadgeNumber}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Magnify overlay */}
-                          {currentAnn?.editorMagnifyX != null && currentAnn?.editorMagnifyW != null && (
-                            <div
-                              className="absolute cursor-move border-2 border-white shadow-lg overflow-hidden bg-black select-none"
-                              style={{
-                                ...(currentAnn.editorMagnifyCorner?.includes("top") ? { top: "10px" } : { bottom: "10px" }),
-                                ...(currentAnn.editorMagnifyCorner?.includes("left") ? { left: "10px" } : { right: "10px" }),
-                                pointerEvents: overlayPointer("magnify"),
-                                width: "120px",
-                                height: "120px",
-                                borderRadius: "8px",
-                              }}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setMode("magnify");
-                                const coords = getCanvasCoords(e);
-                                if (!coords) return;
-                                setDragItem({
-                                  type: "magnify",
-                                  startX: coords.x,
-                                  startY: coords.y,
-                                  initialX: currentAnn?.editorMagnifyX ?? 50,
-                                  initialY: currentAnn?.editorMagnifyY ?? 50,
-                                });
-                              }}
-                            >
-                              <div
-                                className="w-full h-full"
+                                key={blurRegion.id}
+                                className="absolute cursor-move overflow-hidden select-none group"
                                 style={{
-                                  backgroundImage: `url(${currentStep.screenshotPath})`,
-                                  backgroundPosition: `${currentAnn.editorMagnifyX}% ${currentAnn.editorMagnifyY}%`,
-                                  backgroundSize: `${(currentAnn.editorMagnifyScale ?? 2) * 100}%`,
-                                  backgroundRepeat: "no-repeat",
+                                  left: `${blurRegion.x}%`,
+                                  top: `${blurRegion.y}%`,
+                                  width: `${blurRegion.w}%`,
+                                  height: `${blurRegion.h}%`,
+                                  border: "3px solid #FF4081",
+                                  pointerEvents: overlayPointer("blur"),
+                                  boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
                                 }}
-                              />
-                              <div className="absolute top-0 left-0 bg-teal-500 text-white text-[8px] font-mono px-1 rounded-br">
-                                {currentAnn.editorMagnifyScale ?? 2}x
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Color filter overlay */}
-                          {currentAnn?.editorColorFilter && currentAnn.editorColorFilter !== "none" && (
-                            <div
-                              className="absolute inset-0 pointer-events-none"
-                              style={{
-                                filter:
-                                  currentAnn.editorColorFilter === "grayscale"
-                                    ? "grayscale(100%)"
-                                    : currentAnn.editorColorFilter === "sepia"
-                                      ? "sepia(100%)"
-                                      : currentAnn.editorColorFilter === "warm"
-                                        ? "sepia(50%) saturate(140%)"
-                                        : currentAnn.editorColorFilter === "cool"
-                                          ? "hue-rotate(180deg) saturate(80%)"
-                                          : currentAnn.editorColorFilter === "contrast"
-                                            ? "contrast(150%) saturate(120%)"
-                                            : "none",
-                                mixBlendMode: currentAnn.editorColorFilter === "contrast" ? "normal" : "multiply",
-                                opacity: 0.3,
-                              }}
-                            />
-                          )}
-
-                          {/* Text overlay */}
-                          {overlayPos && overlayPos.x != null && currentAnn?.editorOverlayText && (
-                            <div
-                              className="absolute cursor-move select-none"
-                              style={{
-                                left: `${overlayPos.x}%`,
-                                top: `${overlayPos.y}%`,
-                                transform: "translate(-50%, -50%)",
-                                pointerEvents: overlayPointer("overlay"),
-                              }}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setMode("overlay");
-                                const coords = getCanvasCoords(e);
-                                if (!coords) return;
-                                setDragItem({
-                                  type: "overlay",
-                                  startX: coords.x,
-                                  startY: coords.y,
-                                  initialX: currentAnn?.editorOverlayX ?? 50,
-                                  initialY: currentAnn?.editorOverlayY ?? 50,
-                                });
-                              }}
-                            >
-                              <div
-                                className="px-3 py-1.5 rounded shadow-lg font-body font-semibold whitespace-nowrap"
-                                style={{
-                                  backgroundColor: "rgba(0,0,0,0.6)",
-                                  color: currentAnn.editorOverlayColor || "#FFFFFF",
-                                  fontSize:
-                                    currentAnn.editorOverlaySize === "small"
-                                      ? "12px"
-                                      : currentAnn.editorOverlaySize === "large"
-                                        ? "20px"
-                                        : "16px",
+                                onMouseDown={(e) => {
+                                  if ((e.target as HTMLElement).dataset.handle) return;
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setMode("blur");
+                                  const coords = getCanvasCoords(e);
+                                  if (!coords) return;
+                                  setDragItem({
+                                    type: "blurArr",
+                                    id: blurRegion.id,
+                                    startX: coords.x,
+                                    startY: coords.y,
+                                    initialX: blurRegion.x,
+                                    initialY: blurRegion.y,
+                                    initialW: blurRegion.w,
+                                    initialH: blurRegion.h,
+                                  });
                                 }}
                               >
-                                {currentAnn.editorOverlayText}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Zoom target point */}
-                          {currentAnn?.zoomTargetX != null && currentAnn?.zoomTargetY != null && (
-                            <div
-                              className="absolute w-4 h-4 -translate-x-1/2 -translate-y-1/2 cursor-move select-none"
-                              style={{
-                                left: `${currentAnn.zoomTargetX}%`,
-                                top: `${currentAnn.zoomTargetY}%`,
-                                pointerEvents: overlayPointer("zoom"),
-                              }}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setMode("zoom");
-                                const coords = getCanvasCoords(e);
-                                if (!coords) return;
-                                setDragItem({
-                                  type: "zoomTarget",
-                                  startX: coords.x,
-                                  startY: coords.y,
-                                  initialX: currentAnn?.zoomTargetX ?? 50,
-                                  initialY: currentAnn?.zoomTargetY ?? 50,
-                                });
-                              }}
-                            >
-                              <div className="w-full h-full rounded-full border-2 border-[#FF0099] bg-[#FF0099]/40 animate-pulse" style={{ boxShadow: "0 0 0 2px rgba(255,255,255,0.9), 0 2px 8px rgba(0,0,0,0.5)" }} />
-                            </div>
-                          )}
-
-                          {/* Multi-zoom points */}
-                          {currentAnn?.editorMultiZooms?.map((mz, idx) => (
-                            <div key={mz.id}
-                              className="absolute cursor-move select-none"
-                              style={{
-                                left: `${mz.targetX}%`,
-                                top: `${mz.targetY}%`,
-                                transform: "translate(-50%, -50%)",
-                                pointerEvents: overlayPointer("zoom"),
-                              }}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                setMode("zoom");
-                                const coords = getCanvasCoords(e);
-                                if (!coords) return;
-                                setDragItem({
-                                  type: "multizoom",
-                                  id: mz.id,
-                                  startX: coords.x,
-                                  startY: coords.y,
-                                  initialX: mz.targetX,
-                                  initialY: mz.targetY,
-                                });
-                              }}
-                            >
-                              <div className="w-6 h-6 rounded-full bg-violet-500 text-white flex items-center justify-center text-xs font-bold shadow-lg border-2 border-white">
-                                {idx + 1}
-                              </div>
-                              {mz.rectW != null && mz.rectH != null && (
                                 <div
-                                  className="absolute border-2 border-violet-400 pointer-events-none"
+                                  className="w-full h-full"
                                   style={{
-                                    left: `${-((mz.rectW || 0) / 2)}%`,
-                                    top: `${-((mz.rectH || 0) / 2)}%`,
-                                    width: `${mz.rectW}%`,
-                                    height: `${mz.rectH}%`,
+                                    backdropFilter: `blur(${blurRegion.intensity ?? currentAnn?.editorBlurIntensity ?? 20}px)`,
+                                    WebkitBackdropFilter: `blur(${blurRegion.intensity ?? currentAnn?.editorBlurIntensity ?? 20}px)`,
+                                    backgroundColor: "rgba(255,255,255,0.05)",
                                   }}
                                 />
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                                <div className="absolute top-1 left-1 bg-[#FF4081] text-white text-[10px] font-mono px-1 rounded font-bold">
+                                  Blur {idx + 1}
+                                </div>
+                                <button
+                                  className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    const next = {
+                                      ...annotations,
+                                      [currentStep.id]: {
+                                        ...(annotations[currentStep.id] || {}),
+                                        editorBlurs: (currentAnn?.editorBlurs || []).filter((r) => r.id !== blurRegion.id),
+                                      },
+                                    };
+                                    pushHistory(next);
+                                  }}
+                                >
+                                  ×
+                                </button>
+                                {RESIZE_HANDLES.map((h) => (
+                                  <div
+                                    key={h.name}
+                                    data-handle={h.name}
+                                    className="absolute w-3 h-3 bg-white border-2 border-[#FF4081] rounded-sm pointer-events-auto"
+                                    style={{ ...h.style, zIndex: 10 }}
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setMode("blur");
+                                      const coords = getCanvasCoords(e);
+                                      if (!coords) return;
+                                      setDragItem({
+                                        type: "blurArr",
+                                        id: blurRegion.id,
+                                        startX: coords.x,
+                                        startY: coords.y,
+                                        initialX: blurRegion.x,
+                                        initialY: blurRegion.y,
+                                        initialW: blurRegion.w,
+                                        initialH: blurRegion.h,
+                                      });
+                                      handleResizeRef.current = h.name;
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            ))}
 
-                      {/* Mode indicator */}
-                      <div className="absolute bottom-2 left-2 bg-black/60 text-white text-[10px] font-mono px-2 py-1 rounded z-10">
-                        {mode === "highlight" && "Drag to highlight area"}
-                        {mode === "zoom" && "Click to add zoom point"}
-                        {mode === "overlay" && "Click to place text"}
-                        {mode === "crop" && "Drag to crop"}
-                        {mode === "blur" && "Drag to blur area"}
-                        {mode === "redact" && "Drag to redact area"}
-                        {mode === "watermark" && "Click to place watermark"}
-                        {mode === "pixelate" && "Drag to pixelate area"}
-                        {mode === "spotlight" && "Drag spotlight area"}
-                        {mode === "badge" && "Click to place badge"}
-                        {mode === "magnify" && "Click to place magnifier"}
-                        {mode === "filter" && "Select filter from panel"}
-                        {mode === "zoom" && "Click to add zoom point. Use panel to edit."}
-                        {mode === "caption" && "Narration Subtitles"}
+                            {/* Redact overlay */}
+                            {redactRect && redactRect.x != null && (
+                              <div
+                                className="absolute cursor-move select-none group"
+                                style={{
+                                  left: `${redactRect.x}%`,
+                                  top: `${redactRect.y}%`,
+                                  width: `${redactRect.w}%`,
+                                  height: `${redactRect.h}%`,
+                                  backgroundColor: currentAnn?.editorRedactColor || "#000000",
+                                  pointerEvents: overlayPointer("redact"),
+                                  border: "3px solid #FFFFFF",
+                                  boxShadow: "0 0 0 1px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.4)",
+                                }}
+                                onMouseDown={(e) => {
+                                  if ((e.target as HTMLElement).dataset.handle) return;
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setMode("redact");
+                                  const coords = getCanvasCoords(e);
+                                  if (!coords) return;
+                                  setDragItem({
+                                    type: "redact",
+                                    startX: coords.x,
+                                    startY: coords.y,
+                                    initialX: currentAnn?.editorRedactX ?? 0,
+                                    initialY: currentAnn?.editorRedactY ?? 0,
+                                    initialW: currentAnn?.editorRedactW ?? 0,
+                                    initialH: currentAnn?.editorRedactH ?? 0,
+                                  });
+                                }}
+                              >
+                                <div className="absolute top-1 left-1 bg-gray-900 text-white text-[10px] font-mono px-1 rounded font-bold border border-white/50">
+                                  Redacted
+                                </div>
+                                {RESIZE_HANDLES.map((h) => (
+                                  <div
+                                    key={h.name}
+                                    data-handle={h.name}
+                                    className="absolute w-3 h-3 bg-white border-2 border-gray-900 rounded-sm pointer-events-auto"
+                                    style={{ ...h.style, zIndex: 10 }}
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setMode("redact");
+                                      const coords = getCanvasCoords(e);
+                                      if (!coords) return;
+                                      setDragItem({
+                                        type: "redact",
+                                        startX: coords.x,
+                                        startY: coords.y,
+                                        initialX: currentAnn?.editorRedactX ?? 0,
+                                        initialY: currentAnn?.editorRedactY ?? 0,
+                                        initialW: currentAnn?.editorRedactW ?? 0,
+                                        initialH: currentAnn?.editorRedactH ?? 0,
+                                      });
+                                      handleResizeRef.current = h.name;
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            )}
+
+                            {/* Watermark preview */}
+                            {currentAnn?.editorWatermarkText && (
+                              <div
+                                className="absolute pointer-events-none select-none"
+                                style={{
+                                  ...(currentAnn.editorWatermarkPosition?.includes("top")
+                                    ? { top: "5%" }
+                                    : { bottom: "5%" }),
+                                  ...(currentAnn.editorWatermarkPosition?.includes("left")
+                                    ? { left: "5%" }
+                                    : { right: "5%" }),
+                                  ...(currentAnn.editorWatermarkPosition === "center"
+                                    ? { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }
+                                    : {}),
+                                }}
+                              >
+                                <div
+                                  className="font-body font-bold whitespace-nowrap"
+                                  style={{
+                                    color: currentAnn.editorWatermarkColor || "#FFFFFF",
+                                    fontSize:
+                                      currentAnn.editorWatermarkSize === "small"
+                                        ? "14px"
+                                        : currentAnn.editorWatermarkSize === "large"
+                                          ? "28px"
+                                          : "20px",
+                                    opacity: currentAnn.editorWatermarkOpacity ?? 0.5,
+                                    textShadow: "0 1px 3px rgba(0,0,0,0.5)",
+                                  }}
+                                >
+                                  {currentAnn.editorWatermarkText}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Pixelate overlays (multiple regions) */}
+                            {(currentAnn?.editorPixelates || []).map((pixRegion, idx) => (
+                              <div
+                                key={pixRegion.id}
+                                className="absolute cursor-move overflow-hidden select-none group"
+                                style={{
+                                  left: `${pixRegion.x}%`,
+                                  top: `${pixRegion.y}%`,
+                                  width: `${pixRegion.w}%`,
+                                  height: `${pixRegion.h}%`,
+                                  border: "3px solid #00BCD4",
+                                  pointerEvents: overlayPointer("pixelate"),
+                                  boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
+                                }}
+                                onMouseDown={(e) => {
+                                  if ((e.target as HTMLElement).dataset.handle) return;
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setMode("pixelate");
+                                  const coords = getCanvasCoords(e);
+                                  if (!coords) return;
+                                  setDragItem({
+                                    type: "pixelateArr",
+                                    id: pixRegion.id,
+                                    startX: coords.x,
+                                    startY: coords.y,
+                                    initialX: pixRegion.x,
+                                    initialY: pixRegion.y,
+                                    initialW: pixRegion.w,
+                                    initialH: pixRegion.h,
+                                  });
+                                }}
+                              >
+                                <div
+                                  className="w-full h-full"
+                                  style={{
+                                    backgroundImage: `repeating-conic-gradient(#808080 0% 25%, #a0a0a0 0% 50%)`,
+                                    backgroundSize: `${pixRegion.blockSize ?? currentAnn?.editorPixelateBlockSize ?? 20}px ${pixRegion.blockSize ?? currentAnn?.editorPixelateBlockSize ?? 20}px`,
+                                    opacity: 0.7,
+                                  }}
+                                />
+                                <div className="absolute top-1 left-1 bg-[#00BCD4] text-white text-[10px] font-mono px-1 rounded font-bold">
+                                  Pixelate {idx + 1}
+                                </div>
+                                <button
+                                  className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    const next = {
+                                      ...annotations,
+                                      [currentStep.id]: {
+                                        ...(annotations[currentStep.id] || {}),
+                                        editorPixelates: (currentAnn?.editorPixelates || []).filter((r) => r.id !== pixRegion.id),
+                                      },
+                                    };
+                                    pushHistory(next);
+                                  }}
+                                >
+                                  ×
+                                </button>
+                                {RESIZE_HANDLES.map((h) => (
+                                  <div
+                                    key={h.name}
+                                    data-handle={h.name}
+                                    className="absolute w-3 h-3 bg-white border-2 border-[#00BCD4] rounded-sm pointer-events-auto"
+                                    style={{ ...h.style, zIndex: 10 }}
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setMode("pixelate");
+                                      const coords = getCanvasCoords(e);
+                                      if (!coords) return;
+                                      setDragItem({
+                                        type: "pixelateArr",
+                                        id: pixRegion.id,
+                                        startX: coords.x,
+                                        startY: coords.y,
+                                        initialX: pixRegion.x,
+                                        initialY: pixRegion.y,
+                                        initialW: pixRegion.w,
+                                        initialH: pixRegion.h,
+                                      });
+                                      handleResizeRef.current = h.name;
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            ))}
+
+                            {/* Spotlight overlays (multiple regions) */}
+                            {(currentAnn?.editorSpotlights || []).length > 0 && (
+                              <>
+                                {/* Dark overlay covering everything */}
+                                <div
+                                  className="absolute pointer-events-none"
+                                  style={{
+                                    left: 0,
+                                    top: 0,
+                                    width: "100%",
+                                    height: "100%",
+                                    backgroundColor: `rgba(0,0,0,${Math.max(...(currentAnn?.editorSpotlights || []).map(s => s.intensity ?? currentAnn?.editorSpotlightIntensity ?? 0.6))})`,
+                                    mixBlendMode: "multiply",
+                                  }}
+                                />
+                                {/* Each spotlight region "cuts out" the dark overlay */}
+                                {(currentAnn?.editorSpotlights || []).map((spotRegion, idx) => (
+                                  <div
+                                    key={spotRegion.id}
+                                    className="absolute cursor-move select-none group"
+                                    style={{
+                                      left: `${spotRegion.x}%`,
+                                      top: `${spotRegion.y}%`,
+                                      width: `${spotRegion.w}%`,
+                                      height: `${spotRegion.h}%`,
+                                      border: "3px solid #FF6D00",
+                                      pointerEvents: overlayPointer("spotlight"),
+                                      borderRadius: "4px",
+                                      boxShadow: `0 0 0 9999px rgba(0,0,0,${spotRegion.intensity ?? currentAnn?.editorSpotlightIntensity ?? 0.6}), 0 0 0 1px rgba(255,255,255,0.9)`,
+                                    }}
+                                    onMouseDown={(e) => {
+                                      if ((e.target as HTMLElement).dataset.handle) return;
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      setMode("spotlight");
+                                      const coords = getCanvasCoords(e);
+                                      if (!coords) return;
+                                      setDragItem({
+                                        type: "spotlightArr",
+                                        id: spotRegion.id,
+                                        startX: coords.x,
+                                        startY: coords.y,
+                                        initialX: spotRegion.x,
+                                        initialY: spotRegion.y,
+                                        initialW: spotRegion.w,
+                                        initialH: spotRegion.h,
+                                      });
+                                    }}
+                                  >
+                                    <div className="absolute top-1 left-1 bg-[#FF6D00] text-white text-[10px] font-mono px-1 rounded font-bold">
+                                      Spotlight {idx + 1}
+                                    </div>
+                                    <button
+                                      className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        const next = {
+                                          ...annotations,
+                                          [currentStep.id]: {
+                                            ...(annotations[currentStep.id] || {}),
+                                            editorSpotlights: (currentAnn?.editorSpotlights || []).filter((r) => r.id !== spotRegion.id),
+                                          },
+                                        };
+                                        pushHistory(next);
+                                      }}
+                                    >
+                                      ×
+                                    </button>
+                                    {RESIZE_HANDLES.map((h) => (
+                                      <div
+                                        key={h.name}
+                                        data-handle={h.name}
+                                        className="absolute w-3 h-3 bg-white border-2 border-[#FF6D00] rounded-sm pointer-events-auto"
+                                        style={{ ...h.style, zIndex: 10 }}
+                                        onMouseDown={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          setMode("spotlight");
+                                          const coords = getCanvasCoords(e);
+                                          if (!coords) return;
+                                          setDragItem({
+                                            type: "spotlightArr",
+                                            id: spotRegion.id,
+                                            startX: coords.x,
+                                            startY: coords.y,
+                                            initialX: spotRegion.x,
+                                            initialY: spotRegion.y,
+                                            initialW: spotRegion.w,
+                                            initialH: spotRegion.h,
+                                          });
+                                          handleResizeRef.current = h.name;
+                                        }}
+                                      />
+                                    ))}
+                                  </div>
+                                ))}
+                              </>
+                            )}
+
+                            {/* Badge overlay */}
+                            {currentAnn?.editorBadgeNumber != null && currentAnn?.editorBadgeX != null && (
+                              <div
+                                className="absolute cursor-move select-none"
+                                style={{
+                                  left: `${currentAnn.editorBadgeX}%`,
+                                  top: `${currentAnn.editorBadgeY}%`,
+                                  transform: "translate(-50%, -50%)",
+                                  pointerEvents: overlayPointer("badge"),
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setMode("badge");
+                                  const coords = getCanvasCoords(e);
+                                  if (!coords) return;
+                                  setDragItem({
+                                    type: "badge",
+                                    startX: coords.x,
+                                    startY: coords.y,
+                                    initialX: currentAnn?.editorBadgeX ?? 50,
+                                    initialY: currentAnn?.editorBadgeY ?? 50,
+                                  });
+                                }}
+                              >
+                                <div
+                                  className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-lg"
+                                  style={{ backgroundColor: currentAnn.editorBadgeColor || "#FBBF24", color: "#000" }}
+                                >
+                                  {currentAnn.editorBadgeNumber}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Magnify overlay */}
+                            {currentAnn?.editorMagnifyX != null && currentAnn?.editorMagnifyW != null && (
+                              <div
+                                className="absolute cursor-move border-2 border-white shadow-lg overflow-hidden bg-black select-none"
+                                style={{
+                                  ...(currentAnn.editorMagnifyCorner?.includes("top") ? { top: "10px" } : { bottom: "10px" }),
+                                  ...(currentAnn.editorMagnifyCorner?.includes("left") ? { left: "10px" } : { right: "10px" }),
+                                  pointerEvents: overlayPointer("magnify"),
+                                  width: "120px",
+                                  height: "120px",
+                                  borderRadius: "8px",
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setMode("magnify");
+                                  const coords = getCanvasCoords(e);
+                                  if (!coords) return;
+                                  setDragItem({
+                                    type: "magnify",
+                                    startX: coords.x,
+                                    startY: coords.y,
+                                    initialX: currentAnn?.editorMagnifyX ?? 50,
+                                    initialY: currentAnn?.editorMagnifyY ?? 50,
+                                  });
+                                }}
+                              >
+                                <div
+                                  className="w-full h-full"
+                                  style={{
+                                    backgroundImage: `url(${currentStep.screenshotPath})`,
+                                    backgroundPosition: `${currentAnn.editorMagnifyX}% ${currentAnn.editorMagnifyY}%`,
+                                    backgroundSize: `${(currentAnn.editorMagnifyScale ?? 2) * 100}%`,
+                                    backgroundRepeat: "no-repeat",
+                                  }}
+                                />
+                                <div className="absolute top-0 left-0 bg-teal-500 text-white text-[8px] font-mono px-1 rounded-br">
+                                  {currentAnn.editorMagnifyScale ?? 2}x
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Color filter overlay */}
+                            {currentAnn?.editorColorFilter && currentAnn.editorColorFilter !== "none" && (
+                              <div
+                                className="absolute inset-0 pointer-events-none"
+                                style={{
+                                  filter:
+                                    currentAnn.editorColorFilter === "grayscale"
+                                      ? "grayscale(100%)"
+                                      : currentAnn.editorColorFilter === "sepia"
+                                        ? "sepia(100%)"
+                                        : currentAnn.editorColorFilter === "warm"
+                                          ? "sepia(50%) saturate(140%)"
+                                          : currentAnn.editorColorFilter === "cool"
+                                            ? "hue-rotate(180deg) saturate(80%)"
+                                            : currentAnn.editorColorFilter === "contrast"
+                                              ? "contrast(150%) saturate(120%)"
+                                              : "none",
+                                  mixBlendMode: currentAnn.editorColorFilter === "contrast" ? "normal" : "multiply",
+                                  opacity: 0.3,
+                                }}
+                              />
+                            )}
+
+                            {/* Text overlay */}
+                            {overlayPos && overlayPos.x != null && currentAnn?.editorOverlayText && (
+                              <div
+                                className="absolute cursor-move select-none"
+                                style={{
+                                  left: `${overlayPos.x}%`,
+                                  top: `${overlayPos.y}%`,
+                                  transform: "translate(-50%, -50%)",
+                                  pointerEvents: overlayPointer("overlay"),
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setMode("overlay");
+                                  const coords = getCanvasCoords(e);
+                                  if (!coords) return;
+                                  setDragItem({
+                                    type: "overlay",
+                                    startX: coords.x,
+                                    startY: coords.y,
+                                    initialX: currentAnn?.editorOverlayX ?? 50,
+                                    initialY: currentAnn?.editorOverlayY ?? 50,
+                                  });
+                                }}
+                              >
+                                <div
+                                  className="px-3 py-1.5 rounded shadow-lg font-body font-semibold whitespace-nowrap"
+                                  style={{
+                                    backgroundColor: "rgba(0,0,0,0.6)",
+                                    color: currentAnn.editorOverlayColor || "#FFFFFF",
+                                    fontSize:
+                                      currentAnn.editorOverlaySize === "small"
+                                        ? "12px"
+                                        : currentAnn.editorOverlaySize === "large"
+                                          ? "20px"
+                                          : "16px",
+                                  }}
+                                >
+                                  {currentAnn.editorOverlayText}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Zoom target point */}
+                            {currentAnn?.zoomTargetX != null && currentAnn?.zoomTargetY != null && (
+                              <div
+                                className="absolute w-4 h-4 -translate-x-1/2 -translate-y-1/2 cursor-move select-none"
+                                style={{
+                                  left: `${currentAnn.zoomTargetX}%`,
+                                  top: `${currentAnn.zoomTargetY}%`,
+                                  pointerEvents: overlayPointer("zoom"),
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setMode("zoom");
+                                  const coords = getCanvasCoords(e);
+                                  if (!coords) return;
+                                  setDragItem({
+                                    type: "zoomTarget",
+                                    startX: coords.x,
+                                    startY: coords.y,
+                                    initialX: currentAnn?.zoomTargetX ?? 50,
+                                    initialY: currentAnn?.zoomTargetY ?? 50,
+                                  });
+                                }}
+                              >
+                                <div className="w-full h-full rounded-full border-2 border-[#FF0099] bg-[#FF0099]/40 animate-pulse" style={{ boxShadow: "0 0 0 2px rgba(255,255,255,0.9), 0 2px 8px rgba(0,0,0,0.5)" }} />
+                              </div>
+                            )}
+
+                            {/* Multi-zoom points */}
+                            {currentAnn?.editorMultiZooms?.map((mz, idx) => (
+                              <div key={mz.id}
+                                className="absolute cursor-move select-none"
+                                style={{
+                                  left: `${mz.targetX}%`,
+                                  top: `${mz.targetY}%`,
+                                  transform: "translate(-50%, -50%)",
+                                  pointerEvents: overlayPointer("zoom"),
+                                }}
+                                onMouseDown={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  setMode("zoom");
+                                  const coords = getCanvasCoords(e);
+                                  if (!coords) return;
+                                  setDragItem({
+                                    type: "multizoom",
+                                    id: mz.id,
+                                    startX: coords.x,
+                                    startY: coords.y,
+                                    initialX: mz.targetX,
+                                    initialY: mz.targetY,
+                                  });
+                                }}
+                              >
+                                <div className="w-6 h-6 rounded-full bg-violet-500 text-white flex items-center justify-center text-xs font-bold shadow-lg border-2 border-white">
+                                  {idx + 1}
+                                </div>
+                                {mz.rectW != null && mz.rectH != null && (
+                                  <div
+                                    className="absolute border-2 border-violet-400 pointer-events-none"
+                                    style={{
+                                      left: `${-((mz.rectW || 0) / 2)}%`,
+                                      top: `${-((mz.rectH || 0) / 2)}%`,
+                                      width: `${mz.rectW}%`,
+                                      height: `${mz.rectH}%`,
+                                    }}
+                                  />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Mode indicator */}
+                        <div className="absolute bottom-2 left-2 bg-black/60 text-white text-[10px] font-mono px-2 py-1 rounded z-10">
+                          {mode === "highlight" && "Drag to highlight area"}
+                          {mode === "zoom" && "Click to add zoom point"}
+                          {mode === "overlay" && "Click to place text"}
+                          {mode === "crop" && "Drag to crop"}
+                          {mode === "blur" && "Drag to blur area"}
+                          {mode === "redact" && "Drag to redact area"}
+                          {mode === "watermark" && "Click to place watermark"}
+                          {mode === "pixelate" && "Drag to pixelate area"}
+                          {mode === "spotlight" && "Drag spotlight area"}
+                          {mode === "badge" && "Click to place badge"}
+                          {mode === "magnify" && "Click to place magnifier"}
+                          {mode === "filter" && "Select filter from panel"}
+                          {mode === "zoom" && "Click to add zoom point. Use panel to edit."}
+                          {mode === "caption" && "Narration Subtitles"}
+                        </div>
                       </div>
                     </div>
-                </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+
+          {/* Timeline sits under canvas, not full width */}
+          <Timeline
+            clips={timelineClips}
+            currentIndex={currentStepIndex}
+            onClipSelect={setCurrentStepIndex}
+            onClipReorder={handleTimelineReorder}
+            onClipDelete={handleTimelineDelete}
+            onClipTrim={handleTimelineTrim}
+            onClipSplit={handleTimelineSplit}
+            onAddClip={handleTimelineAdd}
+            onDropFiles={handleUploadFiles}
+            onDropPexels={handleImportPexelsMedia}
+            uploadingCount={uploadingFilesCount}
+            isPlaying={isTimelinePlaying}
+            onPlayToggle={handleTimelinePlayToggle}
+            transitions={props.stepTransitions}
+            onTransitionClick={(clipId) => {
+              setActiveTransitionClipId(clipId);
+              setActiveRightTab("transitions");
+            }}
+          />
         </div>
+        {/* END LEFT COLUMN */}
 
-        {/* Right drawer and vertical tab strip */}
-        <div className="flex-shrink-0 flex items-stretch">
-          {/* Drawer container (slides open next to vertical tabs) */}
-          <AnimatePresence initial={false}>
-            {activeRightTab && (
-              <motion.div
-                initial={{ width: 0, opacity: 0 }}
-                animate={{ width: 280, opacity: 1 }}
-                exit={{ width: 0, opacity: 0 }}
-                transition={{ duration: 0.18, ease: "easeInOut" }}
-                className="h-full bg-[var(--sketch-card-bg)] border-l border-[var(--sketch-border-color)]/20 overflow-y-auto scrollbar-thin p-4 flex flex-col min-w-[280px]"
-              >
-                <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                  <h3 className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-wider font-semibold">
-                    {activeRightTab === "properties" && "Properties"}
-                    {activeRightTab === "script" && "Script & Scene"}
-                    {activeRightTab === "voiceover" && "AI Voiceover"}
-                    {activeRightTab === "elevenlabs" && "ElevenLabs Premium"}
-                    {activeRightTab === "captions" && "Captions Settings"}
-                    {activeRightTab === "transitions" && "Transitions"}
-                    {activeRightTab === "aiguide" && "AI Guide"}
-                    {activeRightTab === "safety" && "Safety & Copyright"}
-                    {activeRightTab === "help" && "Help Guide"}
-                  </h3>
-                  <button
-                    onClick={() => setActiveRightTab(null)}
-                    className="text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg-muted)] text-xs font-bold cursor-pointer"
-                  >
-                    Close ×
-                  </button>
-                </div>
-
-                <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-                  {activeRightTab === "properties" && renderPropertiesContent()}
-                  {activeRightTab === "script" && renderScriptContent()}
-                  {activeRightTab === "voiceover" && renderVoiceoverContent()}
-                  {activeRightTab === "elevenlabs" && renderElevenLabsContent()}
-                  {activeRightTab === "captions" && renderCaptionsContent()}
-                  {activeRightTab === "transitions" && renderTransitionsContent()}
-                  {activeRightTab === "aiguide" && renderAIGuideContent()}
-                  {activeRightTab === "safety" && renderSafetyContent()}
-                  {activeRightTab === "help" && renderHelpContent()}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Far-right vertical tab strip */}
-          <div className="w-20 bg-[var(--sketch-card-bg)] border-l border-[var(--sketch-border-color)]/20 py-2 flex flex-col items-center gap-1.5 flex-shrink-0">
-            <RightTabButton active={activeRightTab === "properties"} onClick={() => toggleRightTab("properties")} icon={<Settings2 className="w-5 h-5" />} label="Properties" />
-            <RightTabButton active={activeRightTab === "script"} onClick={() => toggleRightTab("script")} icon={<Type className="w-5 h-5 text-[var(--sketch-accent)]" />} label="Script" />
-            <RightTabButton active={activeRightTab === "voiceover"} onClick={() => toggleRightTab("voiceover")} icon={<Volume2 className="w-5 h-5 text-[var(--sketch-accent)]" />} label="Voiceover" />
-            <RightTabButton active={activeRightTab === "elevenlabs"} onClick={() => toggleRightTab("elevenlabs")} icon={<Crown className="w-5 h-5 text-[var(--sketch-accent)]" />} label="ElevenLabs" />
-            <RightTabButton active={activeRightTab === "captions"} onClick={() => toggleRightTab("captions")} icon={<Type className="w-5 h-5 text-[var(--sketch-accent)]" />} label="Captions" />
-            <RightTabButton active={activeRightTab === "transitions"} onClick={() => toggleRightTab("transitions")} icon={<Film className="w-5 h-5 text-[var(--sketch-accent)]" />} label="Transitions" />
-            <RightTabButton active={activeRightTab === "aiguide"} onClick={() => toggleRightTab("aiguide")} icon={<Bot className="w-5 h-5 text-[var(--sketch-accent)]" />} label="AI Guide" />
-            <RightTabButton active={activeRightTab === "safety"} onClick={() => toggleRightTab("safety")} icon={<Shield className="w-5 h-5 text-[var(--sketch-accent)]" />} label="Safety" />
-            <div className="flex-1" />
-            <RightTabButton active={activeRightTab === "help"} onClick={() => toggleRightTab("help")} icon={<HelpCircle className="w-5 h-5 text-[var(--sketch-fg-subtle)]" />} label="Help" />
+        {/* Resize handle between left column and sidebar */}
+        {activeRightTab && (
+          <div
+            onMouseDown={handleSidebarResizeStart}
+            className="w-1.5 bg-[var(--sketch-border-color)] hover:bg-[var(--sketch-accent)]/40 transition-colors cursor-col-resize flex-shrink-0 relative group"
+            title="Drag to resize sidebar"
+          >
+            <div className="absolute inset-y-0 -left-1 -right-1" />
           </div>
+        )}
+
+        {/* RIGHT SIDEBAR CONTENT — full height, conditionally shown */}
+        {activeRightTab && (
+          <div
+            className="h-full bg-[var(--sketch-panel-bg)] border-l border-[var(--sketch-border-color)]/40 flex flex-col flex-shrink-0"
+            style={{ width: sidebarWidth }}
+          >
+            <div className="h-full overflow-y-auto scrollbar-thin p-4 flex flex-col w-full">
+              <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                <h3 className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-wider font-semibold">
+                  {activeRightTab === "properties" && "Properties"}
+                  {activeRightTab === "script" && "Script & Scene"}
+                  {activeRightTab === "voiceover" && "AI Voiceover"}
+                  {activeRightTab === "elevenlabs" && "ElevenLabs Premium"}
+                  {activeRightTab === "captions" && "Captions Settings"}
+                  {activeRightTab === "transitions" && "Transitions"}
+                  {activeRightTab === "aiguide" && "AI Guide"}
+                  {activeRightTab === "safety" && "Safety & Copyright"}
+                  {activeRightTab === "help" && "Help Guide"}
+                  {activeRightTab === "media" && "Pexels Media"}
+                </h3>
+                <button
+                  onClick={() => setActiveRightTab(null)}
+                  className="text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg-muted)] text-xs font-bold cursor-pointer"
+                >
+                  Close ×
+                </button>
+              </div>
+
+              <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+                {activeRightTab === "properties" && renderPropertiesContent()}
+                {activeRightTab === "script" && renderScriptContent()}
+                {activeRightTab === "voiceover" && renderVoiceoverContent()}
+                {activeRightTab === "elevenlabs" && renderElevenLabsContent()}
+                {activeRightTab === "captions" && renderCaptionsContent()}
+                {activeRightTab === "transitions" && renderTransitionsContent()}
+                {activeRightTab === "aiguide" && renderAIGuideContent()}
+                {activeRightTab === "safety" && renderSafetyContent()}
+                {activeRightTab === "help" && renderHelpContent()}
+                {activeRightTab === "media" && renderMediaContent()}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Far-right vertical tab strip — full height, scrollable when overflow */}
+        <div className="w-16 bg-[var(--sketch-panel-bg)] border-l border-[var(--sketch-border-color)]/40 flex flex-col items-center flex-shrink-0 h-full overflow-y-auto scrollbar-thin py-2 gap-1">
+          <RightTabButton active={activeRightTab === "properties"} onClick={() => toggleRightTab("properties")} icon={<Settings2 className="w-4.5 h-4.5" />} label="Properties" />
+          <RightTabButton active={activeRightTab === "script"} onClick={() => toggleRightTab("script")} icon={<Type className="w-4.5 h-4.5" />} label="Script" />
+          <RightTabButton active={activeRightTab === "voiceover"} onClick={() => toggleRightTab("voiceover")} icon={<Volume2 className="w-4.5 h-4.5" />} label="Voiceover" />
+          <RightTabButton active={activeRightTab === "elevenlabs"} onClick={() => toggleRightTab("elevenlabs")} icon={<Crown className="w-4.5 h-4.5" />} label="ElevenLabs" />
+          <RightTabButton active={activeRightTab === "captions"} onClick={() => toggleRightTab("captions")} icon={<Type className="w-4.5 h-4.5" />} label="Captions" />
+          <RightTabButton active={activeRightTab === "transitions"} onClick={() => toggleRightTab("transitions")} icon={<Film className="w-4.5 h-4.5" />} label="Transitions" />
+          <RightTabButton active={activeRightTab === "aiguide"} onClick={() => toggleRightTab("aiguide")} icon={<Bot className="w-4.5 h-4.5" />} label="AI Guide" />
+          <RightTabButton active={activeRightTab === "media"} onClick={() => toggleRightTab("media")} icon={<Clapperboard className="w-4.5 h-4.5" />} label="Media" />
+          <RightTabButton active={activeRightTab === "safety"} onClick={() => toggleRightTab("safety")} icon={<Shield className="w-4.5 h-4.5" />} label="Safety" />
+          <div className="flex-1" />
+          <RightTabButton active={activeRightTab === "help"} onClick={() => toggleRightTab("help")} icon={<HelpCircle className="w-4.5 h-4.5" />} label="Help" />
         </div>
       </div>
 
-      {/* 4. Bottom Horizontal Timeline (footer) — full width below the split */}
-      <footer
-        onDragOver={(e) => {
-          if (e.dataTransfer?.types?.includes("Files")) {
-            e.preventDefault();
-            setIsTimelineDragOver(true);
-          }
-        }}
-        onDragLeave={() => setIsTimelineDragOver(false)}
-        onDrop={(e) => {
-          if (e.dataTransfer?.files?.length) {
-            e.preventDefault();
-            setIsTimelineDragOver(false);
-            handleUploadFiles(e.dataTransfer.files);
-          }
-        }}
-        className={`w-full bg-[var(--sketch-card-bg)] border-t border-[var(--sketch-border-color)]/20 p-3 flex flex-col gap-2 flex-shrink-0 select-none transition-all ${
-          isTimelineDragOver ? "ring-2 ring-[#FBBF24] bg-[#FBBF24]/5" : ""
-        }`}
-      >
-        {/* Hidden File Selector Input */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            if (e.target.files) handleUploadFiles(e.target.files);
-          }}
-        />
-
-        {/* Controls row */}
-        <div className="flex items-center justify-between text-xs text-[var(--sketch-fg-muted)] px-1">
-          {/* Left: Show timing */}
-          <div className="flex items-center gap-1">
-            <button className="flex items-center gap-1 hover:bg-[var(--sketch-fg-subtle)]/10 px-2.5 py-1 rounded transition-colors text-[11px] font-semibold cursor-pointer">
-              <span>Show timing</span>
-              <ChevronDown className="w-3 h-3" />
-            </button>
-          </div>
-
-          {/* Center: Play and timing */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={props.onContinue}
-              className="w-8 h-8 rounded-full bg-[var(--sketch-btn-bg)] hover:opacity-90 text-white flex items-center justify-center transition-colors cursor-pointer shadow-sm"
-              title="Play"
-            >
-              <ChevronRightIcon className="w-5 h-5 ml-0.5" />
-            </button>
-            <span className="font-mono text-[11px] font-semibold tracking-wide text-[var(--sketch-fg)] bg-[var(--sketch-fg-subtle)]/10 px-2 py-0.5 rounded">
-              00:00.0 / {(steps.length * (currentAnn?.editorDuration ?? 5.0)).toFixed(1).padStart(4, "0")}
-            </span>
-          </div>
-
-          {/* Right: Zoom slider */}
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] font-mono">Zoom</span>
-            <input
-              type="range"
-              min={50}
-              max={300}
-              value={Math.round(canvasScale * 100)}
-              onChange={(e) => setCanvasScale(Number(e.target.value) / 100)}
-              className="w-20 h-1 bg-[var(--sketch-fg-subtle)]/10 appearance-none rounded cursor-pointer accent-[var(--sketch-accent)]"
-            />
-            <span className="text-[10px] font-mono font-bold text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/10 px-1.5 py-0.5 rounded">{Math.round(canvasScale * 100)}% ▾</span>
-          </div>
-        </div>
-
-        {/* Scene strip */}
-        <div className="relative flex items-center px-1 min-h-[90px] justify-center">
-          {steps.length === 0 ? (
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full py-4 border-2 border-dashed border-[var(--sketch-border-color)]/20 rounded-lg flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:border-[var(--sketch-border-color)]/40 transition-colors"
-            >
-              <Upload className="w-6 h-6 text-[var(--sketch-fg-subtle)] animate-bounce" />
-              <p className="text-xs font-semibold text-[var(--sketch-fg-muted)]">
-                Drag & drop screenshots here, or click to choose files
-              </p>
-              <p className="text-[9px] text-[var(--sketch-fg-subtle)]">
-                Files are automatically numbered as Scene 1, Scene 2, etc.
-              </p>
-            </div>
-          ) : (
-            <div className="flex-1 overflow-x-auto scrollbar-thin pb-1 flex gap-3 items-center min-w-0 pr-12">
-              {steps.map((step, idx: number) => {
-                const stepId = step.id;
-                const isActive = idx === currentStepIndex;
-                return (
-                  <div
-                    key={stepId}
-                    draggable={true}
-                    onDragStart={(e) => handleSceneDragStart(e, idx)}
-                    onDragOver={(e) => e.preventDefault()}
-                    onDrop={(e) => handleSceneDrop(e, idx)}
-                    className="flex-shrink-0 flex items-center gap-2 py-1 group/scene relative cursor-grab active:cursor-grabbing"
-                  >
-                    {/* Step Scene Card */}
-                    <div className="relative flex flex-col">
-                      {/* Active Playhead caret */}
-                      {isActive && (
-                        <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-[#FBBF24] rotate-45 border-t border-l border-[var(--sketch-card-bg)] shadow-sm z-20" />
-                      )}
-                      <button
-                        onClick={() => setCurrentStepIndex(idx)}
-                        className={`relative w-28 aspect-video border-2 rounded-lg transition-all overflow-hidden ${
-                          isActive
-                            ? "border-[#FBBF24] shadow-[0_0_12px_rgba(251,191,36,0.35)]"
-                            : "border-[var(--sketch-border-color)]/20 hover:border-[var(--sketch-border-color)]/40"
-                        }`}
-                      >
-                        <span className="absolute top-1 left-1 font-mono text-[9px] text-white bg-black/60 px-1.5 py-0.5 rounded-md z-10 font-bold leading-none">
-                          {idx + 1}
-                        </span>
-                        {step.screenshotPath ? (
-                          <img
-                            src={step.screenshotPath}
-                            alt={`Step ${idx + 1}`}
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-full bg-[var(--sketch-fg-subtle)]/10 flex items-center justify-center">
-                            <Film className="w-4 h-4 text-[var(--sketch-fg-subtle)]" />
-                          </div>
-                        )}
-                      </button>
-
-                      {/* Delete Scene Hover Button */}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeleteSceneIdx(idx);
-                        }}
-                        className="absolute top-1 right-1 w-5 h-5 bg-red-500 hover:bg-red-600 text-white rounded flex items-center justify-center z-30 transition-all opacity-0 group-hover/scene:opacity-100 shadow-sm cursor-pointer border border-white/20"
-                        title="Delete Scene"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-
-                    {/* Transition diamond between scenes */}
-                    {idx < steps.length - 1 && (
-                      <div className="relative flex items-center justify-center w-8 flex-shrink-0">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setOpenTransitionDropdown(
-                              openTransitionDropdown === stepId ? null : stepId
-                            );
-                          }}
-                          className={`w-5 h-5 flex items-center justify-center rotate-45 border transition-all rounded-sm shrink-0 cursor-pointer shadow-sm ${
-                            openTransitionDropdown === stepId
-                              ? "border-[#FBBF24] bg-[#FBBF24]/10"
-                              : "border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40 hover:bg-[var(--sketch-fg-subtle)]/10"
-                          }`}
-                          title="Transition"
-                        >
-                          <Film className="w-2.5 h-2.5 -rotate-45 text-[var(--sketch-fg-muted)]" />
-                        </button>
-                        {openTransitionDropdown === stepId && (
-                          <div className="absolute bottom-7 left-1/2 -translate-x-1/2 z-50 bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/20 rounded-lg shadow-lg p-1 min-w-[125px]">
-                            {transitionTypes.map((t) => {
-                              const nextStep = steps[idx + 1];
-                              const currentVal = props.stepTransitions?.[nextStep.id] || props.globalTransition || "fade";
-                              return (
-                                <button
-                                  key={t.value}
-                                  onClick={() => {
-                                    if (nextStep) {
-                                      props.onStepTransitionChange?.(nextStep.id, t.value);
-                                    }
-                                    setOpenTransitionDropdown(null);
-                                  }}
-                                  className={`block w-full text-left px-2.5 py-1.5 text-[10px] font-body rounded-md hover:bg-[var(--sketch-fg-subtle)]/10 ${
-                                    currentVal === t.value ? "text-[var(--sketch-accent)] font-semibold bg-[var(--sketch-accent)]/10" : "text-[var(--sketch-fg-muted)]"
-                                  }`}
-                                >
-                                  {t.label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-
-              {/* Inline Plus Button for adding scenes */}
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="w-28 aspect-video rounded-lg bg-[var(--sketch-fg-subtle)]/5 hover:bg-[var(--sketch-fg-subtle)]/10 border-2 border-dashed border-[var(--sketch-border-color)]/20 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all flex-shrink-0"
-                title="Add Scene"
-              >
-                <span className="text-xl font-bold text-[var(--sketch-fg-muted)] leading-none">+</span>
-                <span className="text-[9px] font-semibold text-[var(--sketch-fg-subtle)]">Add Scene</span>
-              </button>
-
-              {/* Uploading progress states */}
-              {uploadingFilesCount > 0 && (
-                <div className="flex-shrink-0 flex items-center gap-2 px-3 py-1 bg-[var(--sketch-fg-subtle)]/5 rounded-lg border border-[var(--sketch-border-color)]/10 h-10">
-                  <Loader2 className="w-4 h-4 animate-spin text-[var(--sketch-accent)]" />
-                  <span className="text-[10px] font-semibold text-[var(--sketch-fg-muted)]">
-                    Uploading {uploadingFilesCount} files...
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </footer>
+      {/* Hidden file input for timeline uploads */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept="image/*,video/*"
+        className="hidden"
+        onChange={(e) => { if (e.target.files) handleUploadFiles(e.target.files); }}
+      />
 
       {/* Delete Scene Confirmation Dialog */}
       <AlertDialog open={deleteSceneIdx !== null} onOpenChange={(open) => { if (!open) setDeleteSceneIdx(null); }}>
@@ -5434,7 +5673,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* 4. Bottom Horizontal Timeline */}
       {/* Mega Render Progress Dialog Popup */}
       <Dialog open={showRenderModal} onOpenChange={(open) => {
         if (!open) {
@@ -5452,12 +5690,12 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
                 Rendering Video
               </span>
-              {!(renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete") && 
-               !(renderStatus?.projectStatus === "error" || renderStatus?.job?.status === "error" || startRenderError) && (
-                <span className="font-hand text-xl text-[var(--sketch-fg-muted)] absolute -top-7 left-36 rotate-[3deg] animate-float hidden sm:block">
-                  Generating magic... ✨
-                </span>
-              )}
+              {!(renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete") &&
+                !(renderStatus?.projectStatus === "error" || renderStatus?.job?.status === "error" || startRenderError) && (
+                  <span className="font-hand text-xl text-[var(--sketch-fg-muted)] absolute -top-7 left-36 rotate-[3deg] animate-float hidden sm:block">
+                    Generating magic... ✨
+                  </span>
+                )}
             </div>
             <DialogTitle className="text-2xl font-bold mt-4 text-[var(--sketch-fg)]">
               {renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete"
@@ -5498,19 +5736,17 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               {/* Progress bar */}
               <div className="w-full bg-[var(--sketch-fg-subtle)]/5 border border-[var(--sketch-border-color)]/10 rounded-full h-3 overflow-hidden p-0.5 mb-6">
                 <div
-                  className={`h-full transition-all duration-500 rounded-full ${
-                    renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete"
+                  className={`h-full transition-all duration-500 rounded-full ${renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete"
                       ? "bg-emerald-500"
                       : renderStatus?.projectStatus === "error" || renderStatus?.job?.status === "error"
                         ? "bg-red-500"
                         : "bg-[#FBBF24]"
-                  }`}
+                    }`}
                   style={{
-                    width: `${
-                      renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete"
+                    width: `${renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete"
                         ? 100
                         : Math.min((renderStatus?.job ? ((renderStatus.job.currentStep || 0) / (renderStatus.job.totalSteps || 1)) * 100 : 0) + 5, 95)
-                    }%`
+                      }%`
                   }}
                 />
               </div>
@@ -5564,22 +5800,20 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                     return (
                       <div
                         key={stage.key}
-                        className={`p-3 border rounded-xl flex items-center gap-4 transition-all duration-200 ${
-                          isActive
+                        className={`p-3 border rounded-xl flex items-center gap-4 transition-all duration-200 ${isActive
                             ? "border-[#FBBF24] bg-[#FBBF24]/5"
                             : isDone
                               ? "border-emerald-500/40 bg-emerald-500/5"
                               : "border-[var(--sketch-border-color)]/10 bg-[var(--sketch-card-bg)]/50 opacity-40"
-                        }`}
+                          }`}
                       >
                         <div
-                          className={`w-8 h-8 flex items-center justify-center border rounded-lg flex-shrink-0 ${
-                            isActive
+                          className={`w-8 h-8 flex items-center justify-center border rounded-lg flex-shrink-0 ${isActive
                               ? "border-[#FBBF24] bg-[#FBBF24]/10"
                               : isDone
                                 ? "border-emerald-500 bg-emerald-500/10 text-emerald-600"
                                 : "border-[var(--sketch-border-color)]/25 bg-[var(--sketch-card-bg)]"
-                          }`}
+                            }`}
                         >
                           {isDone ? (
                             <CheckCircle className="w-4 h-4 text-emerald-600" />
@@ -5591,13 +5825,12 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                         </div>
                         <div className="flex-1 text-left">
                           <span
-                            className={`text-xs font-bold ${
-                              isActive
+                            className={`text-xs font-bold ${isActive
                                 ? "text-[var(--sketch-fg)]"
                                 : isDone
                                   ? "text-emerald-600"
                                   : "text-[var(--sketch-fg-subtle)]"
-                            }`}
+                              }`}
                           >
                             {stage.label}
                           </span>
@@ -5641,9 +5874,8 @@ function ToolbarToolButton({
     <button
       onClick={onClick}
       title={label}
-      className={`px-2 py-1 hover:bg-[var(--sketch-fg-subtle)]/20 rounded text-[var(--sketch-fg)] transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap text-[11px] font-medium ${
-        active ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-muted)]"
-      }`}
+      className={`px-2 py-1 hover:bg-[var(--sketch-fg-subtle)]/20 rounded text-[var(--sketch-fg)] transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap text-[11px] font-medium ${active ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-muted)]"
+        }`}
     >
       {icon}
       <span className="hidden lg:inline">{label}</span>
@@ -5665,11 +5897,10 @@ function RightTabButton({
   return (
     <button
       onClick={onClick}
-      className={`w-full py-2.5 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all border-l-2 ${
-        active
+      className={`w-full py-2.5 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all border-l-2 ${active
           ? "bg-[#FBBF24]/10 text-[var(--sketch-fg)] border-[#FBBF24]"
           : "bg-transparent text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] hover:bg-[var(--sketch-fg-subtle)]/5 border-transparent"
-      }`}
+        }`}
     >
       <div className="flex items-center justify-center">
         {icon}

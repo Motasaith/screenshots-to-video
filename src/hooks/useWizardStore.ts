@@ -6,7 +6,7 @@ export type WizardStep =
   | "export";
 
 export type AspectRatio = "16:9" | "9:16" | "1:1" | "4:5";
-export type TransitionType = "fade" | "slide-left" | "slide-right" | "slide-up" | "flip" | "dissolve";
+export type TransitionType = "none" | "fade" | "slide-left" | "slide-right" | "slide-up" | "flip" | "dissolve";
 
 interface WizardStepData {
   setup: {

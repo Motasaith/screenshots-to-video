@@ -6,6 +6,7 @@ import { eq, and } from "drizzle-orm";
 import {
   isLLMConfigured,
   generateTutorialScript,
+  generateHybridScripts,
   validateProjectSetup,
   getGuideMessage,
   getChatMessageResponse,
@@ -185,15 +186,37 @@ export const aiRouter = createRouter({
 
       if (isLLMConfigured()) {
         try {
-          scripts = await generateTutorialScript(
-            project.description || project.title,
-            project.platform,
-            projectSteps.map((s) => ({
-              order: s.order,
-              description: s.description,
-              screenshotPath: s.screenshotPath || undefined,
-            }))
+          // Use hybrid generation: vision model for steps with screenshots,
+          // text model for steps without. This supports mixed projects
+          // (screenshots + video clips + text-only steps).
+          const hasScreenshots = projectSteps.some(
+            (s) => s.screenshotPath && !s.screenshotPath.startsWith("blob:")
           );
+
+          if (hasScreenshots) {
+            console.log("[generateScript] Using hybrid vision+text generation");
+            scripts = await generateHybridScripts(
+              project.title,
+              project.description || null,
+              project.platform,
+              projectSteps.map((s) => ({
+                order: s.order,
+                description: s.description,
+                screenshotPath: s.screenshotPath || undefined,
+              }))
+            );
+          } else {
+            console.log("[generateScript] No screenshots, using text-only generation");
+            scripts = await generateTutorialScript(
+              project.description || project.title,
+              project.platform,
+              projectSteps.map((s) => ({
+                order: s.order,
+                description: s.description,
+                screenshotPath: s.screenshotPath || undefined,
+              }))
+            );
+          }
         } catch (err) {
           console.warn("LLM script generation failed, using fallback:", err);
           const fallback =
@@ -276,23 +299,36 @@ export const aiRouter = createRouter({
 
       if (isLLMConfigured()) {
         try {
-          // Regenerate ALL scripts, then pick just this one so the LLM keeps
-          // them coherent and on-topic. This way the new script is grounded in
-          // the actual step description and screenshot.
-          const allScripts = await generateTutorialScript(
-            project.description || project.title,
-            project.platform,
-            [
-              {
-                order: step.order,
-                description: step.description,
-                screenshotPath: step.screenshotPath || undefined,
-              },
-            ]
-          );
-          newScript =
-            allScripts[0] ||
-            `Proceed with step ${step.order} as shown on screen.`;
+          const hasScreenshot = step.screenshotPath && !step.screenshotPath.startsWith("blob:");
+
+          if (hasScreenshot) {
+            // Use vision model to look at the screenshot and write the script
+            const { generateVisionScript } = await import("./lib/llm");
+            newScript = await generateVisionScript(
+              step.screenshotPath!,
+              step.description || null,
+              project.description || project.title,
+              project.platform,
+              step.order,
+              1 // Single step regeneration
+            );
+          } else {
+            // Text-only: regenerate using the text model
+            const allScripts = await generateTutorialScript(
+              project.description || project.title,
+              project.platform,
+              [
+                {
+                  order: step.order,
+                  description: step.description,
+                  screenshotPath: step.screenshotPath || undefined,
+                },
+              ]
+            );
+            newScript =
+              allScripts[0] ||
+              `Proceed with step ${step.order} as shown on screen.`;
+          }
         } catch (err) {
           console.warn("LLM single-step regeneration failed:", err);
           newScript = `${step.description}.`;
