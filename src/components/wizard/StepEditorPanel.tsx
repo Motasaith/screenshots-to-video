@@ -747,7 +747,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       setTempDesc(currentStep.description || "");
       setTempScript(currentStep.userEditedScript || currentStep.aiScript || "");
     }
-  }, [currentStepIndex, currentStep?.id]);
+  }, [
+    currentStepIndex, 
+    currentStep?.id, 
+    currentStep?.description, 
+    currentStep?.aiScript, 
+    currentStep?.userEditedScript
+  ]);
 
   const handleSaveStepText = async () => {
     if (!currentStep) return;
