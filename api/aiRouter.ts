@@ -554,10 +554,10 @@ export const aiRouter = createRouter({
 
   previewVoice: authedQuery
     .use(rateLimitByUser(60_000, 5))
-    .input(z.object({ voice: z.string(), speed: z.number().default(1.0) }))
+    .input(z.object({ voice: z.string(), speed: z.number().default(1.0), text: z.string().optional() }))
     .mutation(async ({ input }) => {
       try {
-        const text = "Hi, I'm your AI guide. This is how your video will sound.";
+        const text = input.text || "Hi, I'm your AI guide. This is how your video will sound.";
         const { filePath } = await generateTTSAudio(text, {
           voice: input.voice,
           rate: speedToRate(input.speed),

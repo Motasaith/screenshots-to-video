@@ -267,7 +267,13 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
       // ── Multi-zoom: render multiple segments from one screenshot ──
       let stepSegments: string[] = [];
       const multiZooms = (step as any).editorMultiZooms;
-      if (multiZooms && Array.isArray(multiZooms) && multiZooms.length > 0) {
+      // Only use multi-zoom path if editorZoomScale is explicitly > 1.0
+      // AND multi-zoom entries exist with zoomScale > 1.0.
+      // This prevents old DB data from triggering unwanted zoom.
+      const hasValidZoom = effectiveZoomScale && effectiveZoomScale > 1.0;
+      const hasValidMultiZooms = multiZooms && Array.isArray(multiZooms) && multiZooms.length > 0
+        && multiZooms.some((mz: any) => (mz.zoomScale ?? 1) > 1.0);
+      if (hasValidZoom && hasValidMultiZooms) {
         const { renderMultiZoomSegments } = await import("./ffmpeg");
         stepSegments = await renderMultiZoomSegments({
           screenshotPath: screenshotLocalPath,

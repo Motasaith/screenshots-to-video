@@ -330,48 +330,94 @@ export async function generateHybridScripts(
   steps: Array<{ order: number; description: string; screenshotPath?: string | null }>
 ): Promise<string[]> {
   const totalSteps = steps.length;
-  const scripts: string[] = [];
+  const contentParts: any[] = [];
+  
+  const promptText = `You are a friendly YouTuber recording a screen tutorial voiceover. You must write the narration script for an entire tutorial video consisting of ${totalSteps} steps.
+  
+Video topic: ${projectTitle}
+Target platform: ${platform}
+${projectDescription ? `Project purpose: ${projectDescription}` : ""}
+
+How a real tutorial narrator talks:
+- Conversational and warm, like explaining to a friend. Use contractions (we're, you'll, it's, don't).
+- Step 1 should greet the viewer briefly and say what they'll learn (one short sentence).
+- The LAST step should wrap up naturally (e.g. 'And that's all there is to it!').
+- Refer to what's on screen: "this button right here", "up in the top corner", "see that menu?".
+- 1-3 sentences per step. Be specific about the action. No markdown, no emoji, no stage directions.
+- Use punctuation to control speech rhythm: commas for pauses, "..." for thinking, "—" for a beat.
+- DO NOT use the exact same opening words for consecutive steps. Make the transitions flow naturally.
+
+I am going to provide you with the descriptions and screenshots (if available) for all ${totalSteps} steps in order. 
+Analyze them ALL together to understand the full context of the video. 
+Then, generate the script for EACH step.
+
+Return ONLY a valid JSON object in this format:
+{
+  "scripts": [
+    "Narration for step 1",
+    "Narration for step 2"
+  ]
+}
+Ensure the "scripts" array has exactly ${totalSteps} items.`;
+
+  contentParts.push({ type: "text", text: promptText });
 
   for (const step of steps) {
     const hasScreenshot = step.screenshotPath && !step.screenshotPath.startsWith("blob:");
+    
+    contentParts.push({ 
+      type: "text", 
+      text: `\n\n--- STEP ${step.order} ---\nDescription: ${step.description || "No description provided."}` 
+    });
 
     if (hasScreenshot) {
-      try {
-        console.log(`[HybridScript] Step ${step.order}: using vision model for screenshot`);
-        const script = await generateVisionScript(
-          step.screenshotPath!,
-          step.description || null,
-          projectDescription || projectTitle,
-          platform,
-          step.order,
-          totalSteps
-        );
-        scripts.push(script);
-      } catch (err) {
-        console.warn(`[HybridScript] Step ${step.order}: vision failed, falling back to text:`, err);
-        const script = await generateSingleStepScript(
-          step.description,
-          projectDescription || projectTitle,
-          platform,
-          step.order,
-          totalSteps
-        );
-        scripts.push(script);
+      const imageData = await loadImageAsDataUrl(step.screenshotPath!);
+      if (imageData) {
+        contentParts.push({ type: "text", text: `Screenshot for Step ${step.order}:` });
+        contentParts.push({ type: "image_url", image_url: { url: imageData.dataUrl } });
+      } else {
+        contentParts.push({ type: "text", text: `(Screenshot unavailable for Step ${step.order})` });
       }
-    } else {
-      console.log(`[HybridScript] Step ${step.order}: no screenshot, using text model`);
-      const script = await generateSingleStepScript(
-        step.description,
-        projectDescription || projectTitle,
-        platform,
-        step.order,
-        totalSteps
-      );
-      scripts.push(script);
     }
   }
 
-  return scripts;
+  console.log(`[HybridScript] Requesting holistic generation for ${totalSteps} steps...`);
+  
+  try {
+    const response = await chatCompletion(
+      [{ role: "user", content: contentParts }],
+      {
+        model: env.visionLlmModel,
+        temperature: 0.8,
+        maxTokens: 2000,
+        jsonMode: true
+      }
+    );
+
+    let cleanedResponse = response.trim();
+    cleanedResponse = cleanedResponse.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+    const data = JSON.parse(cleanedResponse);
+    if (data.scripts && Array.isArray(data.scripts) && data.scripts.length > 0) {
+      console.log(`[HybridScript] Successfully generated ${data.scripts.length} scripts.`);
+      // Ensure we return exactly totalSteps
+      const scripts = [];
+      for (let i = 0; i < totalSteps; i++) {
+        scripts.push(data.scripts[i] || `Proceed with step ${i + 1} as shown on screen.`);
+      }
+      return scripts;
+    } else {
+      throw new Error("JSON response did not contain a valid 'scripts' array.");
+    }
+  } catch (err) {
+    console.error("[HybridScript] Holistic generation failed:", err);
+    // Fallback to text-only generation if JSON parsing fails or model errors
+    const fallbackScripts = await generateTutorialScript(
+      projectDescription || projectTitle,
+      platform,
+      steps.map(s => ({ order: s.order, description: s.description, screenshotPath: s.screenshotPath || undefined }))
+    );
+    return fallbackScripts;
+  }
 }
 
 /**

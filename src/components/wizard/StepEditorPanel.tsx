@@ -257,8 +257,6 @@ const RESIZE_HANDLES = [
   { name: "w", style: { top: "50%", left: "-6px", transform: "translateY(-50%)", cursor: "ew-resize" } },
 ] as const;
 
-const MIN_SPLIT_DURATION = 1.0; // Minimum duration for a split clip half
-
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
@@ -356,11 +354,34 @@ const renderStages = [
 export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const { projectId } = useParams<{ projectId: string }>();
   const projectIdNum = Number(projectId) || 0;
+
+  const { data: project, isLoading } = trpc.project.getById.useQuery(
+    { id: projectIdNum },
+    { enabled: projectIdNum > 0 }
+  );
   const { setTheme, resolvedTheme } = useTheme();
 
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [annotations, setAnnotations] = useState<Record<number, StepAnnotation>>({});
   const [mode, setMode] = useState<ToolMode>("pan");
+
+  const steps = project?.steps || [];
+
+  // Convert steps to TimelineClip[]
+  const timelineClips: TimelineClip[] = useMemo(() => {
+    return steps.map((s) => ({
+      id: s.id,
+      order: s.order,
+      name: s.description || `Scene ${s.order}`,
+      thumbnail: s.screenshotPath,
+      duration: (s as any).editorDuration ?? 5.0,
+      transition: s.transition,
+      isVideo: s.screenshotPath?.includes(".mp4") || 
+               s.screenshotPath?.includes("video") ||
+               s.screenshotPath?.endsWith("#video"),
+    }));
+  }, [steps]);
+
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragCurrent, setDragCurrent] = useState<{ x: number; y: number } | null>(null);
@@ -432,10 +453,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     }
   }, []);
 
-  const { data: project, isLoading } = trpc.project.getById.useQuery(
-    { id: projectIdNum },
-    { enabled: projectIdNum > 0 }
-  );
+
 
   const updateProject = trpc.project.update.useMutation();
   const updateStep = trpc.step.update.useMutation();
@@ -546,7 +564,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     }
   }, [project?.title]);
 
-  const steps = project?.steps || [];
   const currentStep = steps[currentStepIndex];
 
   const pushHistory = useCallback((nextState: Record<number, StepAnnotation>) => {
@@ -656,20 +673,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
   // ── NLE Timeline handlers ──
 
-  // Convert steps to TimelineClip[]
-  const timelineClips: TimelineClip[] = useMemo(() => {
-    return steps.map((s) => ({
-      id: s.id,
-      order: s.order,
-      name: s.description || `Scene ${s.order}`,
-      thumbnail: s.screenshotPath,
-      duration: (s as any).editorDuration ?? 5.0,
-      transition: s.transition,
-      isVideo: s.screenshotPath?.includes(".mp4") || 
-               s.screenshotPath?.includes("video") ||
-               s.screenshotPath?.endsWith("#video"),
-    }));
-  }, [steps]);
+
 
   // Reorder via new timeline (same logic as handleSceneDrop but with indices)
   const handleTimelineReorder = async (fromIndex: number, toIndex: number) => {
@@ -692,36 +696,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     utils.project.getById.invalidate({ id: projectIdNum });
   };
 
-  // Split clip at playhead position
-  const handleTimelineSplit = async (index: number, splitAtSeconds: number) => {
-    const step = steps[index];
-    if (!step) return;
-    const originalDuration = (step as any).editorDuration ?? 5.0;
-    const firstDur = Math.max(MIN_SPLIT_DURATION, splitAtSeconds);
-    const secondDur = Math.max(MIN_SPLIT_DURATION, originalDuration - splitAtSeconds);
-
-    // Update the original clip's duration
-    await updateStep.mutateAsync({ id: step.id, editorDuration: firstDur });
-
-    // Create a new step after this one
-    const newStep = await createStep.mutateAsync({
-      projectId: projectIdNum,
-      order: step.order + 0.5, // Will be renumbered
-      description: `${step.description} (cont.)`,
-      screenshotPath: step.screenshotPath || undefined,
-    });
-
-    // Set the new step's duration
-    if (newStep?.id) {
-      await updateStep.mutateAsync({ id: newStep.id, editorDuration: secondDur });
-    }
-
-    // Renumber all steps
-    utils.step.listByProject.invalidate({ projectId: projectIdNum });
-    utils.project.getById.invalidate({ id: projectIdNum });
-    toast.success(`Split clip at ${splitAtSeconds.toFixed(1)}s`);
-  };
-
   // Delete clip via timeline
   const handleTimelineDelete = (index: number) => {
     setDeleteSceneIdx(index);
@@ -732,12 +706,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     fileInputRef.current?.click();
   };
 
-  // Play/pause state
-  const [isTimelinePlaying, setIsTimelinePlaying] = useState(false);
-
-  const handleTimelinePlayToggle = () => {
-    setIsTimelinePlaying((p) => !p);
-  };
 
   const [tempDesc, setTempDesc] = useState("");
   const [tempScript, setTempScript] = useState("");
@@ -778,20 +746,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   }, [mode]);
 
   useEffect(() => {
-    if (imageRef.current && timelineClips[currentStepIndex]?.isVideo) {
-      const videoElement = imageRef.current as HTMLVideoElement;
-      if (isTimelinePlaying) {
-        videoElement.play().catch(() => {});
-      } else {
-        videoElement.pause();
-      }
-    }
-  }, [isTimelinePlaying, currentStepIndex, timelineClips]);
-
-  useEffect(() => {
-    updateBounds();
+    // Use rAF to ensure bounds are calculated after the browser applies the new scale
+    const rafId = requestAnimationFrame(() => updateBounds());
     window.addEventListener("resize", updateBounds);
-    return () => window.removeEventListener("resize", updateBounds);
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", updateBounds);
+    };
   }, [currentStepIndex, project, updateBounds, canvasScale]);
 
   const canvasScaleRef = useRef(canvasScale);
@@ -3407,86 +3368,209 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   };
 
   const renderVoiceoverContent = () => {
+    if (!currentStep) return null;
+
+    const selectedVoiceData = [...voices, ...elevenLabsVoices].find((v) => v.id === selectedVoice);
+    const isElevenLabs = elevenLabsVoices.some((v) => v.id === selectedVoice);
+
     return (
-      <div className="space-y-4">
-        {/* Voice Selection list */}
-        <div className="space-y-2">
-          <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block">Select AI Voice</Label>
-          <div className="space-y-1.5 max-h-[300px] overflow-y-auto pr-1">
-            {voices.map((v) => {
-              const isSelected = selectedVoice === v.id;
-              const isPlaying = playingId === v.id;
-              const isLoading = previewLoadingId === v.id;
-              return (
-                <div
-                  key={v.id}
-                  onClick={() => setSelectedVoice(v.id)}
-                  className={`p-2 border rounded-lg flex items-center justify-between text-xs transition-all cursor-pointer ${isSelected
-                      ? "border-[#FBBF24] bg-[#FBBF24]/5"
-                      : "border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
-                    }`}
-                >
-                  <div className="flex flex-col">
-                    <span className="font-semibold text-[var(--sketch-fg)]">{v.name}</span>
-                    <span className="text-[9px] text-[var(--sketch-fg-muted)]">{v.accent} • {v.gender} {v.tag && `• ${v.tag}`}</span>
-                  </div>
-                  <button
-                    onClick={(e) => handlePlayPreview(e, v.id)}
-                    disabled={previewLoadingId !== null && previewLoadingId !== v.id}
-                    className="p-1 hover:bg-[var(--sketch-fg-subtle)]/10 rounded-full text-[var(--sketch-fg-muted)] disabled:opacity-50 flex items-center justify-center cursor-pointer"
-                  >
-                    {isLoading ? (
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    ) : isPlaying ? (
-                      <Square className="w-3.5 h-3.5 fill-current" />
-                    ) : (
-                      <Play className="w-3.5 h-3.5" />
-                    )}
-                  </button>
+      <div className="flex flex-col h-[calc(100vh-140px)] relative">
+        {/* Toggle Mode */}
+        <div className="flex items-center gap-1 p-0.5 bg-[var(--sketch-bg)] rounded-full border border-[var(--sketch-border-color)]/20 mx-4 mt-2 flex-shrink-0">
+          <button
+            onClick={() => setVoiceoverViewMode("current")}
+            className={`flex-1 py-1 px-3 text-[10px] font-bold rounded-full transition-all cursor-pointer ${voiceoverViewMode === "current"
+                ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-fg)]"
+                : "text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg-subtle)]"
+              }`}
+          >
+            Current Scene Only
+          </button>
+          <button
+            onClick={() => setVoiceoverViewMode("all")}
+            className={`flex-1 py-1 px-3 text-[10px] font-bold rounded-full transition-all cursor-pointer ${voiceoverViewMode === "all"
+                ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-fg)]"
+                : "text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg-subtle)]"
+              }`}
+          >
+            All Scenes
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 min-h-0">
+          {/* ElevenLabs Credits indicator if relevant */}
+          {isElevenLabs && credits.data && (
+            <div className="p-3 bg-gradient-to-r from-amber-500/10 to-yellow-500/5 border border-amber-500/20 rounded-xl flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <Crown className="w-4 h-4 text-amber-500 animate-pulse" />
+                <div>
+                  <span className="font-semibold text-[var(--sketch-fg)]">ElevenLabs API</span>
+                  <p className="text-[9px] text-[var(--sketch-fg-muted)]">Remaining Credits</p>
                 </div>
-              );
-            })}
+              </div>
+              <span className="font-mono font-bold text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                {credits.data.remaining.toLocaleString()} chars
+              </span>
+            </div>
+          )}
+
+          {/* Tester for preview */}
+          <div className="p-3 rounded-xl border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)]/50">
+            <div className="flex items-center justify-between mb-1.5">
+              <Label className="text-[10px] font-bold text-[var(--sketch-fg-muted)]">Test voice</Label>
+            </div>
+            <div className="flex gap-2">
+              <Textarea
+                value={testVoiceText}
+                onChange={(e) => setTestVoiceText(e.target.value)}
+                placeholder={currentStep?.userEditedScript || currentStep?.aiScript || "Type something to test..."}
+                className="flex-1 text-xs min-h-[40px] resize-none"
+              />
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const textToTest = testVoiceText.trim() || currentStep?.userEditedScript || currentStep?.aiScript || "Hi I am your AI guide.";
+                  previewVoice.mutate({ voice: selectedVoice, speed: voiceSpeed, text: textToTest }, {
+                    onSuccess: (data) => {
+                      if (playingId === selectedVoice) {
+                        audioRef.pause();
+                      }
+                      setPlayingId(selectedVoice);
+                      audioRef.src = data.audioData;
+                      audioRef.play();
+                      audioRef.onended = () => {
+                        setPlayingId(null);
+                      };
+                    },
+                    onError: (err) => {
+                      toast.error(err.message || "Failed to generate preview");
+                    }
+                  });
+                }}
+                disabled={previewVoice.isPending}
+                className="flex-shrink-0 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-colors flex items-center justify-center"
+              >
+                {previewVoice.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+              </button>
+            </div>
+          </div>
+
+          {/* Voice Selection list */}
+          <div className="space-y-2">
+            <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block">Select AI Voice</Label>
+            <div className="grid grid-cols-2 gap-2 max-h-[220px] overflow-y-auto pr-1">
+              {[...voices, ...elevenLabsVoices].map((v) => {
+                const isSelected = selectedVoice === v.id;
+                const isPlaying = playingId === v.id;
+                const isLoading = previewLoadingId === v.id;
+                const isPremium = elevenLabsVoices.some(ev => ev.id === v.id);
+                return (
+                  <div
+                    key={v.id}
+                    onClick={() => setSelectedVoice(v.id)}
+                    className={`p-2 border rounded-lg flex flex-col justify-between text-xs transition-all cursor-pointer min-h-[72px] relative ${isSelected
+                        ? "border-[#FBBF24] bg-[#FBBF24]/5"
+                        : "border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
+                      }`}
+                  >
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-1">
+                        <span className="font-semibold text-[var(--sketch-fg)] truncate max-w-[80px]">{v.name}</span>
+                        {isPremium && (
+                          <span className="text-[7px] text-amber-600 bg-amber-500/10 px-1 rounded flex items-center gap-0.5 border border-amber-500/20">
+                            <Crown className="w-2 h-2" /> PREMIUM
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[8px] text-[var(--sketch-fg-muted)] line-clamp-2 mt-0.5">
+                        {v.accent} • {v.gender}
+                      </span>
+                    </div>
+                    <div className="flex justify-end mt-1">
+                      <button
+                        onClick={(e) => handlePlayPreview(e, v.id)}
+                        disabled={previewLoadingId !== null && previewLoadingId !== v.id}
+                        className="p-1 hover:bg-[var(--sketch-fg-subtle)]/10 rounded-full text-[var(--sketch-fg-muted)] disabled:opacity-50 flex items-center justify-center cursor-pointer"
+                      >
+                        {isLoading ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : isPlaying ? (
+                          <Square className="w-3.5 h-3.5 fill-current" />
+                        ) : (
+                          <Play className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Speed Option */}
+          <div className="space-y-1.5 pt-2 border-t border-[var(--sketch-border-color)]/20">
+            <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] flex justify-between">
+              <span>Voice Speed</span>
+              <span className="font-mono text-[10px]">{voiceSpeed.toFixed(1)}x</span>
+            </Label>
+            <input
+              type="range"
+              min={0.5}
+              max={2.0}
+              step={0.1}
+              value={voiceSpeed}
+              onChange={(e) => setVoiceSpeed(parseFloat(e.target.value))}
+              className="w-full h-1 bg-[var(--sketch-fg-subtle)]/10 appearance-none rounded cursor-pointer accent-[#FBBF24]"
+            />
           </div>
         </div>
 
-        {/* Speed Option */}
-        <div className="space-y-1.5 pt-2 border-t border-[var(--sketch-border-color)]/20">
-          <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] flex justify-between">
-            <span>Voice Speed</span>
-            <span className="font-mono text-[10px]">{voiceSpeed.toFixed(1)}x</span>
-          </Label>
-          <input
-            type="range"
-            min={0.5}
-            max={2.0}
-            step={0.1}
-            value={voiceSpeed}
-            onChange={(e) => setVoiceSpeed(parseFloat(e.target.value))}
-            className="w-full h-1 bg-[var(--sketch-fg-subtle)]/10 appearance-none rounded cursor-pointer accent-[#FBBF24]"
-          />
-        </div>
-
-        {/* Save Voiceover Selection */}
-        <div className="pt-2">
-          <button
-            onClick={async () => {
-              try {
-                await updateProject.mutateAsync({
-                  id: projectIdNum,
-                  voice: selectedVoice,
-                  speed: voiceSpeed,
-                });
-                toast.success("Voiceover updated successfully!");
-              } catch (err: any) {
-                toast.error(err.message || "Failed to update voiceover.");
-              }
-            }}
-            disabled={updateProject.isPending}
-            className="w-full py-2 bg-[var(--sketch-btn-bg)] text-[var(--sketch-btn-text)] hover:opacity-90 disabled:opacity-50 text-xs font-bold rounded-md shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
-          >
-            {updateProject.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
-            Update Voiceover
-          </button>
+        {/* Generate and Save action */}
+        <div className="p-4 border-t border-[var(--sketch-border-color)]/20 bg-[var(--sketch-panel-bg)] flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="flex-1 min-w-0 flex flex-col">
+              <span className="text-[10px] font-bold text-[var(--sketch-fg)] truncate">
+                {selectedVoiceData?.name || "Select a voice"}
+              </span>
+              <span className="text-[9px] text-[var(--sketch-fg-muted)] truncate">
+                {selectedVoiceData ? ('accent' in selectedVoiceData ? `${selectedVoiceData.accent} • ${selectedVoiceData.gender}` : 'ElevenLabs') : ""}
+              </span>
+            </div>
+            <button
+              onClick={async () => {
+                if (updateProject.isPending || generateAllVoices.isPending || generateVoiceForStep.isPending) return;
+                
+                if (voiceoverViewMode === "current") {
+                  try {
+                    toast.info("Generating voiceover for the current scene...", { duration: 3000 });
+                    await generateVoiceForStep.mutateAsync({ stepId: currentStep.id, voice: selectedVoice, speed: voiceSpeed });
+                    utils.project.getById.invalidate({ id: projectIdNum });
+                    utils.step.listByProject.invalidate({ projectId: projectIdNum });
+                    updateProject.mutate({ id: projectIdNum, voice: selectedVoice, speed: voiceSpeed });
+                    toast.success("Voiceover generated and applied for current scene!");
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to generate voice for current scene.");
+                  }
+                } else {
+                  try {
+                    toast.info("Generating voiceovers for all scenes...", { duration: 5000 });
+                    const res = await generateAllVoices.mutateAsync({ projectId: projectIdNum, voice: selectedVoice, speed: voiceSpeed });
+                    utils.project.getById.invalidate({ id: projectIdNum });
+                    utils.step.listByProject.invalidate({ projectId: projectIdNum });
+                    updateProject.mutate({ id: projectIdNum, voice: selectedVoice, speed: voiceSpeed });
+                    toast.success(`Generated ${res.count} voiceovers successfully!`);
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to generate all voiceovers.");
+                  }
+                }
+              }}
+              disabled={updateProject.isPending || generateAllVoices.isPending || generateVoiceForStep.isPending}
+              className="px-4 py-2 bg-[#D3E3FD] dark:bg-blue-900/40 hover:bg-[#C2D7FA] dark:hover:bg-blue-800/40 text-blue-800 dark:text-blue-100 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5"
+            >
+              {(generateAllVoices.isPending || generateVoiceForStep.isPending) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {voiceoverViewMode === "current" ? "Generate voiceover" : "Generate for all scenes"}
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -4473,9 +4557,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               <DropdownMenuItem onClick={() => setMode("zoom")}>
                 <Target className="w-3.5 h-3.5 mr-2" /> Zoom Point
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setMode("magnify")}>
-                <Search className="w-3.5 h-3.5 mr-2" /> Magnifier
-              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">Text & Marks</DropdownMenuLabel>
               <DropdownMenuItem onClick={() => setMode("overlay")}>
@@ -4486,9 +4567,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setMode("watermark")}>
                 <Stamp className="w-3.5 h-3.5 mr-2" /> Watermark
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setMode("caption")}>
-                <Type className="w-3.5 h-3.5 mr-2" /> Subtitles
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">Privacy</DropdownMenuLabel>
@@ -4624,12 +4702,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 <div className="h-4 w-[1px] bg-[#D3D3D3]/50 mx-1 flex-shrink-0" />
                 <ToolbarToolButton active={mode === "highlight"} onClick={() => setMode("highlight")} icon={<Square className="w-3.5 h-3.5" />} label="Highlight" />
                 <ToolbarToolButton active={mode === "zoom"} onClick={() => setMode("zoom")} icon={<Target className="w-3.5 h-3.5" />} label="Zoom" />
-                <ToolbarToolButton active={mode === "magnify"} onClick={() => setMode("magnify")} icon={<Search className="w-3.5 h-3.5" />} label="Magnify" />
                 <div className="h-4 w-[1px] bg-[#D3D3D3]/50 mx-1 flex-shrink-0" />
                 <ToolbarToolButton active={mode === "overlay"} onClick={() => setMode("overlay")} icon={<Type className="w-3.5 h-3.5" />} label="Text Overlay" />
                 <ToolbarToolButton active={mode === "badge"} onClick={() => setMode("badge")} icon={<BadgeCheck className="w-3.5 h-3.5" />} label="Badge" />
                 <ToolbarToolButton active={mode === "watermark"} onClick={() => setMode("watermark")} icon={<Stamp className="w-3.5 h-3.5" />} label="Watermark" />
-                <ToolbarToolButton active={mode === "caption"} onClick={() => setMode("caption")} icon={<Type className="w-3.5 h-3.5" />} label="Subtitles" />
                 <div className="h-4 w-[1px] bg-[#D3D3D3]/50 mx-1 flex-shrink-0" />
                 <ToolbarToolButton active={mode === "blur"} onClick={() => setMode("blur")} icon={<Aperture className="w-3.5 h-3.5" />} label="Blur" />
                 <ToolbarToolButton active={mode === "redact"} onClick={() => setMode("redact")} icon={<Shield className="w-3.5 h-3.5" />} label="Redact" />
@@ -4715,8 +4791,9 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                           <video
                             ref={imageRef as any}
                             src={currentStep.screenshotPath}
-                            className="w-full h-full object-contain select-none"
+                            className="w-full h-full object-contain select-none absolute inset-0"
                             style={{
+                              zIndex: 0,
                               filter:
                                 currentAnn?.editorColorFilter === "grayscale"
                                   ? "grayscale(100%)"
@@ -4730,8 +4807,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                           ? "contrast(150%) saturate(120%)"
                                           : "none",
                             }}
-                            autoPlay={isTimelinePlaying}
-                            loop
                             muted
                             playsInline
                             draggable={false}
@@ -4742,8 +4817,9 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                             ref={imageRef as any}
                             src={currentStep.screenshotPath}
                             alt={`Step ${currentStepIndex + 1}`}
-                            className="w-full h-full object-contain select-none"
+                            className="w-full h-full object-contain select-none absolute inset-0"
                             style={{
+                              zIndex: 0,
                               filter:
                                 currentAnn?.editorColorFilter === "grayscale"
                                   ? "grayscale(100%)"
@@ -4781,6 +4857,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                             width: `${bounds.visibleW}px`,
                             height: `${bounds.visibleH}px`,
                             pointerEvents: "none",
+                            zIndex: 2,
                           }}
                         >
                             {/* Highlight boxes (multiple, like blur) */}
@@ -4793,10 +4870,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                   top: `${hl.y}%`,
                                   width: `${hl.w}%`,
                                   height: `${hl.h}%`,
-                                  border: `3px solid ${hl.color || "#FF0099"}`,
+                                  border: `4px solid ${hl.color || "#FF0099"}`,
                                   pointerEvents: overlayPointer("highlight"),
-                                  backgroundColor: "rgba(255,0,153,0.12)",
-                                  boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
+                                  backgroundColor: "rgba(255,0,153,0.08)",
+                                  boxShadow: "0 0 0 2px rgba(255,255,255,0.9), 0 0 12px rgba(255,0,153,0.5), 0 4px 12px rgba(0,0,0,0.4)",
                                 }}
                                 onMouseDown={(e) => {
                                   if ((e.target as HTMLElement).dataset.handle) return;
@@ -5588,13 +5665,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
             onClipReorder={handleTimelineReorder}
             onClipDelete={handleTimelineDelete}
             onClipTrim={handleTimelineTrim}
-            onClipSplit={handleTimelineSplit}
             onAddClip={handleTimelineAdd}
             onDropFiles={handleUploadFiles}
             onDropPexels={handleImportPexelsMedia}
             uploadingCount={uploadingFilesCount}
-            isPlaying={isTimelinePlaying}
-            onPlayToggle={handleTimelinePlayToggle}
             transitions={props.stepTransitions}
             onTransitionClick={(clipId) => {
               setActiveTransitionClipId(clipId);
