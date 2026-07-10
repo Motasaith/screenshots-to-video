@@ -632,7 +632,7 @@ export async function renderStepVideo(opts: {
     const bColor = (opts.editorBadgeColor || "#FBBF24").replace("#", "0x");
     const fontFile = getFontPath();
     const badgeSize = Math.round(Math.min(imgWidth, imgHeight) * 0.04);
-    badgeFilter = `,drawbox=x=${bx - badgeSize/2}:y=${by - badgeSize/2}:w=${badgeSize}:h=${badgeSize}:color=${bColor}:t=fill:radius=${Math.round(badgeSize/2)},drawtext=fontfile='${fontFile}':text='${opts.editorBadgeNumber}':fontcolor=0x000000:fontsize=${Math.round(badgeSize * 0.6)}:x=${bx}-text_w/2:y=${by}-text_h/2`;
+    badgeFilter = `,drawbox=x=${bx - badgeSize/2}:y=${by - badgeSize/2}:w=${badgeSize}:h=${badgeSize}:color=${bColor}:t=fill,drawtext=fontfile='${fontFile}':text='${opts.editorBadgeNumber}':fontcolor=0x000000:fontsize=${Math.round(badgeSize * 0.6)}:x=${bx}-text_w/2:y=${by}-text_h/2`;
   }
 
   // ── Canvas editor: magnify ──
@@ -941,7 +941,7 @@ async function renderStepVideoFallback(
     const bColor = (opts.editorBadgeColor || "#FBBF24").replace("#", "0x");
     const fontFile = getFontPath();
     const badgeSize = Math.round(Math.min(imgWidth, imgHeight) * 0.04);
-    badgeFilter = `,drawbox=x=${bx - badgeSize/2}:y=${by - badgeSize/2}:w=${badgeSize}:h=${badgeSize}:color=${bColor}:t=fill:radius=${Math.round(badgeSize/2)},drawtext=fontfile='${fontFile}':text='${opts.editorBadgeNumber}':fontcolor=0x000000:fontsize=${Math.round(badgeSize * 0.6)}:x=${bx}-text_w/2:y=${by}-text_h/2`;
+    badgeFilter = `,drawbox=x=${bx - badgeSize/2}:y=${by - badgeSize/2}:w=${badgeSize}:h=${badgeSize}:color=${bColor}:t=fill,drawtext=fontfile='${fontFile}':text='${opts.editorBadgeNumber}':fontcolor=0x000000:fontsize=${Math.round(badgeSize * 0.6)}:x=${bx}-text_w/2:y=${by}-text_h/2`;
   }
 
   // ── Canvas editor: magnify (fallback) ──
@@ -1687,6 +1687,9 @@ export async function buildCaptionsFilter(
 ): Promise<string> {
   if (!text) return "";
 
+  // Convert #RRGGBB to 0xRRGGBB for ffmpeg compatibility
+  const ffmpegColor = color.replace("#", "0x");
+
   const fontFile = getFontPath();
   const baseDim = Math.min(outW, outH);
 
@@ -1731,7 +1734,7 @@ export async function buildCaptionsFilter(
     }
 
     drawtextFilters.push(
-      `drawtext=fontfile='${fontFile}':textfile='${textFile.replace(/\\/g, "/").replace(/:/g, "\\:")}':fontcolor=${color}:fontsize=${fontsize}:x=(w-text_w)/2:y=${yPos}:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'${styleOptions}`
+      `drawtext=fontfile='${fontFile}':textfile='${textFile.replace(/\\/g, "/").replace(/:/g, "\\:")}':fontcolor=${ffmpegColor}:fontsize=${fontsize}:x=(w-text_w)/2:y=${yPos}:enable='between(t,${start.toFixed(3)},${end.toFixed(3)})'${styleOptions}`
     );
   }
 

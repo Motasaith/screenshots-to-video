@@ -48,6 +48,8 @@ import {
   Clapperboard,
   Search as SearchIcon,
   Download,
+  Check,
+  Flag,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -82,6 +84,7 @@ import { toast } from "sonner";
 import type { TransitionType } from "@/hooks/useWizardStore";
 import AIGuide from "@/components/wizard/AIGuide";
 import Timeline, { type TimelineClip } from "@/components/wizard/Timeline";
+import { INTRO_TEMPLATES, OUTRO_TEMPLATES, getTemplate } from "@/components/wizard/introOutroTemplates";
 
 /* ------------------------------------------------------------------ */
 /*  Types & Helpers (carried over from old StepAnnotate)              */
@@ -395,7 +398,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const panScrollRef = useRef<{ left: number; top: number }>({ left: 0, top: 0 });
 
   // Google Vids replica states
-  const [activeRightTab, setActiveRightTab] = useState<"properties" | "script" | "voiceover" | "elevenlabs" | "captions" | "transitions" | "aiguide" | "safety" | "help" | "media" | null>("properties");
+  const [activeRightTab, setActiveRightTab] = useState<"properties" | "script" | "voiceover" | "elevenlabs" | "captions" | "transitions" | "aiguide" | "safety" | "help" | "media" | "introoutro" | null>("properties");
   const [activeTransitionClipId, setActiveTransitionClipId] = useState<number | null>(null);
   const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
   const [projectTitle, setProjectTitle] = useState("Untitled video");
@@ -3138,7 +3141,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     );
   };
 
-  const toggleRightTab = (tab: "properties" | "script" | "voiceover" | "elevenlabs" | "captions" | "transitions" | "aiguide" | "safety" | "help" | "media") => {
+  const toggleRightTab = (tab: "properties" | "script" | "voiceover" | "elevenlabs" | "captions" | "transitions" | "aiguide" | "safety" | "help" | "media" | "introoutro") => {
     setActiveRightTab((prev) => (prev === tab ? null : tab));
   };
 
@@ -3839,7 +3842,252 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     );
   };
 
-  // ── Pexels Media Search ──
+  // ── Intro/Outro Content ──
+  const [introOutroMode, setIntroOutroMode] = useState<"intro" | "outro">("intro");
+  const [introTemplate, setIntroTemplate] = useState<string | null>(null);
+  const [introText, setIntroText] = useState("");
+  const [introDuration, setIntroDuration] = useState(3.0);
+  const [outroTemplate, setOutroTemplate] = useState<string | null>(null);
+  const [outroText, setOutroText] = useState("");
+  const [outroDuration, setOutroDuration] = useState(3.0);
+
+  const renderIntroOutroContent = () => {
+    return (
+      <div className="space-y-4">
+        {/* Mode toggle: Intro vs Outro */}
+        <div className="flex items-center gap-1 p-0.5 bg-[var(--sketch-bg)] rounded-lg border border-[var(--sketch-border-color)]/20">
+          <button
+            onClick={() => setIntroOutroMode("intro")}
+            className={`flex-1 py-1.5 px-2 rounded-md text-[10px] font-bold transition-all ${
+              introOutroMode === "intro"
+                ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-fg)]"
+                : "text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg-muted)]"
+            }`}
+          >
+            Intro
+          </button>
+          <button
+            onClick={() => setIntroOutroMode("outro")}
+            className={`flex-1 py-1.5 px-2 rounded-md text-[10px] font-bold transition-all ${
+              introOutroMode === "outro"
+                ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-fg)]"
+                : "text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg-muted)]"
+            }`}
+          >
+            Outro
+          </button>
+        </div>
+
+        {introOutroMode === "intro" ? (
+          <>
+            {/* Template picker with visual previews */}
+            <div>
+              <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-2">Intro Template</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {INTRO_TEMPLATES.map((tpl) => (
+                  <button
+                    key={tpl.value}
+                    onClick={() => setIntroTemplate(tpl.value)}
+                    className={`relative aspect-video rounded-lg overflow-hidden border-2 transition-all ${
+                      introTemplate === tpl.value
+                        ? "border-[var(--sketch-accent)] ring-1 ring-[var(--sketch-accent)]/30"
+                        : "border-[var(--sketch-border-color)]/20 hover:border-[var(--sketch-accent)]/50"
+                    }`}
+                    style={{ background: tpl.previewBg }}
+                  >
+                    <div className="absolute inset-0 flex items-center justify-center p-1">
+                      <span
+                        className="text-[8px] font-bold text-center leading-tight"
+                        style={{ color: tpl.previewTextColor, fontFamily: tpl.previewFont || "sans-serif" }}
+                      >
+                        {tpl.label}
+                      </span>
+                    </div>
+                    {introTemplate === tpl.value && (
+                      <div className="absolute top-0.5 right-0.5 w-3 h-3 rounded-full bg-[var(--sketch-accent)] flex items-center justify-center">
+                        <Check className="w-2 h-2 text-white" />
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Text input */}
+            {introTemplate && introTemplate !== "none" && introTemplate !== "custom-video" && (
+              <div>
+                <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-1">Intro Text</Label>
+                <Textarea
+                  value={introText}
+                  onChange={(e) => setIntroText(e.target.value)}
+                  placeholder="e.g. How to Use VS Code"
+                  className="text-xs min-h-[60px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-[var(--sketch-accent)] focus:ring-1 focus:ring-[var(--sketch-accent)]"
+                />
+              </div>
+            )}
+
+            {/* Duration slider */}
+            {introTemplate && introTemplate !== "none" && (
+              <div>
+                <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] flex justify-between mb-1">
+                  <span>Duration</span>
+                  <span className="font-mono text-[var(--sketch-accent)]">{introDuration.toFixed(1)}s</span>
+                </Label>
+                <input
+                  type="range"
+                  min={1}
+                  max={10}
+                  step={0.5}
+                  value={introDuration}
+                  onChange={(e) => setIntroDuration(Number(e.target.value))}
+                  className="w-full accent-[var(--sketch-accent)]"
+                />
+              </div>
+            )}
+
+            {/* Custom video upload */}
+            {introTemplate === "custom-video" && (
+              <div className="p-3 bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/20 rounded-lg">
+                <p className="text-[10px] text-[var(--sketch-fg-muted)] mb-2">
+                  Upload a custom video or image for your intro screen.
+                </p>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-[var(--sketch-accent)]/10 hover:bg-[var(--sketch-accent)]/20 text-[var(--sketch-fg)] text-xs font-semibold rounded-lg border border-[var(--sketch-accent)]/20 cursor-pointer transition-all"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  Upload Video/Image
+                </button>
+              </div>
+            )}
+
+            {/* Preview */}
+            {introTemplate && introTemplate !== "none" && introText && (
+              <div className="rounded-lg overflow-hidden border border-[var(--sketch-border-color)]/20">
+                <div
+                  className="aspect-video flex items-center justify-center p-4"
+                  style={{ background: getTemplate(introTemplate)?.previewBg || "#000" }}
+                >
+                  <span
+                    className="text-sm font-bold text-center"
+                    style={{
+                      color: getTemplate(introTemplate)?.previewTextColor || "#fff",
+                      fontFamily: getTemplate(introTemplate)?.previewFont || "sans-serif",
+                    }}
+                  >
+                    {introText}
+                  </span>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Outro template picker */}
+            <div>
+              <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-2">Outro Template</Label>
+              <div className="grid grid-cols-2 gap-2">
+                {OUTRO_TEMPLATES.map((tpl) => (
+                  <button
+                    key={tpl.value}
+                    onClick={() => setOutroTemplate(tpl.value)}
+                    className={`relative aspect-video rounded-lg overflow-hidden border-2 transition-all ${
+                      outroTemplate === tpl.value
+                        ? "border-[var(--sketch-accent)] ring-1 ring-[var(--sketch-accent)]/30"
+                        : "border-[var(--sketch-border-color)]/20 hover:border-[var(--sketch-accent)]/50"
+                    }`}
+                    style={{ background: tpl.previewBg }}
+                  >
+                    <div className="absolute inset-0 flex items-center justify-center p-1">
+                      <span
+                        className="text-[8px] font-bold text-center leading-tight"
+                        style={{ color: tpl.previewTextColor, fontFamily: tpl.previewFont || "sans-serif" }}
+                      >
+                        {tpl.label}
+                      </span>
+                    </div>
+                    {outroTemplate === tpl.value && (
+                      <div className="absolute top-0.5 right-0.5 w-3 h-3 rounded-full bg-[var(--sketch-accent)] flex items-center justify-center">
+                        <Check className="w-2 h-2 text-white" />
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Outro text */}
+            {outroTemplate && outroTemplate !== "none" && outroTemplate !== "custom-video" && (
+              <div>
+                <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-1">Outro Text</Label>
+                <Textarea
+                  value={outroText}
+                  onChange={(e) => setOutroText(e.target.value)}
+                  placeholder="e.g. Thanks for watching! Subscribe for more."
+                  className="text-xs min-h-[60px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-[var(--sketch-accent)] focus:ring-1 focus:ring-[var(--sketch-accent)]"
+                />
+              </div>
+            )}
+
+            {/* Duration */}
+            {outroTemplate && outroTemplate !== "none" && (
+              <div>
+                <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] flex justify-between mb-1">
+                  <span>Duration</span>
+                  <span className="font-mono text-[var(--sketch-accent)]">{outroDuration.toFixed(1)}s</span>
+                </Label>
+                <input
+                  type="range"
+                  min={1}
+                  max={10}
+                  step={0.5}
+                  value={outroDuration}
+                  onChange={(e) => setOutroDuration(Number(e.target.value))}
+                  className="w-full accent-[var(--sketch-accent)]"
+                />
+              </div>
+            )}
+
+            {/* Custom video upload */}
+            {outroTemplate === "custom-video" && (
+              <div className="p-3 bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/20 rounded-lg">
+                <p className="text-[10px] text-[var(--sketch-fg-muted)] mb-2">
+                  Upload a custom video or image for your outro screen.
+                </p>
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-[var(--sketch-accent)]/10 hover:bg-[var(--sketch-accent)]/20 text-[var(--sketch-fg)] text-xs font-semibold rounded-lg border border-[var(--sketch-accent)]/20 cursor-pointer transition-all"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  Upload Video/Image
+                </button>
+              </div>
+            )}
+
+            {/* Preview */}
+            {outroTemplate && outroTemplate !== "none" && outroText && (
+              <div className="rounded-lg overflow-hidden border border-[var(--sketch-border-color)]/20">
+                <div
+                  className="aspect-video flex items-center justify-center p-4"
+                  style={{ background: getTemplate(outroTemplate)?.previewBg || "#000" }}
+                >
+                  <span
+                    className="text-sm font-bold text-center"
+                    style={{
+                      color: getTemplate(outroTemplate)?.previewTextColor || "#fff",
+                      fontFamily: getTemplate(outroTemplate)?.previewFont || "sans-serif",
+                    }}
+                  >
+                    {outroText}
+                  </span>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  };
   const [pexelsQuery, setPexelsQuery] = useState("");
   const [pexelsMediaType, setPexelsMediaType] = useState<"both" | "image" | "video">("both");
   const [importingPexelsId, setImportingPexelsId] = useState<number | null>(null);
@@ -5656,6 +5904,29 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                             AUDIO
                           </div>
                         )}
+
+                        {/* Live caption preview — shows how captions will look in the final video */}
+                        {(props.captionsEnabled ?? true) && currentStep && (
+                          <div
+                            className="absolute left-1/2 -translate-x-1/2 z-10 pointer-events-none px-3 py-1.5 rounded text-center max-w-[80%]"
+                            style={{
+                              bottom: props.captionPosition === "top" ? "auto" : props.captionPosition === "middle" ? "50%" : "8%",
+                              top: props.captionPosition === "top" ? "8%" : props.captionPosition === "middle" ? "auto" : "auto",
+                              transform: props.captionPosition === "middle" ? "translate(-50%, -50%)" : "translateX(-50%)",
+                              fontSize: props.captionSize === "small" ? "10px" : props.captionSize === "large" ? "18px" : "14px",
+                              color: props.captionColor || "#FFFFFF",
+                              fontFamily: "sans-serif",
+                              fontWeight: 600,
+                              textShadow: props.captionStyle === "standard" ? "0 2px 4px rgba(0,0,0,0.8)" : "none",
+                              WebkitTextStroke: props.captionStyle === "outline" ? "1.5px black" : "none",
+                              backgroundColor: props.captionStyle === "highlight" ? "rgba(0,0,0,0.6)" : "transparent",
+                              borderRadius: props.captionStyle === "highlight" ? "4px" : "0",
+                              padding: props.captionStyle === "highlight" ? "4px 12px" : "0",
+                            }}
+                          >
+                            {currentStep.userEditedScript || currentStep.aiScript || currentStep.description || "Caption preview will appear here"}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -5680,6 +5951,14 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               setActiveTransitionClipId(clipId);
               setActiveRightTab("transitions");
             }}
+            introTemplate={introTemplate}
+            introText={introText}
+            introDuration={introDuration}
+            outroTemplate={outroTemplate}
+            outroText={outroText}
+            outroDuration={outroDuration}
+            onIntroClick={() => toggleRightTab("introoutro")}
+            onOutroClick={() => { setIntroOutroMode("outro"); toggleRightTab("introoutro"); }}
           />
         </div>
         {/* END LEFT COLUMN */}
@@ -5710,6 +5989,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   {activeRightTab === "elevenlabs" && "ElevenLabs Premium"}
                   {activeRightTab === "captions" && "Captions Settings"}
                   {activeRightTab === "transitions" && "Transitions"}
+                  {activeRightTab === "introoutro" && "Intro & Outro"}
                   {activeRightTab === "aiguide" && "AI Guide"}
                   {activeRightTab === "safety" && "Safety & Copyright"}
                   {activeRightTab === "help" && "Help Guide"}
@@ -5730,6 +6010,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 {activeRightTab === "elevenlabs" && renderElevenLabsContent()}
                 {activeRightTab === "captions" && renderCaptionsContent()}
                 {activeRightTab === "transitions" && renderTransitionsContent()}
+                {activeRightTab === "introoutro" && renderIntroOutroContent()}
                 {activeRightTab === "aiguide" && renderAIGuideContent()}
                 {activeRightTab === "safety" && renderSafetyContent()}
                 {activeRightTab === "help" && renderHelpContent()}
@@ -5747,6 +6028,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           <RightTabButton active={activeRightTab === "elevenlabs"} onClick={() => toggleRightTab("elevenlabs")} icon={<Crown className="w-4.5 h-4.5" />} label="ElevenLabs" />
           <RightTabButton active={activeRightTab === "captions"} onClick={() => toggleRightTab("captions")} icon={<Type className="w-4.5 h-4.5" />} label="Captions" />
           <RightTabButton active={activeRightTab === "transitions"} onClick={() => toggleRightTab("transitions")} icon={<Film className="w-4.5 h-4.5" />} label="Transitions" />
+          <RightTabButton active={activeRightTab === "introoutro"} onClick={() => toggleRightTab("introoutro")} icon={<Clapperboard className="w-4.5 h-4.5" />} label="Intro/Outro" />
           <RightTabButton active={activeRightTab === "aiguide"} onClick={() => toggleRightTab("aiguide")} icon={<Bot className="w-4.5 h-4.5" />} label="AI Guide" />
           <RightTabButton active={activeRightTab === "media"} onClick={() => toggleRightTab("media")} icon={<Clapperboard className="w-4.5 h-4.5" />} label="Media" />
           <RightTabButton active={activeRightTab === "safety"} onClick={() => toggleRightTab("safety")} icon={<Shield className="w-4.5 h-4.5" />} label="Safety" />

@@ -13,6 +13,8 @@ import {
   Film,
   Loader2,
   Upload,
+  Clapperboard,
+  Flag,
 } from "lucide-react";
 
 export interface TimelineClip {
@@ -39,6 +41,17 @@ export interface TimelineProps {
   uploadingCount?: number;
   transitions?: Record<number, string>;
   onTransitionClick?: (clipId: number) => void;
+  // Intro/outro
+  introTemplate?: string | null;
+  introText?: string | null;
+  introVideoPath?: string | null;
+  introDuration?: number | null;
+  outroTemplate?: string | null;
+  outroText?: string | null;
+  outroVideoPath?: string | null;
+  outroDuration?: number | null;
+  onIntroClick?: () => void;
+  onOutroClick?: () => void;
 }
 
 const MIN_DURATION = 1;
@@ -57,6 +70,16 @@ export default function Timeline({
   uploadingCount = 0,
   transitions,
   onTransitionClick,
+  introTemplate,
+  introText,
+  introVideoPath,
+  introDuration,
+  outroTemplate,
+  outroText,
+  outroVideoPath,
+  outroDuration,
+  onIntroClick,
+  onOutroClick,
 }: TimelineProps) {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -175,6 +198,34 @@ export default function Timeline({
           </div>
         ) : (
           <>
+            {/* Intro button */}
+            <button
+              onClick={() => onIntroClick?.()}
+              className={`flex-shrink-0 w-20 aspect-video rounded-md border-2 flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
+                introTemplate && introTemplate !== "none"
+                  ? "border-[var(--sketch-accent)] bg-[var(--sketch-accent)]/10"
+                  : "border-dashed border-[var(--sketch-border-color)]/30 bg-[var(--sketch-fg-subtle)]/5 hover:border-[var(--sketch-accent)]/50"
+              }`}
+              title={introTemplate && introTemplate !== "none" ? `Intro: ${introTemplate}` : "Add Intro"}
+            >
+              <Clapperboard className={`w-4 h-4 ${introTemplate && introTemplate !== "none" ? "text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-subtle)]"}`} />
+              <span className={`text-[7px] font-bold ${introTemplate && introTemplate !== "none" ? "text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-subtle)]"}`}>
+                {introTemplate && introTemplate !== "none" ? "INTRO" : "+ Intro"}
+              </span>
+              {introDuration && introTemplate && introTemplate !== "none" && (
+                <span className="text-[6px] font-mono text-[var(--sketch-fg-subtle)]">{introDuration.toFixed(1)}s</span>
+              )}
+            </button>
+
+            {/* Transition between intro and first scene */}
+            {introTemplate && introTemplate !== "none" && clips.length > 0 && (
+              <button
+                className="w-5 h-5 rotate-45 bg-[var(--sketch-accent)]/20 border-2 border-[var(--sketch-accent)] flex items-center justify-center flex-shrink-0"
+                title="Intro transition: fade"
+              >
+                <Film className="w-2.5 h-2.5 -rotate-45 text-[var(--sketch-accent)]" />
+              </button>
+            )}
             {clips.map((clip, idx) => {
               const isActive = idx === currentIndex;
               const isDragged = idx === draggedIndex;
@@ -279,6 +330,35 @@ export default function Timeline({
             >
               <Plus className="w-4 h-4 text-[var(--sketch-fg-muted)]" />
               <span className="text-[8px] font-semibold text-[var(--sketch-fg-subtle)]">Add Scene</span>
+            </button>
+
+            {/* Transition between last scene and outro */}
+            {outroTemplate && outroTemplate !== "none" && clips.length > 0 && (
+              <button
+                className="w-5 h-5 rotate-45 bg-[var(--sketch-accent)]/20 border-2 border-[var(--sketch-accent)] flex items-center justify-center flex-shrink-0"
+                title="Outro transition: fade"
+              >
+                <Film className="w-2.5 h-2.5 -rotate-45 text-[var(--sketch-accent)]" />
+              </button>
+            )}
+
+            {/* Outro button */}
+            <button
+              onClick={() => onOutroClick?.()}
+              className={`flex-shrink-0 w-20 aspect-video rounded-md border-2 flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
+                outroTemplate && outroTemplate !== "none"
+                  ? "border-[var(--sketch-accent)] bg-[var(--sketch-accent)]/10"
+                  : "border-dashed border-[var(--sketch-border-color)]/30 bg-[var(--sketch-fg-subtle)]/5 hover:border-[var(--sketch-accent)]/50"
+              }`}
+              title={outroTemplate && outroTemplate !== "none" ? `Outro: ${outroTemplate}` : "Add Outro"}
+            >
+              <Flag className={`w-4 h-4 ${outroTemplate && outroTemplate !== "none" ? "text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-subtle)]"}`} />
+              <span className={`text-[7px] font-bold ${outroTemplate && outroTemplate !== "none" ? "text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-subtle)]"}`}>
+                {outroTemplate && outroTemplate !== "none" ? "OUTRO" : "+ Outro"}
+              </span>
+              {outroDuration && outroTemplate && outroTemplate !== "none" && (
+                <span className="text-[6px] font-mono text-[var(--sketch-fg-subtle)]">{outroDuration.toFixed(1)}s</span>
+              )}
             </button>
           </>
         )}
