@@ -23,6 +23,7 @@ export interface TimelineClip {
   duration: number;
   transition?: string | null;
   isVideo?: boolean;
+  audioPath?: string | null;
 }
 
 export interface TimelineProps {
@@ -224,6 +225,12 @@ export default function Timeline({
                           VIDEO
                         </span>
                       )}
+                      {clip.audioPath && (
+                        <span className="absolute bottom-0.5 right-0.5 text-[7px] font-bold px-1 rounded bg-blue-600/80 text-white z-10 flex items-center gap-0.5">
+                          <span className="w-1 h-1 bg-white rounded-full" />
+                          AUDIO
+                        </span>
+                      )}
                     </button>
 
                     {/* Duration + delete */}
@@ -242,15 +249,24 @@ export default function Timeline({
                   </div>
 
                   {/* Transition button between scenes */}
-                  {idx < clips.length - 1 && (
-                    <button
-                      onClick={() => onTransitionClick?.(clips[idx + 1].id)}
-                      className="w-5 h-5 rotate-45 bg-[var(--sketch-panel-bg)] border border-[var(--sketch-border-color)]/30 hover:border-[var(--sketch-accent)]/50 flex items-center justify-center transition-all cursor-pointer flex-shrink-0"
-                      title="Transition"
-                    >
-                      <Film className="w-2.5 h-2.5 -rotate-45 text-[var(--sketch-fg-muted)]" />
-                    </button>
-                  )}
+                  {idx < clips.length - 1 && (() => {
+                    const nextClip = clips[idx + 1];
+                    const appliedTransition = transitions?.[nextClip.id] || "fade";
+                    const hasCustomTransition = transitions?.[nextClip.id] !== undefined;
+                    return (
+                      <button
+                        onClick={() => onTransitionClick?.(nextClip.id)}
+                        className={`w-5 h-5 rotate-45 flex items-center justify-center transition-all cursor-pointer flex-shrink-0 ${
+                          hasCustomTransition
+                            ? "bg-[var(--sketch-accent)]/20 border-2 border-[var(--sketch-accent)]"
+                            : "bg-[var(--sketch-panel-bg)] border border-[var(--sketch-border-color)]/30 hover:border-[var(--sketch-accent)]/50"
+                        }`}
+                        title={`Transition: ${appliedTransition}`}
+                      >
+                        <Film className={`w-2.5 h-2.5 -rotate-45 ${hasCustomTransition ? "text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-muted)]"}`} />
+                      </button>
+                    );
+                  })()}
                 </div>
               );
             })}

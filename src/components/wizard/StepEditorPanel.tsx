@@ -379,6 +379,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       isVideo: s.screenshotPath?.includes(".mp4") || 
                s.screenshotPath?.includes("video") ||
                s.screenshotPath?.endsWith("#video"),
+      audioPath: s.audioPath,
     }));
   }, [steps]);
 
@@ -5645,11 +5646,16 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                           {mode === "pixelate" && "Drag to pixelate area"}
                           {mode === "spotlight" && "Drag spotlight area"}
                           {mode === "badge" && "Click to place badge"}
-                          {mode === "magnify" && "Click to place magnifier"}
                           {mode === "filter" && "Select filter from panel"}
-                          {mode === "zoom" && "Click to add zoom point. Use panel to edit."}
-                          {mode === "caption" && "Narration Subtitles"}
                         </div>
+
+                        {/* Audio generated indicator */}
+                        {currentStep?.audioPath && (
+                          <div className="absolute top-2 right-2 bg-blue-600/80 text-white text-[9px] font-bold px-2 py-1 rounded-full backdrop-blur-sm flex items-center gap-1 z-10">
+                            <span className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />
+                            AUDIO
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>
