@@ -84,11 +84,27 @@ export const studioRouter = createRouter({
           .where(eq(users.id, ctx.user!.id));
       }
 
+      let finalTitle = input.topic.slice(0, 100).trim();
+      const existingProjects = await getDb()
+        .select({ title: studioProjects.title })
+        .from(studioProjects)
+        .where(eq(studioProjects.userId, ctx.user!.id));
+
+      const existingTitles = new Set(existingProjects.map((p) => p.title));
+
+      if (existingTitles.has(finalTitle)) {
+        let counter = 1;
+        while (existingTitles.has(`${finalTitle} (${counter})`)) {
+          counter++;
+        }
+        finalTitle = `${finalTitle} (${counter})`;
+      }
+
       const [result] = await getDb()
         .insert(studioProjects)
         .values({
           userId: ctx.user!.id,
-          title: input.topic.slice(0, 100),
+          title: finalTitle,
           topic: input.topic,
           style: input.style,
           targetDuration: input.targetDuration,

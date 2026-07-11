@@ -1,7 +1,7 @@
 import { getDb } from "../queries/connection";
 import { projects, steps, renderJobs, users, studioProjects, studioScenes, studioRenderJobs } from "@db/schema";
 import { eq } from "drizzle-orm";
-import { uploadToR2, downloadFromR2 } from "./r2";
+import { uploadToR2, downloadFromR2, deleteFromR2 } from "./r2";
 import { generateTTSAudio, speedToRate } from "./tts";
 import {
   renderStepVideo,
@@ -23,27 +23,33 @@ import { nanoid } from "nanoid";
 
 const POLL_INTERVAL_MS = 5000;
 // Use globalThis to prevent multiple worker instances across HMR reloads
-const globalKey = "__aivideo_worker_running__";
+const globalKey = "__aivideo_worker_active__";
+const globalRunningKey = "__aivideo_worker_running__";
 let pollCount = 0;
 
 let lastErrorMsg = "";
-
-// Whether the worker is currently running (mirrors the global flag)
-let isRunning = false;
 
 /**
  * Start the background render worker.
  * Polls the render_jobs table for queued jobs and processes them.
  */
 export function startRenderWorker(): void {
-  if ((globalThis as any)[globalKey]) return;
+  // If already active, stop the old poller instance
+  if ((globalThis as any)[globalKey]) {
+    console.log("[Worker] Stopping old render worker instance for hot-reload...");
+    (globalThis as any)[globalRunningKey] = false;
+  }
+
   (globalThis as any)[globalKey] = true;
-  isRunning = true;
+  (globalThis as any)[globalRunningKey] = true;
 
   console.log("[Worker] Render worker started, polling every", POLL_INTERVAL_MS, "ms");
 
   const poll = async () => {
-    if (!isRunning) return;
+    if (!(globalThis as any)[globalRunningKey]) {
+      console.log("[Worker] Old render worker loop detected stop flag, exiting loop.");
+      return;
+    }
 
     try {
       // Run cleanup every 10th poll (~50 seconds)
@@ -75,7 +81,7 @@ export function startRenderWorker(): void {
  * Stop the render worker.
  */
 export function stopRenderWorker(): void {
-  isRunning = false;
+  (globalThis as any)[globalRunningKey] = false;
   (globalThis as any)[globalKey] = false;
   console.log("[Worker] Render worker stopped");
 }
@@ -488,9 +494,10 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
       segmentPaths.unshift(introPath);
       segmentDurations.unshift(introDuration);
       transitions.unshift("fade");
-    } else if (project.introTemplate && project.introText) {
+    } else if (project.introTemplate && project.introTemplate !== "none") {
       const introDuration = project.introDuration || 3.0;
-      const introPath = await renderTextSegment(project.introTemplate, project.introText, outputRes, introDuration);
+      const text = project.introText || project.title || "";
+      const introPath = await renderTextSegment(project.introTemplate, text, outputRes, introDuration);
       segmentPaths.unshift(introPath);
       segmentDurations.unshift(introDuration);
       transitions.unshift("fade");
@@ -507,9 +514,10 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
       segmentPaths.push(outroPath);
       segmentDurations.push(outroDuration);
       transitions.push("fade");
-    } else if (project.outroTemplate && project.outroText) {
+    } else if (project.outroTemplate && project.outroTemplate !== "none") {
       const outroDuration = project.outroDuration || 3.0;
-      const outroPath = await renderTextSegment(project.outroTemplate, project.outroText, outputRes, outroDuration);
+      const text = project.outroText || "Thanks for watching!";
+      const outroPath = await renderTextSegment(project.outroTemplate, text, outputRes, outroDuration);
       segmentPaths.push(outroPath);
       segmentDurations.push(outroDuration);
       transitions.push("fade");
@@ -558,10 +566,16 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
       message: "Uploading final video...",
     });
 
+    if (project && project.finalVideoPath) {
+      await deleteFromR2(project.finalVideoPath).catch((err) => {
+        console.warn("[Worker] Failed to delete old final video:", err.message);
+      });
+    }
+
     const finalBuffer = await fs.readFile(finalVideoPathToUpload);
     const finalKey = await uploadToR2(finalBuffer, {
       folder: `projects/${projectId}`,
-      filename: `final_${projectId}.mp4`,
+      filename: `final_${projectId}_${Date.now()}.mp4`,
       contentType: "video/mp4",
     });
 
@@ -888,17 +902,19 @@ async function processStudioRenderJob(jobId: number, projectId: number): Promise
       transitions.push(scenes[i].transition || "fade");
     }
 
-    if (project.introTemplate && project.introText) {
+    if (project.introTemplate && project.introTemplate !== "none") {
       const introDuration = project.introDuration || 3.0;
-      const introPath = await renderTextSegment(project.introTemplate, project.introText, outputRes, introDuration);
+      const text = project.introText || project.title || "";
+      const introPath = await renderTextSegment(project.introTemplate, text, outputRes, introDuration);
       segmentPaths.unshift(introPath);
       segmentDurations.unshift(introDuration);
       transitions.unshift("fade");
       tempFiles.push(introPath);
     }
-    if (project.outroTemplate && project.outroText) {
+    if (project.outroTemplate && project.outroTemplate !== "none") {
       const outroDuration = project.outroDuration || 3.0;
-      const outroPath = await renderTextSegment(project.outroTemplate, project.outroText, outputRes, outroDuration);
+      const text = project.outroText || "Thanks for watching!";
+      const outroPath = await renderTextSegment(project.outroTemplate, text, outputRes, outroDuration);
       segmentPaths.push(outroPath);
       segmentDurations.push(outroDuration);
       transitions.push("fade");
@@ -946,10 +962,16 @@ async function processStudioRenderJob(jobId: number, projectId: number): Promise
       message: "Uploading final video...",
     });
 
+    if (project && project.finalVideoPath) {
+      await deleteFromR2(project.finalVideoPath).catch((err) => {
+        console.warn("[Worker] Failed to delete old studio final video:", err.message);
+      });
+    }
+
     const finalBuffer = await fs.readFile(finalVideoPathToUpload);
     const finalKey = await uploadToR2(finalBuffer, {
       folder: `studio/${projectId}`,
-      filename: `final_${projectId}.mp4`,
+      filename: `final_${projectId}_${Date.now()}.mp4`,
       contentType: "video/mp4",
     });
 

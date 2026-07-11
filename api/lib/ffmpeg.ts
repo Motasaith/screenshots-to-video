@@ -1231,10 +1231,32 @@ export async function renderTextSegment(
 
   // Windows FFmpeg needs 0xRRGGBB instead of #RRGGBB
   let color1 = "0x1e3a8a"; // blue-900
-  if (template.includes("dark") || template.includes("fade")) {
-    color1 = "0x000000";
-  } else if (template.includes("warm") || template.includes("title")) {
-    color1 = "0x7c2d12"; // orange-900
+  let textColor = "white";
+  switch (template) {
+    case "blue-fade":
+      color1 = "0x1e3a8a";
+      textColor = "white";
+      break;
+    case "dark-minimal":
+      color1 = "0x0a0a0a";
+      textColor = "white";
+      break;
+    case "warm-title":
+      color1 = "0x7c2d12";
+      textColor = "white";
+      break;
+    case "teal-glow":
+      color1 = "0x042f2e";
+      textColor = "white";
+      break;
+    case "purple-haze":
+      color1 = "0x2e1065";
+      textColor = "white";
+      break;
+    case "clean-white":
+      color1 = "0xf8fafc";
+      textColor = "0x1e293b"; // Dark slate
+      break;
   }
 
   // Use the downloaded Roboto font
@@ -1248,7 +1270,7 @@ export async function renderTextSegment(
     "-y",
     "-f", "lavfi", "-i", `color=c=${color1}:s=${outputRes}:d=${durationSec}:r=30`,
     "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-    "-vf", `drawtext=fontfile=${fontFile}:text='${escapedText}':fontcolor=white:fontsize=${fontSize}:x=(w-text_w)/2:y=(h-text_h)/2:shadowcolor=0x000000:shadowx=2:shadowy=2`,
+    "-vf", `drawtext=fontfile=${fontFile}:text='${escapedText}':fontcolor=${textColor}:fontsize=${fontSize}:x=(w-text_w)/2:y=(h-text_h)/2:shadowcolor=0x000000:shadowx=2:shadowy=2`,
     "-c:v", "libx264",
     "-preset", "medium",
     "-crf", "23",

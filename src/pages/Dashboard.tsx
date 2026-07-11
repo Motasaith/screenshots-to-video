@@ -14,12 +14,7 @@ import {
   Settings,
   Sparkles,
   LogOut,
-  Upload,
-  Clapperboard,
-  FileVideo,
-  Monitor,
   X,
-  ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -53,17 +48,10 @@ export default function Dashboard() {
 
   const utils = trpc.useUtils();
   const createProject = trpc.project.create.useMutation();
-  const createStudioProject = trpc.studio.create.useMutation();
   const [selectedRatio, setSelectedRatio] = useState<"16:9" | "9:16" | "1:1" | "4:5">("16:9");
-  const [megaMenuStep, setMegaMenuStep] = useState<"choose" | "configure">("choose");
-  const [selectedProjectType, setSelectedProjectType] = useState<"studio" | "tutorial" | "blank" | "upload">("tutorial");
-  // Studio-specific fields
-  const [studioTopic, setStudioTopic] = useState("");
-  const [studioStyle, setStudioStyle] = useState<"educational" | "entertaining" | "promotional" | "documentary">("educational");
-  const [studioTone, setStudioTone] = useState<"professional" | "casual" | "energetic" | "calm">("professional");
-  const [studioAudience, setStudioAudience] = useState("");
-  const [studioDuration, setStudioDuration] = useState(60);
   const [creatingProject, setCreatingProject] = useState(false);
+  const [newProjectTitle, setNewProjectTitle] = useState("");
+  const [newProjectDesc, setNewProjectDesc] = useState("");
   
   const deleteProjectMutation = trpc.project.delete.useMutation({
     onSuccess: () => {
@@ -122,11 +110,13 @@ export default function Dashboard() {
       const platform: "youtube" | "teams" | "tiktok" | "linkedin" =
         rawPlatform === "instagram" ? "linkedin" : rawPlatform;
       const result = await createProject.mutateAsync({
-        title: "Untitled video",
-        description: "Screenshot tutorial video",
+        title: newProjectTitle.trim() || "Untitled video",
+        description: newProjectDesc.trim() || "Screenshot tutorial video",
         platform,
         aspectRatio: selectedRatio,
       });
+      setNewProjectTitle("");
+      setNewProjectDesc("");
       navigate(`/create/${result.id}/preview`);
     } catch (err) {
       console.error("Failed to create project:", err);
@@ -135,37 +125,10 @@ export default function Dashboard() {
     }
   };
 
-  const handleCreateStudioProject = async () => {
-    if (!studioTopic.trim() || !studioAudience.trim()) return;
-    try {
-      setCreatingProject(true);
-      setShowNewProjectDialog(false);
-      const result = await createStudioProject.mutateAsync({
-        topic: studioTopic.trim(),
-        style: studioStyle,
-        targetDuration: studioDuration,
-        audience: studioAudience.trim(),
-        tone: studioTone,
-        platform: platformForRatio(selectedRatio) as "youtube" | "tiktok" | "linkedin" | "instagram",
-        aspectRatio: selectedRatio as "16:9" | "9:16" | "1:1" | "4:5",
-      });
-      navigate(`/studio/${result.id}/describe`);
-    } catch (err) {
-      console.error("Failed to create studio project:", err);
-    } finally {
-      setCreatingProject(false);
-    }
-  };
-
   const resetMegaMenu = () => {
-    setMegaMenuStep("choose");
-    setSelectedProjectType("tutorial");
-    setStudioTopic("");
-    setStudioAudience("");
-    setStudioStyle("educational");
-    setStudioTone("professional");
-    setStudioDuration(60);
     setSelectedRatio("16:9");
+    setNewProjectTitle("");
+    setNewProjectDesc("");
   };
 
   const openMegaMenu = () => {
@@ -388,10 +351,9 @@ export default function Dashboard() {
           )}
         </main>
       </div>
-
       {/* Upgraded Mega Menu — New Project Dialog */}
       <Dialog open={showNewProjectDialog} onOpenChange={(open) => { if (!open) closeMegaMenu(); else setShowNewProjectDialog(true); }}>
-        <DialogContent showCloseButton={false} className="border border-[var(--space-border)] bg-[var(--space-card)] dark:bg-[#041715] sm:max-w-6xl w-[92vw] h-auto rounded-3xl shadow-2xl p-0 overflow-hidden flex flex-col select-none">
+        <DialogContent showCloseButton={false} className="border border-[var(--space-border)] bg-[var(--space-card)] dark:bg-[#041715] sm:max-w-3xl w-[92vw] h-auto rounded-3xl shadow-2xl p-0 overflow-hidden flex flex-col select-none">
           {/* Header bar */}
           <div className="flex items-center justify-between px-8 py-5 border-b border-[var(--space-border)]">
             <div className="flex items-center gap-3.5">
@@ -400,10 +362,10 @@ export default function Dashboard() {
               </div>
               <div>
                 <h2 className="text-lg font-extrabold text-[var(--space-text)] tracking-tight">
-                  {megaMenuStep === "choose" ? "Create a New Video" : "Configure Your Video"}
+                  Create a New Video
                 </h2>
                 <p className="text-xs text-[var(--space-text-subtle)] font-medium">
-                  {megaMenuStep === "choose" ? "Choose a project type to get started" : "Set up your project details"}
+                  Set up your project details to get started
                 </p>
               </div>
             </div>
@@ -412,18 +374,49 @@ export default function Dashboard() {
             </button>
           </div>
 
-          {/* Step 1: Choose project type */}
-          {megaMenuStep === "choose" && (
-            <div className="p-8 flex flex-col gap-8">
-              {/* Aspect Ratio Selector */}
-              <div className="flex flex-col gap-3 items-center">
-                <span className="text-xs font-mono uppercase tracking-wider text-[var(--space-text-subtle)] font-bold">Select Aspect Ratio</span>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3.5 w-full max-w-3xl p-2 bg-slate-100 dark:bg-slate-900 border border-[var(--space-border)] rounded-3xl">
+          <div className="p-8 flex flex-col gap-6 max-h-[75vh] overflow-y-auto">
+            {/* Grid container */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-start">
+              {/* Left Column: Title & Description */}
+              <div className="space-y-4">
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-bold text-[var(--space-text)]">
+                    Video Title <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newProjectTitle}
+                    onChange={(e) => setNewProjectTitle(e.target.value)}
+                    placeholder="e.g. How to clean Windows temp files"
+                    className="w-full text-sm bg-slate-100/40 dark:bg-slate-950/40 border border-[var(--space-border)] focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/30 rounded-xl px-4 py-2.5 text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)] focus:outline-none transition-all"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-bold text-[var(--space-text)]">
+                    Topic Description <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={newProjectDesc}
+                    onChange={(e) => setNewProjectDesc(e.target.value)}
+                    placeholder="Describe what this video is about, who the audience is, and what they should be able to do after watching."
+                    className="w-full text-sm bg-slate-100/40 dark:bg-slate-950/40 border border-[var(--space-border)] focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/30 rounded-xl px-4 py-3 text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)] focus:outline-none resize-none transition-all"
+                    rows={5}
+                  />
+                </div>
+              </div>
+
+              {/* Right Column: Aspect Ratio */}
+              <div className="flex flex-col gap-3">
+                <label className="text-xs font-bold text-[var(--space-text)]">
+                  Select Aspect Ratio
+                </label>
+                <div className="grid grid-cols-2 gap-3">
                   {([
-                    { ratio: "16:9", label: "Landscape", desc: "YouTube, Widescreen", w: "w-10", h: "h-5" },
-                    { ratio: "9:16", label: "Portrait", desc: "TikTok, Reels", w: "w-5", h: "h-10" },
-                    { ratio: "1:1", label: "Square", desc: "Instagram, Post", w: "w-7", h: "h-7" },
-                    { ratio: "4:5", label: "Vertical", desc: "Facebook, Portrait", w: "w-6", h: "h-8" },
+                    { ratio: "16:9", label: "Landscape", desc: "YouTube, Widescreen" },
+                    { ratio: "9:16", label: "Portrait", desc: "TikTok, Reels" },
+                    { ratio: "1:1", label: "Square", desc: "Instagram, Post" },
+                    { ratio: "4:5", label: "Vertical", desc: "Facebook, Portrait" },
                   ] as const).map((r) => {
                     const isSelected = selectedRatio === r.ratio;
                     return (
@@ -431,287 +424,48 @@ export default function Dashboard() {
                         key={r.ratio}
                         type="button"
                         onClick={() => setSelectedRatio(r.ratio)}
-                        className={`px-5 py-5 rounded-2xl text-sm font-semibold flex flex-col items-center justify-center gap-3 transition-all cursor-pointer border ${
+                        className={`p-4 rounded-2xl text-sm font-semibold flex flex-col items-center justify-center gap-2 transition-all cursor-pointer border ${
                           isSelected
-                            ? "bg-white dark:bg-teal-950/60 border-teal-500/50 dark:border-teal-400/50 text-teal-700 dark:text-teal-400 shadow-md shadow-teal-500/10"
-                            : "bg-white/90 dark:bg-slate-900/30 border-slate-300 dark:border-slate-700/60 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white dark:hover:bg-slate-800/80 shadow-sm"
+                            ? "bg-teal-500/5 dark:bg-teal-955 border-teal-500/50 dark:border-teal-400/50 text-teal-700 dark:text-teal-400 shadow-md shadow-teal-500/5"
+                            : "bg-slate-50/50 dark:bg-slate-900/10 border-[var(--space-border)] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/40 dark:hover:bg-slate-900/30"
                         }`}
                       >
-                        <div className={`flex items-center justify-center w-16 h-16 rounded-xl bg-slate-50 dark:bg-slate-800/50 border ${isSelected ? "border-teal-300 dark:border-teal-500/30" : "border-slate-200 dark:border-[var(--space-border)]"} shrink-0`}>
-                          <span className={`${r.w} ${r.h} border-[3px] ${isSelected ? "border-teal-500 dark:border-teal-400" : "border-slate-400 dark:border-slate-500"} rounded-sm inline-block transition-colors`} />
+                        <div className="flex items-center justify-center w-14 h-14 shrink-0">
+                          {getRatioSvg(r.ratio, isSelected)}
                         </div>
                         <div className="text-center leading-tight">
-                          <div className={`font-bold text-sm ${isSelected ? "text-teal-700 dark:text-teal-400" : "text-slate-800 dark:text-slate-200"}`}>{r.label}</div>
-                          <div className={`text-[11px] font-mono mt-1 ${isSelected ? "text-teal-600/80 dark:text-teal-400/80" : "text-slate-500"}`}>{r.ratio}</div>
+                          <div className={`font-bold text-xs ${isSelected ? "text-teal-700 dark:text-teal-400" : "text-slate-800 dark:text-slate-200"}`}>{r.label}</div>
+                          <div className={`text-[10px] font-mono mt-0.5 ${isSelected ? "text-teal-600/80 dark:text-teal-400/80" : "text-slate-500"}`}>{r.ratio}</div>
                         </div>
                       </button>
                     );
                   })}
                 </div>
               </div>
-
-              {/* Project type cards — 4 main types */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {/* AI Video Studio (Pexels) */}
-                <div
-                  className="p-6 bg-[var(--space-card)] border border-[var(--space-border)] hover:border-teal-500/40 hover:bg-[var(--space-card-hover)] dark:bg-slate-950/40 dark:border-teal-500/10 dark:hover:border-teal-400/40 dark:hover:bg-slate-900/60 rounded-2xl transition-all hover:scale-[1.03] flex flex-col items-center justify-between text-center min-h-[240px] cursor-pointer group hover:shadow-[0_10px_30px_rgba(0,89,82,0.06)] dark:hover:shadow-[0_0_30px_rgba(20,184,166,0.2)]"
-                  onClick={() => { setSelectedProjectType("studio"); setMegaMenuStep("configure"); }}
-                >
-                  <div className="w-14 h-14 rounded-2xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-600 dark:text-teal-400 mb-4 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(20,184,166,0.05)] dark:shadow-[0_0_15px_rgba(20,184,166,0.1)]">
-                    <Clapperboard className="w-6 h-6" />
-                  </div>
-                  <div className="flex-1 flex flex-col justify-center">
-                    <h4 className="text-base font-bold text-[var(--space-text)] group-hover:text-teal-500 dark:group-hover:text-teal-400 transition-colors">AI Video Studio</h4>
-                    <p className="text-xs text-[var(--space-text-muted)] mt-2 leading-relaxed font-medium">
-                      Describe your topic, AI writes the script and finds stock media from Pexels
-                    </p>
-                  </div>
-                  <span className="mt-4 text-[9px] bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20 px-3 py-1 rounded-md font-mono tracking-wider uppercase font-semibold">AI POWERED</span>
-                </div>
-
-                {/* Screenshot Tutorial */}
-                <div
-                  className="p-6 bg-[var(--space-card)] border border-[var(--space-border)] hover:border-blue-500/40 hover:bg-[var(--space-card-hover)] dark:bg-slate-950/40 dark:border-blue-500/10 dark:hover:border-blue-400/40 dark:hover:bg-slate-900/60 rounded-2xl transition-all hover:scale-[1.03] flex flex-col items-center justify-between text-center min-h-[240px] cursor-pointer group hover:shadow-[0_10px_30px_rgba(59,130,246,0.06)] dark:hover:shadow-[0_0_30px_rgba(59,130,246,0.2)]"
-                  onClick={() => { setSelectedProjectType("tutorial"); setMegaMenuStep("configure"); }}
-                >
-                  <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400 mb-4 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(59,130,246,0.05)] dark:shadow-[0_0_15px_rgba(59,130,246,0.1)]">
-                    <Monitor className="w-6 h-6" />
-                  </div>
-                  <div className="flex-1 flex flex-col justify-center">
-                    <h4 className="text-base font-bold text-[var(--space-text)] group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors">Screenshot Tutorial</h4>
-                    <p className="text-xs text-[var(--space-text-muted)] mt-2 leading-relaxed font-medium">
-                      Upload screenshots, annotate with zoom, highlights, blur, and captions
-                    </p>
-                  </div>
-                  <span className="mt-4 text-[9px] bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 px-3 py-1 rounded-md font-mono tracking-wider uppercase font-semibold">EDITOR</span>
-                </div>
-
-                {/* Blank Canvas */}
-                <div
-                  className="p-6 bg-[var(--space-card)] border border-[var(--space-border)] hover:border-purple-500/40 hover:bg-[var(--space-card-hover)] dark:bg-slate-950/40 dark:border-purple-500/10 dark:hover:border-purple-400/40 dark:hover:bg-slate-900/60 rounded-2xl transition-all hover:scale-[1.03] flex flex-col items-center justify-between text-center min-h-[240px] cursor-pointer group hover:shadow-[0_10px_30px_rgba(168,85,247,0.06)] dark:hover:shadow-[0_0_30px_rgba(168,85,247,0.2)]"
-                  onClick={() => { setSelectedProjectType("blank"); setMegaMenuStep("configure"); }}
-                >
-                  <div className="w-14 h-14 rounded-2xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-600 dark:text-purple-400 mb-4 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(168,85,247,0.05)] dark:shadow-[0_0_15px_rgba(168,85,247,0.1)]">
-                    <FileVideo className="w-6 h-6" />
-                  </div>
-                  <div className="flex-1 flex flex-col justify-center">
-                    <h4 className="text-base font-bold text-[var(--space-text)] group-hover:text-purple-500 dark:group-hover:text-purple-400 transition-colors">Blank Canvas</h4>
-                    <p className="text-xs text-[var(--space-text-muted)] mt-2 leading-relaxed font-medium">
-                      Start from scratch with an empty timeline. Add media from Pexels or uploads
-                    </p>
-                  </div>
-                  <span className="mt-4 text-[9px] bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20 px-3 py-1 rounded-md font-mono tracking-wider uppercase font-semibold">FLEXIBLE</span>
-                </div>
-
-                {/* Upload Video */}
-                <div
-                  className="p-6 bg-[var(--space-card)] border border-[var(--space-border)] hover:border-emerald-500/40 hover:bg-[var(--space-card-hover)] dark:bg-slate-950/40 dark:border-emerald-500/10 dark:hover:border-emerald-400/40 dark:hover:bg-slate-900/60 rounded-2xl transition-all hover:scale-[1.03] flex flex-col items-center justify-between text-center min-h-[240px] cursor-pointer group hover:shadow-[0_10px_30px_rgba(16,185,129,0.06)] dark:hover:shadow-[0_0_30px_rgba(16,185,129,0.2)]"
-                  onClick={() => { setSelectedProjectType("upload"); setMegaMenuStep("configure"); }}
-                >
-                  <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4 group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(16,185,129,0.05)] dark:shadow-[0_0_15px_rgba(16,185,129,0.1)]">
-                    <Upload className="w-6 h-6" />
-                  </div>
-                  <div className="flex-1 flex flex-col justify-center">
-                    <h4 className="text-base font-bold text-[var(--space-text)] group-hover:text-emerald-500 dark:group-hover:text-emerald-400 transition-colors">Upload Video</h4>
-                    <p className="text-xs text-[var(--space-text-muted)] mt-2 leading-relaxed font-medium">
-                      Import an existing video file and edit it with the full editor
-                    </p>
-                  </div>
-                  <span className="mt-4 text-[9px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-md font-mono tracking-wider uppercase font-semibold">IMPORT</span>
-                </div>
-              </div>
             </div>
-          )}
 
-          {/* Step 2: Configure project details */}
-          {megaMenuStep === "configure" && (
-            <div className="p-8 flex flex-col gap-6 max-h-[70vh] overflow-y-auto">
-              {/* Back button */}
-              <button
-                type="button"
-                onClick={() => setMegaMenuStep("choose")}
-                className="flex items-center gap-1.5 text-xs text-[var(--space-text-subtle)] hover:text-teal-400 transition-colors self-start font-medium bg-slate-100/60 dark:bg-slate-950/20 px-3.5 py-2 rounded-xl border border-transparent dark:border-[var(--space-border)] cursor-pointer animate-fade-in"
+            {/* Create/Cancel button footer */}
+            <div className="flex justify-end gap-3 pt-4 border-t border-[var(--space-border)] mt-4">
+              <Button
+                variant="ghost"
+                onClick={closeMegaMenu}
+                className="glass-btn glass-btn-secondary px-5 py-2.5 rounded-xl font-semibold text-xs cursor-pointer"
               >
-                <ArrowRight className="w-3.5 h-3.5 rotate-180" />
-                Back to project types
-              </button>
-
-              {/* Project type badge */}
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--space-text-subtle)] font-bold">Selected Type:</span>
-                <span className="text-xs font-bold text-[var(--space-text)] px-3.5 py-1.5 rounded-xl bg-teal-500/10 border border-teal-500/20 text-teal-600 dark:text-teal-400">
-                  {selectedProjectType === "studio" && "🎬 AI Video Studio"}
-                  {selectedProjectType === "tutorial" && "📸 Screenshot Tutorial"}
-                  {selectedProjectType === "blank" && "🎨 Blank Canvas"}
-                  {selectedProjectType === "upload" && "📤 Upload Video"}
-                </span>
-              </div>
-
-              {/* Aspect ratio (always shown) */}
-              <div className="flex flex-col gap-2">
-                <label className="text-xs font-bold text-[var(--space-text)] block">Aspect Ratio</label>
-                <div className="flex flex-wrap items-center gap-3">
-                  {([
-                    { ratio: "16:9", label: "Landscape", w: "w-4", h: "h-2.5" },
-                    { ratio: "9:16", label: "Portrait", w: "w-2.5", h: "h-4" },
-                    { ratio: "1:1", label: "Square", w: "w-3.5", h: "h-3.5" },
-                    { ratio: "4:5", label: "Vertical", w: "w-3", h: "h-3.5" },
-                  ] as const).map((r) => {
-                    const isSelected = selectedRatio === r.ratio;
-                    return (
-                      <button
-                        key={r.ratio}
-                        type="button"
-                        onClick={() => setSelectedRatio(r.ratio)}
-                        className={`px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 border transition-all cursor-pointer ${
-                          isSelected
-                            ? "bg-white dark:bg-teal-500/20 border-teal-500/30 dark:border-teal-500/40 text-teal-600 dark:text-teal-400 shadow-sm"
-                            : "bg-slate-100/60 hover:bg-slate-100 dark:bg-slate-950/20 border-transparent dark:border-[var(--space-border)] text-[var(--space-text-subtle)] dark:hover:bg-[var(--space-border)]/20 hover:text-[var(--space-text)]"
-                        }`}
-                      >
-                        <span className={`${r.w} ${r.h} border border-current rounded-xs inline-block`} />
-                        {r.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Studio-specific fields */}
-              {selectedProjectType === "studio" && (
-                <>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs font-bold text-[var(--space-text)] flex items-center justify-between">
-                      <span>What's your video about? <span className="text-red-500">*</span></span>
-                      <span className="text-[10px] text-[var(--space-text-subtle)] font-normal">Provide a description</span>
-                    </label>
-                    <textarea
-                      value={studioTopic}
-                      onChange={(e) => setStudioTopic(e.target.value)}
-                      placeholder="e.g. How to use VS Code for web development, Top 10 travel destinations in Japan..."
-                      className="w-full text-sm bg-slate-100/40 dark:bg-slate-950/40 border border-[var(--space-border)] focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/30 rounded-xl px-4 py-3 text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)] focus:outline-none resize-none transition-all"
-                      rows={3}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs font-bold text-[var(--space-text)]">Style</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {(["educational", "entertaining", "promotional", "documentary"] as const).map((s) => (
-                          <button
-                            key={s}
-                            type="button"
-                            onClick={() => setStudioStyle(s)}
-                            className={`px-3 py-2 rounded-lg text-xs font-semibold capitalize border transition-all cursor-pointer ${
-                              studioStyle === s
-                                ? "bg-white dark:bg-teal-500/20 border-teal-500/30 dark:border-teal-500/40 text-teal-600 dark:text-teal-400 shadow-sm"
-                                : "bg-slate-100/60 hover:bg-slate-100 dark:bg-slate-950/20 border-transparent dark:border-[var(--space-border)] text-[var(--space-text-subtle)] dark:hover:bg-[var(--space-border)]/20 hover:text-[var(--space-text)]"
-                            }`}
-                          >
-                            {s}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs font-bold text-[var(--space-text)]">Tone</label>
-                      <div className="grid grid-cols-2 gap-2">
-                        {(["professional", "casual", "energetic", "calm"] as const).map((t) => (
-                          <button
-                            key={t}
-                            type="button"
-                            onClick={() => setStudioTone(t)}
-                            className={`px-3 py-2 rounded-lg text-xs font-semibold capitalize border transition-all cursor-pointer ${
-                              studioTone === t
-                                ? "bg-white dark:bg-teal-500/20 border-teal-500/30 dark:border-teal-500/40 text-teal-600 dark:text-teal-400 shadow-sm"
-                                : "bg-slate-100/60 hover:bg-slate-100 dark:bg-slate-950/20 border-transparent dark:border-[var(--space-border)] text-[var(--space-text-subtle)] dark:hover:bg-[var(--space-border)]/20 hover:text-[var(--space-text)]"
-                            }`}
-                          >
-                            {t}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs font-bold text-[var(--space-text)]">
-                        Target Audience <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={studioAudience}
-                        onChange={(e) => setStudioAudience(e.target.value)}
-                        placeholder="e.g. Beginners, developers, students..."
-                        className="w-full text-sm bg-slate-100/40 dark:bg-slate-950/40 border border-[var(--space-border)] focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/30 rounded-xl px-4 py-2.5 text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)] focus:outline-none transition-all"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-2 justify-center">
-                      <div className="flex justify-between items-center">
-                        <label className="text-xs font-bold text-[var(--space-text)]">
-                          Duration
-                        </label>
-                        <span className="text-xs font-bold text-teal-600 dark:text-teal-400 bg-teal-500/10 px-2 py-0.5 rounded border border-teal-500/20">
-                          {studioDuration} seconds
-                        </span>
-                      </div>
-                      <input
-                        type="range"
-                        min={30}
-                        max={300}
-                        step={15}
-                        value={studioDuration}
-                        onChange={(e) => setStudioDuration(Number(e.target.value))}
-                        className="w-full accent-teal-500 mt-2 h-1.5 bg-slate-200 dark:bg-slate-950/40 rounded-lg appearance-none cursor-pointer"
-                      />
-                      <div className="flex justify-between text-[9px] text-[var(--space-text-subtle)] font-mono px-0.5">
-                        <span>30s</span><span>5min</span>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Tutorial/Blank/Upload — just show a description */}
-              {selectedProjectType !== "studio" && (
-                <div className="p-4 bg-teal-500/5 rounded-xl border border-teal-500/20 dark:border-teal-500/10 flex items-start gap-2.5">
-                  <Sparkles className="w-4 h-4 text-teal-500 dark:text-teal-400 shrink-0 mt-0.5" />
-                  <p className="text-xs text-[var(--space-text-muted)] leading-relaxed font-medium">
-                    {selectedProjectType === "tutorial" && "A blank tutorial project will be created. You'll upload screenshots and use the editor to add zoom, highlights, blur, captions, and more."}
-                    {selectedProjectType === "blank" && "An empty project will be created. Use the editor's Pexels media tab to search and import stock footage, or upload your own media."}
-                    {selectedProjectType === "upload" && "A tutorial project will be created. Upload your video file as a screenshot, and the editor will process it as a video clip in the timeline."}
-                  </p>
-                </div>
-              )}
-
-              {/* Create/Cancel button footer */}
-              <div className="flex justify-end gap-3 pt-4 border-t border-[var(--space-border)]">
-                <Button
-                  variant="ghost"
-                  onClick={closeMegaMenu}
-                  className="glass-btn glass-btn-secondary px-5 py-2.5 rounded-xl font-semibold text-xs cursor-pointer"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => {
-                    if (selectedProjectType === "studio") handleCreateStudioProject();
-                    else handleCreateBlankProject();
-                  }}
-                  disabled={selectedProjectType === "studio" && (!studioTopic.trim() || !studioAudience.trim()) || creatingProject}
-                  className="glass-btn glass-btn-primary px-6 py-2.5 rounded-xl font-bold text-xs disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer bg-gradient-to-r from-teal-500 to-emerald-500 border border-teal-400/20 hover:from-teal-400 hover:to-emerald-400 text-white font-extrabold shadow-[0_4px_20px_rgba(45,212,191,0.25)] hover:shadow-[0_0_20px_rgba(45,212,191,0.4)]"
-                >
-                  {creatingProject ? (
-                    <><Clock className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Creating...</>
-                  ) : (
-                    <><Plus className="w-3.5 h-3.5 mr-1.5" /> Create Project</>
-                  )}
-                </Button>
-              </div>
+                Cancel
+              </Button>
+              <Button
+                onClick={handleCreateBlankProject}
+                disabled={newProjectTitle.trim().length < 3 || newProjectDesc.trim().length < 10 || creatingProject}
+                className="glass-btn glass-btn-primary px-6 py-2.5 rounded-xl font-bold text-xs disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer bg-gradient-to-r from-teal-500 to-emerald-500 border border-teal-400/20 hover:from-teal-400 hover:to-emerald-400 text-white font-extrabold shadow-[0_4px_20px_rgba(45,212,191,0.25)] hover:shadow-[0_0_20px_rgba(45,212,191,0.4)]"
+              >
+                {creatingProject ? (
+                  <><Clock className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Creating...</>
+                ) : (
+                  <><Plus className="w-3.5 h-3.5 mr-1.5" /> Create Project</>
+                )}
+              </Button>
             </div>
-          )}
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -754,4 +508,52 @@ export default function Dashboard() {
       </Dialog>
     </div>
   );
+}
+
+function getRatioSvg(ratio: "16:9" | "9:16" | "1:1" | "4:5", isSelected: boolean) {
+  const colorClass = isSelected
+    ? "text-teal-500 dark:text-teal-400"
+    : "text-slate-400 dark:text-slate-500";
+  const bgOpacity = isSelected ? "0.1" : "0.03";
+
+  switch (ratio) {
+    case "16:9":
+      return (
+        <svg className={`w-12 h-12 ${colorClass}`} viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="4" y="9" width="56" height="31.5" rx="3" stroke="currentColor" strokeWidth="2.5" fill="currentColor" fillOpacity={bgOpacity} />
+          <polygon points="28,21 38,25 28,29" fill="currentColor" fillOpacity="0.8" />
+          <path d="M26,41.5 L38,41.5 M32,41.5 L32,45 M24,45 L40,45" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      );
+    case "9:16":
+      return (
+        <svg className={`w-12 h-12 ${colorClass}`} viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="22" y="4" width="20" height="36.5" rx="4" stroke="currentColor" strokeWidth="2.5" fill="currentColor" fillOpacity={bgOpacity} />
+          <line x1="29" y1="8" x2="35" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <polygon points="30,19 37,22 30,25" fill="currentColor" fillOpacity="0.8" />
+          <line x1="28" y1="36.5" x2="36" y2="36.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      );
+    case "1:1":
+      return (
+        <svg className={`w-12 h-12 ${colorClass}`} viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="17" y="9" width="30" height="30" rx="3" stroke="currentColor" strokeWidth="2.5" fill="currentColor" fillOpacity={bgOpacity} />
+          <circle cx="25" cy="17" r="3" fill="currentColor" fillOpacity="0.8" />
+          <path d="M19,34 L27,25 L33,31 L41,22 L45,26" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "4:5":
+      return (
+        <svg className={`w-12 h-12 ${colorClass}`} viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="18" y="6" width="28" height="35" rx="3" stroke="currentColor" strokeWidth="2.5" fill="currentColor" fillOpacity={bgOpacity} />
+          <circle cx="24" cy="12" r="2" fill="currentColor" fillOpacity="0.8" />
+          <line x1="29" y1="12" x2="41" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <rect x="22" y="17" width="20" height="18" rx="1" stroke="currentColor" strokeWidth="1.5" fill="currentColor" fillOpacity="0.1" />
+          <circle cx="24" cy="37.5" r="1.2" fill="currentColor" fillOpacity="0.8" />
+          <circle cx="28" cy="37.5" r="1.2" fill="currentColor" fillOpacity="0.8" />
+        </svg>
+      );
+    default:
+      return null;
+  }
 }

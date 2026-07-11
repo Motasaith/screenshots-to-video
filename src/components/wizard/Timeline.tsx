@@ -6,7 +6,7 @@
  * No playhead, no split, no zoom — just a clean strip like the original.
  */
 
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Trash2,
   Plus,
@@ -71,12 +71,8 @@ export default function Timeline({
   transitions,
   onTransitionClick,
   introTemplate,
-  introText,
-  introVideoPath,
   introDuration,
   outroTemplate,
-  outroText,
-  outroVideoPath,
   outroDuration,
   onIntroClick,
   onOutroClick,
@@ -115,10 +111,19 @@ export default function Timeline({
     if (draggedIndex !== null) {
       e.preventDefault();
       setDragOverIndex(index);
+    } else if (e.dataTransfer?.types?.includes("Files") || e.dataTransfer?.types?.includes("application/x-pexels-media")) {
+      e.preventDefault();
     }
   };
 
   const handleDrop = (e: React.DragEvent, index: number) => {
+    const isPexels = e.dataTransfer?.types?.includes("application/x-pexels-media");
+    const isFiles = e.dataTransfer?.types?.includes("Files");
+    if (isPexels || isFiles) {
+      // Let it bubble up to the track drop handler
+      return;
+    }
+
     e.preventDefault();
     e.stopPropagation();
     if (draggedIndex !== null && draggedIndex !== index) {

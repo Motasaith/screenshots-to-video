@@ -14,6 +14,7 @@ import {
   checkMediaSafety,
 } from "./lib/llm";
 import { generateTTSAudio, speedToRate, getElevenLabsCredits } from "./lib/tts";
+import { uploadToR2 } from "./lib/r2";
 import { detectGibberish } from "./lib/gibberish";
 import fs from "fs/promises";
 
@@ -583,5 +584,105 @@ export const aiRouter = createRouter({
     .input(z.object({}).optional())
     .query(async () => {
       return await getElevenLabsCredits();
+    }),
+
+  generateVoiceForStep: authedQuery
+    .use(rateLimitByUser(60_000, 10))
+    .input(z.object({ stepId: z.number(), voice: z.string(), speed: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const [step] = await getDb()
+        .select()
+        .from(steps)
+        .where(eq(steps.id, input.stepId))
+        .limit(1);
+
+      if (!step) throw new Error("Step not found");
+
+      const [project] = await getDb()
+        .select()
+        .from(projects)
+        .where(
+          and(eq(projects.id, step.projectId), eq(projects.userId, ctx.user!.id))
+        )
+        .limit(1);
+
+      if (!project) throw new Error("Not authorized");
+
+      const script = step.userEditedScript || step.aiScript || step.description;
+      const { filePath, duration } = await generateTTSAudio(script, {
+        voice: input.voice,
+        rate: speedToRate(input.speed),
+      });
+
+      try {
+        const audioBuffer = await fs.readFile(filePath);
+        const audioKey = await uploadToR2(audioBuffer, {
+          folder: `projects/${project.id}/audio`,
+          filename: `step_${step.id}.mp3`,
+          contentType: "audio/mpeg",
+        });
+
+        await getDb()
+          .update(steps)
+          .set({
+            audioPath: audioKey,
+            audioDuration: duration,
+          })
+          .where(eq(steps.id, step.id));
+
+        return { success: true, audioPath: audioKey, duration };
+      } finally {
+        await fs.unlink(filePath).catch(() => {});
+      }
+    }),
+
+  generateAllVoices: authedQuery
+    .use(rateLimitByUser(60_000, 5))
+    .input(z.object({ projectId: z.number(), voice: z.string(), speed: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const [project] = await getDb()
+        .select()
+        .from(projects)
+        .where(
+          and(eq(projects.id, input.projectId), eq(projects.userId, ctx.user!.id))
+        )
+        .limit(1);
+
+      if (!project) throw new Error("Not authorized");
+
+      const projectSteps = await getDb()
+        .select()
+        .from(steps)
+        .where(eq(steps.projectId, input.projectId))
+        .orderBy(steps.order);
+
+      for (const step of projectSteps) {
+        const script = step.userEditedScript || step.aiScript || step.description;
+        const { filePath, duration } = await generateTTSAudio(script, {
+          voice: input.voice,
+          rate: speedToRate(input.speed),
+        });
+
+        try {
+          const audioBuffer = await fs.readFile(filePath);
+          const audioKey = await uploadToR2(audioBuffer, {
+            folder: `projects/${project.id}/audio`,
+            filename: `step_${step.id}.mp3`,
+            contentType: "audio/mpeg",
+          });
+
+          await getDb()
+            .update(steps)
+            .set({
+              audioPath: audioKey,
+              audioDuration: duration,
+            })
+            .where(eq(steps.id, step.id));
+        } finally {
+          await fs.unlink(filePath).catch(() => {});
+        }
+      }
+
+      return { count: projectSteps.length };
     }),
 });

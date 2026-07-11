@@ -72,11 +72,27 @@ export const projectRouter = createRouter({
           .where(eq(users.id, ctx.user!.id));
       }
 
+      let finalTitle = input.title.trim();
+      const existingProjects = await getDb()
+        .select({ title: projects.title })
+        .from(projects)
+        .where(eq(projects.userId, ctx.user!.id));
+
+      const existingTitles = new Set(existingProjects.map((p) => p.title));
+
+      if (existingTitles.has(finalTitle)) {
+        let counter = 1;
+        while (existingTitles.has(`${finalTitle} (${counter})`)) {
+          counter++;
+        }
+        finalTitle = `${finalTitle} (${counter})`;
+      }
+
       const [result] = await getDb()
         .insert(projects)
         .values({
           userId: ctx.user!.id,
-          title: input.title,
+          title: finalTitle,
           description: input.description,
           platform: input.platform,
           aspectRatio: input.aspectRatio || "16:9",

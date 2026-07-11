@@ -49,7 +49,6 @@ import {
   Search as SearchIcon,
   Download,
   Check,
-  Flag,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -467,6 +466,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const generateScript = trpc.ai.generateScript.useMutation();
   const utils = trpc.useUtils();
 
+  const generateVoiceForStep = trpc.ai.generateVoiceForStep.useMutation();
+  const generateAllVoices = trpc.ai.generateAllVoices.useMutation();
+
+  // Voiceover states
+  const [voiceoverViewMode, setVoiceoverViewMode] = useState<"current" | "all">("current");
+  const [testVoiceText, setTestVoiceText] = useState("");
+
   // Safety check state
   const [safetyResult, setSafetyResult] = useState<{ isSafe: boolean; isClear: boolean; reason: string } | null>(null);
 
@@ -476,6 +482,15 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const audioRef = useState(() => new Audio())[0];
+
+  // ── Intro/Outro Content ──
+  const [introOutroMode, setIntroOutroMode] = useState<"intro" | "outro">("intro");
+  const [introTemplate, setIntroTemplate] = useState<string | null>(null);
+  const [introText, setIntroText] = useState("");
+  const [introDuration, setIntroDuration] = useState(3.0);
+  const [outroTemplate, setOutroTemplate] = useState<string | null>(null);
+  const [outroText, setOutroText] = useState("");
+  const [outroDuration, setOutroDuration] = useState(3.0);
 
   const previewVoice = trpc.ai.previewVoice.useMutation();
   const credits = trpc.ai.elevenLabsCredits.useQuery(undefined, {
@@ -517,7 +532,41 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     if (project?.speed) {
       setVoiceSpeed(project.speed);
     }
-  }, [project?.id, project?.voice, project?.speed]);
+    if (project) {
+      setIntroTemplate(project.introTemplate || "none");
+      setIntroText(project.introText || "");
+      setIntroDuration(project.introDuration || 3.0);
+      setOutroTemplate(project.outroTemplate || "none");
+      setOutroText(project.outroText || "");
+      setOutroDuration(project.outroDuration || 3.0);
+    }
+  }, [project]);
+
+  // Autosave project settings (intro/outro) to backend
+  useEffect(() => {
+    if (projectIdNum <= 0 || !project) return;
+    const timer = setTimeout(() => {
+      if (
+        introTemplate !== project.introTemplate ||
+        introText !== project.introText ||
+        introDuration !== project.introDuration ||
+        outroTemplate !== project.outroTemplate ||
+        outroText !== project.outroText ||
+        outroDuration !== project.outroDuration
+      ) {
+        updateProject.mutate({
+          id: projectIdNum,
+          introTemplate: introTemplate || "none",
+          introText,
+          introDuration,
+          outroTemplate: outroTemplate || "none",
+          outroText,
+          outroDuration,
+        });
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [introTemplate, introText, introDuration, outroTemplate, outroText, outroDuration, projectIdNum, project]);
 
   // Render Popup Modal states
   const [showRenderModal, setShowRenderModal] = useState(false);
@@ -1452,19 +1501,45 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     utils.project.getById.invalidate({ id: projectIdNum });
   };
 
-  // Save ALL steps' annotations (used before rendering to ensure nothing is lost)
+  // Save ALL steps' annotations & transitions (used before rendering to ensure nothing is lost)
   const handleSaveAllSteps = async () => {
-    if (!project?.steps) return;
-    for (const step of project.steps) {
-      const ann = annotations[step.id];
-      if (!ann) continue;
-      const payload: Record<string, unknown> = {};
-      fieldsList.forEach((f) => {
-        const v = ann[f as keyof StepAnnotation];
-        if (v !== undefined) payload[f] = v;
-      });
-      await updateStep.mutateAsync({ id: step.id, ...payload } as Parameters<typeof updateStep.mutateAsync>[0]);
+    // 1. Save all step-level data (annotations and transitions)
+    if (project?.steps) {
+      for (const step of project.steps) {
+        const ann = annotations[step.id];
+        const transition = props.stepTransitions?.[step.id] || props.globalTransition || "fade";
+        const payload: Record<string, unknown> = {
+          transition,
+        };
+        if (ann) {
+          fieldsList.forEach((f) => {
+            const v = ann[f as keyof StepAnnotation];
+            if (v !== undefined) payload[f] = v;
+          });
+        }
+        await updateStep.mutateAsync({ id: step.id, ...payload } as Parameters<typeof updateStep.mutateAsync>[0]);
+      }
     }
+
+    // 2. Save project-level settings (intro, outro, transition duration, captions settings)
+    if (projectIdNum > 0) {
+      await updateProject.mutateAsync({
+        id: projectIdNum,
+        transitionDuration: props.transitionDuration || 0.5,
+        introTemplate: introTemplate || "none",
+        introText: introText || "",
+        introDuration: introDuration || 3.0,
+        outroTemplate: outroTemplate || "none",
+        outroText: outroText || "",
+        outroDuration: outroDuration || 3.0,
+        captionsEnabled: !!props.captionsEnabled,
+        captionStyle: props.captionStyle || "standard",
+        captionSize: props.captionSize || "medium",
+        captionPosition: props.captionPosition || "bottom",
+        captionColor: props.captionColor || "#FFFFFF",
+      });
+    }
+
     utils.project.getById.invalidate({ id: projectIdNum });
   };
 
@@ -3776,15 +3851,15 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       : props.globalTransition;
 
     return (
-      <div className="space-y-4">
+      <div className="space-y-5">
         {isSpecificClip && (
-          <div className="flex items-center justify-between bg-blue-50/50 dark:bg-blue-900/20 p-2 rounded-lg border border-blue-100 dark:border-blue-800">
-            <span className="text-xs font-semibold text-blue-800 dark:text-blue-300">
-              Editing transition for {clipTitle}
+          <div className="flex items-center justify-between bg-blue-500/5 dark:bg-blue-500/10 p-2.5 rounded-xl border border-blue-500/20 dark:border-blue-500/10">
+            <span className="text-xs font-bold text-blue-700 dark:text-blue-400">
+              Editing for {clipTitle}
             </span>
             <button 
               onClick={() => setActiveTransitionClipId(null)}
-              className="text-[10px] bg-blue-100 dark:bg-blue-800 hover:bg-blue-200 dark:hover:bg-blue-700 text-blue-700 dark:text-blue-200 px-2 py-1 rounded transition-colors"
+              className="text-[10px] font-extrabold bg-blue-500/10 hover:bg-blue-500/20 dark:hover:bg-blue-500/30 text-blue-600 dark:text-blue-400 px-2 py-1 rounded-md transition-colors cursor-pointer"
             >
               Back to Global
             </button>
@@ -3792,40 +3867,57 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         )}
 
         <div>
-          <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-2">
+          <Label className="text-xs font-bold text-[var(--sketch-fg-muted)] block mb-3">
             {isSpecificClip ? "Transition Type" : "Global Transition"}
           </Label>
-          <div className="grid grid-cols-2 gap-1.5">
-            {transitionTypes.map((t) => (
-              <button
-                key={t.value}
-                onClick={() => {
-                  if (isSpecificClip && clipIndex >= 0) {
-                    props.onStepTransitionChange?.(activeTransitionClipId, t.value);
-                  } else {
-                    props.onGlobalTransitionChange?.(t.value);
-                  }
-                }}
-                className={`py-1.5 px-2 border text-center transition-all text-[10px] font-semibold rounded-md cursor-pointer ${currentTransitionValue === t.value
-                    ? "border-blue-600 bg-blue-600/10 text-blue-600 font-bold"
-                    : "border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg-muted)] hover:bg-[var(--sketch-fg-subtle)]/10"
+          <div className="grid grid-cols-2 gap-3">
+            {transitionTypes.map((t) => {
+              const isSelected = currentTransitionValue === t.value;
+              return (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => {
+                    if (isSpecificClip && clipIndex >= 0) {
+                      props.onStepTransitionChange?.(activeTransitionClipId, t.value);
+                    } else {
+                      props.onGlobalTransitionChange?.(t.value);
+                    }
+                  }}
+                  className={`p-3 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer ${
+                    isSelected
+                      ? "bg-blue-500/10 border-blue-500 text-blue-600 dark:text-blue-400 shadow-md shadow-blue-500/5"
+                      : "bg-slate-50/50 dark:bg-slate-900/10 border-[var(--sketch-border-color)]/20 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/40"
                   }`}
-              >
-                {t.label}
-              </button>
-            ))}
+                >
+                  <div className="flex items-center justify-center h-10 w-full shrink-0">
+                    {getTransitionSvg(t.value)}
+                  </div>
+                  <span className="text-[10px] font-bold tracking-wide">{t.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        <div className="pt-2 border-t border-[var(--sketch-border-color)]/20">
-          <div className="flex justify-between items-center mb-1">
-            <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)]">Duration</Label>
-            <span className="font-mono text-[11px] font-bold text-[var(--sketch-accent)]">
-              {(props.transitionDuration ?? 0.5).toFixed(1)}s
-            </span>
+        <div className="pt-4 border-t border-[var(--sketch-border-color)]/20">
+          <div className="flex justify-between items-center mb-2">
+            <Label className="text-xs font-bold text-[var(--sketch-fg-muted)]">Duration</Label>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number"
+                min={0.3}
+                max={2.0}
+                step={0.01}
+                value={props.transitionDuration ?? 0.5}
+                onChange={(e) => props.onTransitionDurationChange?.(Number(e.target.value))}
+                className="w-14 text-right bg-slate-100/50 dark:bg-slate-950/50 border border-[var(--sketch-border-color)]/20 rounded px-1.5 py-0.5 text-xs font-mono text-[var(--sketch-fg)] focus:outline-none"
+              />
+              <span className="text-[10px] font-semibold text-[var(--sketch-fg-subtle)]">s</span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
-            <span className="font-mono text-[9px] text-[var(--sketch-fg-subtle)] w-6">0.3s</span>
+            <span className="font-mono text-[9px] text-[var(--sketch-fg-subtle)] w-6 text-left">0.3s</span>
             <input
               type="range"
               min={0.3}
@@ -3833,9 +3925,9 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               step={0.1}
               value={props.transitionDuration ?? 0.5}
               onChange={(e) => props.onTransitionDurationChange?.(Number(e.target.value))}
-              className="flex-1 h-1 bg-[var(--sketch-fg-subtle)]/10 appearance-none cursor-pointer accent-[var(--sketch-accent)]"
+              className="flex-1 h-1 bg-[var(--sketch-fg-subtle)]/15 appearance-none cursor-pointer accent-blue-500"
             />
-            <span className="font-mono text-[9px] text-[var(--sketch-fg-subtle)] w-6">2.0s</span>
+            <span className="font-mono text-[9px] text-[var(--sketch-fg-subtle)] w-6 text-right">2.0s</span>
           </div>
         </div>
       </div>
@@ -3843,13 +3935,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   };
 
   // ── Intro/Outro Content ──
-  const [introOutroMode, setIntroOutroMode] = useState<"intro" | "outro">("intro");
-  const [introTemplate, setIntroTemplate] = useState<string | null>(null);
-  const [introText, setIntroText] = useState("");
-  const [introDuration, setIntroDuration] = useState(3.0);
-  const [outroTemplate, setOutroTemplate] = useState<string | null>(null);
-  const [outroText, setOutroText] = useState("");
-  const [outroDuration, setOutroDuration] = useState(3.0);
 
   const renderIntroOutroContent = () => {
     return (
@@ -5957,7 +6042,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
             outroTemplate={outroTemplate}
             outroText={outroText}
             outroDuration={outroDuration}
-            onIntroClick={() => toggleRightTab("introoutro")}
+            onIntroClick={() => { setIntroOutroMode("intro"); toggleRightTab("introoutro"); }}
             onOutroClick={() => { setIntroOutroMode("outro"); toggleRightTab("introoutro"); }}
           />
         </div>
@@ -6346,4 +6431,72 @@ async function uploadFile(
   }
 
   return response.json();
+}
+
+function getTransitionSvg(value: TransitionType) {
+  switch (value) {
+    case "none":
+      return (
+        <svg className="w-16 h-10 text-slate-400 dark:text-slate-500" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="8" y="6" width="48" height="28" rx="6" stroke="currentColor" strokeWidth="1.5" fill="currentColor" fillOpacity="0.05" />
+        </svg>
+      );
+    case "dissolve":
+      return (
+        <svg className="w-16 h-10 text-blue-500 dark:text-blue-400" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="8" y="6" width="48" height="28" rx="6" stroke="currentColor" strokeWidth="1.5" fill="currentColor" fillOpacity="0.05" />
+          <path d="M26,12 L26,28 M38,12 L38,28" stroke="currentColor" strokeWidth="1.5" strokeDasharray="2 2" />
+          <rect x="27" y="7" width="10" height="26" fill="currentColor" fillOpacity="0.15" />
+        </svg>
+      );
+    case "fade":
+      return (
+        <svg className="w-16 h-10 text-slate-500 dark:text-slate-400" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="8" y="6" width="48" height="28" rx="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
+          <defs>
+            <linearGradient id="fadeGrad" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="currentColor" stopOpacity="0.8" />
+              <stop offset="100%" stopColor="currentColor" stopOpacity="0.1" />
+            </linearGradient>
+          </defs>
+          <rect x="9" y="7" width="46" height="26" rx="5" fill="url(#fadeGrad)" />
+        </svg>
+      );
+    case "slide-left":
+      return (
+        <svg className="w-16 h-10 text-slate-500 dark:text-slate-400" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="8" y="6" width="48" height="28" rx="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
+          <rect x="9" y="7" width="20" height="26" fill="currentColor" fillOpacity="0.25" />
+          <path d="M44,20 L32,20 M36,16 L32,20 L36,24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M48,20 L46,20" stroke="currentColor" strokeWidth="1.5" strokeDasharray="1.5 1.5" />
+        </svg>
+      );
+    case "slide-right":
+      return (
+        <svg className="w-16 h-10 text-slate-500 dark:text-slate-400" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="8" y="6" width="48" height="28" rx="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
+          <rect x="35" y="7" width="20" height="26" fill="currentColor" fillOpacity="0.25" />
+          <path d="M20,20 L32,20 M28,16 L32,20 L28,24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M16,20 L18,20" stroke="currentColor" strokeWidth="1.5" strokeDasharray="1.5 1.5" />
+        </svg>
+      );
+    case "slide-up":
+      return (
+        <svg className="w-16 h-10 text-slate-500 dark:text-slate-400" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="8" y="6" width="48" height="28" rx="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
+          <rect x="9" y="7" width="46" height="12" fill="currentColor" fillOpacity="0.25" />
+          <path d="M32,30 L32,18 M28,22 L32,18 L36,22" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "flip":
+      return (
+        <svg className="w-16 h-10 text-slate-500 dark:text-slate-400" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="8" y="6" width="48" height="28" rx="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
+          <path d="M32,12 C38,12 42,16 42,20 C42,24 38,28 32,28 C26,28 22,24 22,20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="2 2" />
+          <path d="M20,17 L22,21 L26,19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    default:
+      return null;
+  }
 }

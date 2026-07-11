@@ -4,10 +4,6 @@ import { useWizardStore, type AspectRatio } from "@/hooks/useWizardStore";
 import { trpc } from "@/providers/trpc";
 import { motion } from "framer-motion";
 import {
-  Youtube,
-  MessageSquare,
-  Smartphone,
-  Linkedin,
   Sparkles,
   ChevronRight,
   ChevronLeft,
@@ -18,12 +14,6 @@ import { Button } from "@/components/ui/button";
 
 type Platform = "youtube" | "teams" | "tiktok" | "linkedin";
 
-const platforms: { value: Platform; label: string; aspect: string; icon: typeof Youtube }[] = [
-  { value: "youtube", label: "YouTube", aspect: "16:9", icon: Youtube },
-  { value: "teams", label: "Microsoft Teams", aspect: "16:9", icon: MessageSquare },
-  { value: "tiktok", label: "TikTok", aspect: "9:16", icon: Smartphone },
-  { value: "linkedin", label: "LinkedIn", aspect: "1:1", icon: Linkedin },
-];
 
 const aspectRatios: { value: AspectRatio; label: string; desc: string; iconW: string; iconH: string }[] = [
   { value: "16:9", label: "Widescreen", desc: "YouTube, Vimeo", iconW: "w-6", iconH: "h-3.5" },
@@ -44,6 +34,12 @@ export default function StepSetup() {
   const [platform, setPlatform] = useState<Platform>(setup.platform);
   const [aspectRatio, setAspectRatio] = useState<AspectRatio>(setup.aspectRatio || "16:9");
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  // Automatically derive platform based on selected aspect ratio
+  useEffect(() => {
+    const rawPlatform = aspectRatio === "16:9" ? "youtube" : aspectRatio === "9:16" ? "tiktok" : "linkedin";
+    setPlatform(rawPlatform);
+  }, [aspectRatio]);
 
   // Sync local state to store so AIGuide can read it in real-time
   useEffect(() => {
@@ -190,70 +186,29 @@ export default function StepSetup() {
             )}
           </div>
 
-          {/* Right Column: Platform & Aspect Ratio */}
+          {/* Right Column: Aspect Ratio & Actions */}
           <div className="space-y-6">
-            <div id="setup-platform" className="scroll-mt-6">
-              <label className="font-body text-sm font-semibold mb-3 block text-[var(--sketch-fg)]">
-                Target Platform
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                {platforms.map((p) => {
-                  const Icon = p.icon;
-                  const isActive = platform === p.value;
-                  return (
-                    <button
-                      key={p.value}
-                      onClick={() => setPlatform(p.value)}
-                      className={`flex items-center gap-3 p-4 border-2 transition-all text-left ${
-                        isActive
-                          ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/10 shadow-[4px_4px_0px_0px_#FBBF24]"
-                          : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
-                      }`}
-                      style={{ borderRadius: isActive ? "255px 15px 225px 15px/15px 225px 15px 255px" : "12px" }}
-                    >
-                      <Icon
-                        className={`w-5 h-5 flex-shrink-0 ${
-                          isActive ? "text-[var(--sketch-fg)]" : "text-[var(--sketch-fg-subtle)]"
-                        }`}
-                      />
-                      <div className="flex flex-col">
-                        <span
-                          className={`font-body text-sm font-semibold leading-none ${
-                            isActive ? "text-[var(--sketch-fg)]" : "text-[var(--sketch-fg-subtle)]"
-                          }`}
-                        >
-                          {p.label}
-                        </span>
-                        <span className="font-mono text-[10px] text-[var(--sketch-fg-muted)] mt-1.5">
-                          Aspect: {p.aspect}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
             <div id="setup-aspect" className="scroll-mt-6">
               <label className="font-body text-sm font-semibold mb-3 block text-[var(--sketch-fg)]">
                 Aspect Ratio
               </label>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 {aspectRatios.map((ar) => {
                   const isActive = aspectRatio === ar.value;
                   return (
                     <button
                       key={ar.value}
+                      type="button"
                       onClick={() => setAspectRatio(ar.value)}
-                      className={`flex flex-col items-center gap-2 p-3 border-2 transition-all text-center ${
+                      className={`flex flex-col items-center gap-2 p-4 border-2 transition-all text-center ${
                         isActive
                           ? "border-[var(--sketch-border-color)] bg-[#FBBF24]/10 shadow-[2px_2px_0px_0px_#FBBF24]"
                           : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
                       }`}
                       style={{ borderRadius: isActive ? "12px 4px 12px 4px/4px 12px 4px 12px" : "8px" }}
                     >
-                      <div className="h-8 flex items-center justify-center">
-                        <div className={`border-2 border-current rounded-sm ${ar.iconW} ${ar.iconH} ${isActive ? "text-[var(--sketch-fg)]" : "text-[var(--sketch-fg-subtle)]"}`} />
+                      <div className="flex items-center justify-center w-14 h-14 shrink-0">
+                        {getRatioSvg(ar.value, isActive)}
                       </div>
                       <div className="flex flex-col">
                         <span className={`font-body text-sm font-bold ${isActive ? "text-[var(--sketch-fg)]" : "text-[var(--sketch-fg-subtle)]"}`}>
@@ -268,43 +223,90 @@ export default function StepSetup() {
                 })}
               </div>
             </div>
-          </div>
-        </div>
 
-        {errors.submit && (
-          <p className="font-body text-xs text-red-600 mt-4">{errors.submit}</p>
-        )}
-
-        {/* Bottom Actions Row */}
-        <div className="flex gap-4 mt-6 max-w-xl">
-          <Button
-            variant="ghost"
-            type="button"
-            onClick={() => navigate("/dashboard")}
-            className="sketch-btn-ghost flex-1"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            Dashboard
-          </Button>
-          <Button
-            onClick={handleContinue}
-            disabled={createProject.isPending}
-            className="sketch-btn-primary flex-[2]"
-          >
-            {createProject.isPending ? (
-              <span className="flex items-center gap-2 justify-center">
-                <Sparkles className="w-4 h-4 animate-spin" />
-                Creating...
-              </span>
-            ) : (
-              <span className="flex items-center gap-2 justify-center">
-                Continue
-                <ChevronRight className="w-4 h-4" />
-              </span>
+            {errors.submit && (
+              <p className="font-body text-xs text-red-600 mt-2">{errors.submit}</p>
             )}
-          </Button>
+
+            {/* Actions Row aligned under Aspect Ratio */}
+            <div className="flex gap-3 mt-6">
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() => navigate("/dashboard")}
+                className="sketch-btn-ghost flex-1"
+              >
+                <ChevronLeft className="w-4 h-4" />
+                Back
+              </Button>
+              <Button
+                onClick={handleContinue}
+                disabled={createProject.isPending}
+                className="sketch-btn-primary flex-[2]"
+              >
+                {createProject.isPending ? (
+                  <span className="flex items-center gap-2 justify-center">
+                    <Sparkles className="w-4 h-4 animate-spin" />
+                    Creating...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2 justify-center">
+                    Continue
+                    <ChevronRight className="w-4 h-4" />
+                  </span>
+                )}
+            </div>
+          </div>
         </div>
       </motion.div>
     </div>
   );
+}
+
+function getRatioSvg(ratio: AspectRatio, isActive: boolean) {
+  const colorClass = isActive
+    ? "text-[var(--sketch-fg)]"
+    : "text-[var(--sketch-fg-subtle)]";
+  const bgOpacity = isActive ? 0.05 : 0.02;
+
+  switch (ratio) {
+    case "16:9":
+      return (
+        <svg className={`w-12 h-12 ${colorClass}`} viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="4" y="9" width="56" height="31.5" rx="3" stroke="currentColor" strokeWidth="2.5" fill="currentColor" fillOpacity={bgOpacity} />
+          <polygon points="28,21 38,25 28,29" fill="currentColor" fillOpacity="0.8" />
+          <path d="M26,41.5 L38,41.5 M32,41.5 L32,45 M24,45 L40,45" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      );
+    case "9:16":
+      return (
+        <svg className={`w-12 h-12 ${colorClass}`} viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="22" y="4" width="20" height="36.5" rx="4" stroke="currentColor" strokeWidth="2.5" fill="currentColor" fillOpacity={bgOpacity} />
+          <line x1="29" y1="8" x2="35" y2="8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <polygon points="30,19 37,22 30,25" fill="currentColor" fillOpacity="0.8" />
+          <line x1="28" y1="36.5" x2="36" y2="36.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      );
+    case "1:1":
+      return (
+        <svg className={`w-12 h-12 ${colorClass}`} viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="17" y="9" width="30" height="30" rx="3" stroke="currentColor" strokeWidth="2.5" fill="currentColor" fillOpacity={bgOpacity} />
+          <circle cx="25" cy="17" r="3" fill="currentColor" fillOpacity="0.8" />
+          <path d="M19,34 L27,25 L33,31 L41,22 L45,26" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      );
+    case "4:5":
+      return (
+        <svg className={`w-12 h-12 ${colorClass}`} viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="18" y="6" width="28" height="35" rx="3" stroke="currentColor" strokeWidth="2.5" fill="currentColor" fillOpacity={bgOpacity} />
+          <circle cx="24" cy="12" r="2" fill="currentColor" fillOpacity="0.8" />
+          <line x1="29" y1="12" x2="41" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <rect x="22" y="17" width="20" height="18" rx="1" stroke="currentColor" strokeWidth="1.5" fill="currentColor" fillOpacity={0.1} />
+          <circle cx="24" cy="37.5" r="1.2" fill="currentColor" fillOpacity="0.8" />
+          <circle cx="28" cy="37.5" r="1.2" fill="currentColor" fillOpacity="0.8" />
+        </svg>
+      );
+    default:
+      return null;
+  }
 }
