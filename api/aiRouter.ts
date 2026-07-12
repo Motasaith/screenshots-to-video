@@ -6,7 +6,6 @@ import { eq, and } from "drizzle-orm";
 import {
   isLLMConfigured,
   generateTutorialScript,
-  generateHybridScripts,
   validateProjectSetup,
   getGuideMessage,
   getChatMessageResponse,
@@ -183,41 +182,31 @@ export const aiRouter = createRouter({
         );
       }
 
+      // Reject empty or default-pattern descriptions.
+      const emptyOrPlaceholderSteps = projectSteps.filter(
+        (s) => !s.description || !s.description.trim() || /^scene\s+\d+$/i.test(s.description.trim())
+      );
+      if (emptyOrPlaceholderSteps.length > 0) {
+        throw new Error(
+          `Step ${emptyOrPlaceholderSteps[0].order} has no description. Please write a description for this step first.`
+        );
+      }
+
       let scripts: string[];
 
       if (isLLMConfigured()) {
         try {
-          // Use hybrid generation: vision model for steps with screenshots,
-          // text model for steps without. This supports mixed projects
-          // (screenshots + video clips + text-only steps).
-          const hasScreenshots = projectSteps.some(
-            (s) => s.screenshotPath && !s.screenshotPath.startsWith("blob:")
+          console.log("[generateScript] Using text-only script generation with title and description");
+          scripts = await generateTutorialScript(
+            project.title,
+            project.description || null,
+            project.platform,
+            projectSteps.map((s) => ({
+              order: s.order,
+              description: s.description,
+              screenshotPath: s.screenshotPath || undefined,
+            }))
           );
-
-          if (hasScreenshots) {
-            console.log("[generateScript] Using hybrid vision+text generation");
-            scripts = await generateHybridScripts(
-              project.title,
-              project.description || null,
-              project.platform,
-              projectSteps.map((s) => ({
-                order: s.order,
-                description: s.description,
-                screenshotPath: s.screenshotPath || undefined,
-              }))
-            );
-          } else {
-            console.log("[generateScript] No screenshots, using text-only generation");
-            scripts = await generateTutorialScript(
-              project.description || project.title,
-              project.platform,
-              projectSteps.map((s) => ({
-                order: s.order,
-                description: s.description,
-                screenshotPath: s.screenshotPath || undefined,
-              }))
-            );
-          }
         } catch (err) {
           console.warn("LLM script generation failed, using fallback:", err);
           const fallback =
@@ -296,40 +285,33 @@ export const aiRouter = createRouter({
         );
       }
 
+      // Reject empty or default-pattern description.
+      if (!step.description || !step.description.trim() || /^scene\s+\d+$/i.test(step.description.trim())) {
+        throw new Error(
+          `Step ${step.order} has no description. Please write a description for this step first.`
+        );
+      }
+
       let newScript: string;
 
       if (isLLMConfigured()) {
         try {
-          const hasScreenshot = step.screenshotPath && !step.screenshotPath.startsWith("blob:");
-
-          if (hasScreenshot) {
-            // Use vision model to look at the screenshot and write the script
-            const { generateVisionScript } = await import("./lib/llm");
-            newScript = await generateVisionScript(
-              step.screenshotPath!,
-              step.description || null,
-              project.description || project.title,
-              project.platform,
-              step.order,
-              1 // Single step regeneration
-            );
-          } else {
-            // Text-only: regenerate using the text model
-            const allScripts = await generateTutorialScript(
-              project.description || project.title,
-              project.platform,
-              [
-                {
-                  order: step.order,
-                  description: step.description,
-                  screenshotPath: step.screenshotPath || undefined,
-                },
-              ]
-            );
-            newScript =
-              allScripts[0] ||
-              `Proceed with step ${step.order} as shown on screen.`;
-          }
+          console.log("[regenerateStepScript] Using text-only generation with title and description");
+          const allScripts = await generateTutorialScript(
+            project.title,
+            project.description || null,
+            project.platform,
+            [
+              {
+                order: step.order,
+                description: step.description,
+                screenshotPath: step.screenshotPath || undefined,
+              },
+            ]
+          );
+          newScript =
+            allScripts[0] ||
+            `Proceed with step ${step.order} as shown on screen.`;
         } catch (err) {
           console.warn("LLM single-step regeneration failed:", err);
           newScript = `${step.description}.`;

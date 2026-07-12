@@ -79,17 +79,12 @@ export default function StepRender() {
   return (
     <div className="max-w-2xl mx-auto text-center">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="relative inline-block">
-          <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
-            Step 6 of 7
-          </span>
-          {!isComplete && !isError && (
-            <span className="font-hand text-xl text-[var(--sketch-fg-muted)] absolute -top-7 left-36 rotate-[3deg] animate-float hidden sm:block">
-              Generating magic... ✨
-            </span>
-          )}
-        </div>
-        <h2 className="font-body font-bold text-3xl mt-3 tracking-tight text-[var(--sketch-fg)]">
+        {!isComplete && !isError && (
+          <div className="font-hand text-xl text-[var(--sketch-fg-muted)] animate-float mb-4">
+            Generating magic... ✨
+          </div>
+        )}
+        <h2 className="font-body font-bold text-3xl tracking-tight text-[var(--sketch-fg)]">
           {isComplete
             ? "Video complete!"
             : isError

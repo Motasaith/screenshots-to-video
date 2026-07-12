@@ -42,15 +42,12 @@ export default function StudioExport() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <div className="relative">
-          <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
-            Step 7 of 7
-          </span>
-          <span className="font-hand text-lg text-[var(--sketch-fg-muted)] absolute -top-6 left-32 rotate-[-5deg] animate-float hidden sm:block">
+        <div className="relative inline-block mb-1">
+          <span className="font-hand text-lg text-[var(--sketch-fg-muted)] animate-float hidden sm:block">
             Your video is ready! 🎉
           </span>
         </div>
-        <h2 className="font-body font-bold text-3xl mt-3 tracking-tight text-[var(--sketch-fg)]">
+        <h2 className="font-body font-bold text-3xl tracking-tight text-[var(--sketch-fg)]">
           Export & Download
         </h2>
         <p className="font-body text-[var(--sketch-fg-muted)] mt-2">

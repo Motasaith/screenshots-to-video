@@ -77,7 +77,8 @@ export async function chatCompletion(
  * Generate a narration script for tutorial steps.
  */
 export async function generateTutorialScript(
-  description: string,
+  title: string,
+  description: string | null,
   platform: string,
   steps: Array<{ order: number; description: string; screenshotPath?: string }>
 ): Promise<string[]> {
@@ -87,7 +88,8 @@ export async function generateTutorialScript(
 
   const prompt = `You are a friendly YouTuber recording a screen tutorial voiceover. Write the narration for each step EXACTLY as a real person would say it out loud — this text goes straight into a text-to-speech engine.
 
-Video topic: ${description}
+Video Title: ${title}
+Video Description: ${description || "None provided"}
 Target platform: ${platform}
 
 How a real tutorial narrator talks:
@@ -412,7 +414,8 @@ Ensure the "scripts" array has exactly ${totalSteps} items.`;
     console.error("[HybridScript] Holistic generation failed:", err);
     // Fallback to text-only generation if JSON parsing fails or model errors
     const fallbackScripts = await generateTutorialScript(
-      projectDescription || projectTitle,
+      projectTitle,
+      projectDescription || null,
       platform,
       steps.map(s => ({ order: s.order, description: s.description, screenshotPath: s.screenshotPath || undefined }))
     );

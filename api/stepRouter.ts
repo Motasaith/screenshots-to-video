@@ -13,7 +13,7 @@ export const stepRouter = createRouter({
       z.object({
         projectId: z.number(),
         order: z.number(),
-        description: z.string().min(1).max(500),
+        description: z.string().max(500).default(""),
         screenshotPath: z.string().optional(),
         isSafe: z.boolean().optional(),
         safetyReason: z.string().optional(),

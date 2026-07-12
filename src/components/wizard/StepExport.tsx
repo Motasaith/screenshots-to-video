@@ -110,15 +110,12 @@ export default function StepExport() {
   return (
     <div className="w-full max-w-6xl mx-auto px-4">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="relative">
-          <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
-            Final Step
-          </span>
-          <span className="font-hand text-xl text-[var(--sketch-fg-muted)] absolute -top-7 left-32 rotate-[-4deg] animate-float hidden sm:block">
+        <div className="relative inline-block mb-1">
+          <span className="font-hand text-xl text-[var(--sketch-fg-muted)] animate-float hidden sm:block">
             Ta-da! 🎬
           </span>
         </div>
-        <h2 className="font-body font-bold text-3xl mt-3 tracking-tight text-[var(--sketch-fg)]">
+        <h2 className="font-body font-bold text-3xl tracking-tight text-[var(--sketch-fg)]">
           Your video is ready
         </h2>
 

@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createRouter, authedQuery, rateLimitByUser } from "./middleware";
 import { getDb } from "./queries/connection";
 import { studioProjects, studioScenes, studioRenderJobs, users } from "@db/schema";
-import { eq, and, desc, max } from "drizzle-orm";
+import { eq, and, desc, max, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { isLLMConfigured, checkMediaSafety } from "./lib/llm";
 import { generateVideoScript } from "./lib/studioLlm";
@@ -437,6 +437,29 @@ export const studioRouter = createRouter({
             eq(studioProjects.userId, ctx.user!.id)
           )
         );
+      return { success: true };
+    }),
+
+  deleteAll: authedQuery
+    .use(rateLimitByUser(60_000, 10))
+    .mutation(async ({ ctx }) => {
+      const userProjects = await getDb()
+        .select({ id: studioProjects.id })
+        .from(studioProjects)
+        .where(eq(studioProjects.userId, ctx.user!.id));
+
+      const projectIds = userProjects.map((p) => p.id);
+      if (projectIds.length > 0) {
+        await getDb()
+          .delete(studioRenderJobs)
+          .where(inArray(studioRenderJobs.projectId, projectIds));
+        await getDb()
+          .delete(studioScenes)
+          .where(inArray(studioScenes.projectId, projectIds));
+        await getDb()
+          .delete(studioProjects)
+          .where(eq(studioProjects.userId, ctx.user!.id));
+      }
       return { success: true };
     }),
 

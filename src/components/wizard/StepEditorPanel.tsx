@@ -49,6 +49,11 @@ import {
   Search as SearchIcon,
   Download,
   Check,
+  ChevronLeft,
+  ChevronRight,
+  Pencil,
+  FileText,
+  RotateCw,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -84,6 +89,7 @@ import type { TransitionType } from "@/hooks/useWizardStore";
 import AIGuide from "@/components/wizard/AIGuide";
 import Timeline, { type TimelineClip } from "@/components/wizard/Timeline";
 import { INTRO_TEMPLATES, OUTRO_TEMPLATES, getTemplate } from "@/components/wizard/introOutroTemplates";
+import { detectGibberish } from "@/lib/gibberish";
 
 /* ------------------------------------------------------------------ */
 /*  Types & Helpers (carried over from old StepAnnotate)              */
@@ -672,7 +678,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         const created = await createStep.mutateAsync({
           projectId: projectIdNum,
           order: currentOrder,
-          description: `Scene ${currentOrder}`,
+          description: "",
           screenshotPath: localUrl, // temporary local URL for instant display
         });
         createdStepId = created?.id;
@@ -762,6 +768,29 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
   const [tempDesc, setTempDesc] = useState("");
   const [tempScript, setTempScript] = useState("");
+  const [scriptViewMode, setScriptViewMode] = useState<"current" | "all">("current");
+  const [allSceneTexts, setAllSceneTexts] = useState<Record<number, { desc: string; script: string }>>({});
+
+  useEffect(() => {
+    if (project?.steps) {
+      const texts: Record<number, { desc: string; script: string }> = {};
+      project.steps.forEach((s) => {
+        texts[s.id] = {
+          desc: s.description || "",
+          script: s.userEditedScript || s.aiScript || "",
+        };
+      });
+      setAllSceneTexts((prev) => {
+        const next = { ...prev };
+        project.steps.forEach((s) => {
+          if (!next[s.id]) {
+            next[s.id] = texts[s.id];
+          }
+        });
+        return next;
+      });
+    }
+  }, [project?.steps]);
 
   useEffect(() => {
     if (currentStep) {
@@ -3223,223 +3252,549 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   // Script generation state
   const [scriptMode, setScriptMode] = useState<"ai" | "manual">("ai");
   const [manualScriptText, setManualScriptText] = useState("");
-  const [videoPurpose, setVideoPurpose] = useState("");
   const regenerateStep = trpc.ai.regenerateStepScript.useMutation();
 
   const renderScriptContent = () => {
     if (!currentStep) return null;
     return (
-      <div className="space-y-4">
-        {/* Mode toggle: AI vs Manual */}
-        <div className="flex items-center gap-1 p-0.5 bg-[var(--sketch-bg)] rounded-lg border border-[var(--sketch-border-color)]/20">
+      <div className="space-y-4 flex flex-col h-[calc(100vh-140px)] relative">
+        {/* Mode Toggle: AI vs Manual */}
+        <div className="flex items-center gap-1 p-0.5 bg-[var(--sketch-bg)] rounded-lg border border-[var(--sketch-border-color)]/20 flex-shrink-0">
           <button
             onClick={() => setScriptMode("ai")}
-            className={`flex-1 py-1.5 px-2 rounded-md text-[10px] font-bold transition-all ${scriptMode === "ai"
+            className={`flex items-center justify-center gap-1.5 flex-1 py-2 px-3 rounded-md text-xs font-bold transition-all cursor-pointer ${scriptMode === "ai"
                 ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-fg)]"
                 : "text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg-muted)]"
               }`}
           >
-            ✨ AI Generate
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>AI Generate</span>
           </button>
           <button
             onClick={() => setScriptMode("manual")}
-            className={`flex-1 py-1.5 px-2 rounded-md text-[10px] font-bold transition-all ${scriptMode === "manual"
+            className={`flex items-center justify-center gap-1.5 flex-1 py-2 px-3 rounded-md text-xs font-bold transition-all cursor-pointer ${scriptMode === "manual"
                 ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-fg)]"
                 : "text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg-muted)]"
               }`}
           >
-            ✍️ Write / Paste
+            <Pencil className="w-3.5 h-3.5" />
+            <span>Write / Paste</span>
           </button>
         </div>
 
+        {/* View Toggle: Current Scene vs All Scenes */}
+        <div className="flex items-center gap-1 p-0.5 bg-[var(--sketch-bg)] rounded-full border border-[var(--sketch-border-color)]/20 flex-shrink-0">
+          <button
+            onClick={() => setScriptViewMode("current")}
+            className={`flex-1 py-2 px-4 text-xs font-bold rounded-full transition-all cursor-pointer ${scriptViewMode === "current"
+                ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-fg)]"
+                : "text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg-subtle)]"
+              }`}
+          >
+            Current Scene
+          </button>
+          <button
+            onClick={() => setScriptViewMode("all")}
+            className={`flex-1 py-2 px-4 text-xs font-bold rounded-full transition-all cursor-pointer ${scriptViewMode === "all"
+                ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-fg)]"
+                : "text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg-subtle)]"
+              }`}
+          >
+            All Scenes
+          </button>
+        </div>
+
+        {/* AI Generate Mode */}
         {scriptMode === "ai" ? (
           <>
-            {/* Video Purpose / Description */}
-            <div>
-              <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-1">
-                Video Purpose <span className="text-[var(--sketch-fg-subtle)] font-normal">(optional, improves AI scripts)</span>
-              </Label>
-              <Textarea
-                value={videoPurpose}
-                onChange={(e) => setVideoPurpose(e.target.value)}
-                placeholder="e.g. A tutorial showing how to set up a React project with Vite for beginners..."
-                className="text-xs min-h-[50px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)]"
-              />
-              <p className="text-[9px] text-[var(--sketch-fg-subtle)] mt-1 leading-relaxed">
-                💡 Tip: Give your project a descriptive title in the top bar. The AI uses it + this purpose + your screenshots to write better scripts.
-              </p>
-            </div>
+            {scriptViewMode === "all" ? (
+              <div className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-0">
+                {steps.map((s, idx) => {
+                  const textState = allSceneTexts[s.id] || { desc: s.description || "", script: s.userEditedScript || s.aiScript || "" };
+                  const gibberish = detectGibberish(textState.desc);
+                  const scriptGibberish = detectGibberish(textState.script);
 
-            {/* Scene Description */}
-            <div>
-              <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-1">Scene Description</Label>
-              <Textarea
-                value={tempDesc}
-                onChange={(e) => setTempDesc(e.target.value)}
-                onBlur={handleSaveStepText}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    (e.target as HTMLTextAreaElement).blur();
-                  }
-                }}
-                placeholder="Describe what happens in this scene..."
-                className="text-xs min-h-[70px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)]"
-              />
-              <p className="text-[9px] text-[var(--sketch-fg-subtle)] mt-1">
-                If provided, the AI uses this as context. If empty, the AI analyzes the screenshot directly.
-              </p>
-            </div>
+                  return (
+                    <div key={s.id} className="p-3 border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)]/30 rounded-xl space-y-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-10 h-10 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/25 rounded-md overflow-hidden flex-shrink-0 flex items-center justify-center">
+                          {s.screenshotPath ? (
+                            <img src={s.screenshotPath} alt="" className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="font-mono text-xs text-[var(--sketch-fg-subtle)]">{idx + 1}</span>
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-bold text-[var(--sketch-fg)] block">Scene {idx + 1}</span>
+                          <span className="text-xs text-[var(--sketch-fg-subtle)] truncate block">
+                            {textState.script ? `${textState.script.split(/\s+/).length} words` : "No script"}
+                          </span>
+                        </div>
+                      </div>
 
-            {/* Narration Script (TTS) */}
-            <div>
-              <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-1">Narration Script (TTS)</Label>
-              <Textarea
-                value={tempScript}
-                onChange={(e) => setTempScript(e.target.value)}
-                onBlur={handleSaveStepText}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    (e.target as HTMLTextAreaElement).blur();
-                  }
-                }}
-                placeholder="AI-generated narration will appear here..."
-                className="text-xs min-h-[110px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)]"
-              />
-            </div>
+                      {/* Scene Description input */}
+                      <div>
+                        <Label className="text-xs font-bold text-[var(--sketch-fg-muted)] block mb-1">Scene Description</Label>
+                        <Textarea
+                          value={textState.desc}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setAllSceneTexts(prev => ({ ...prev, [s.id]: { ...prev[s.id], desc: val } }));
+                          }}
+                          onBlur={async () => {
+                            await updateStep.mutateAsync({ id: s.id, description: textState.desc });
+                            utils.project.getById.invalidate({ id: projectIdNum });
+                          }}
+                          placeholder="Describe what happens in this scene... Required."
+                          className={`text-sm min-h-[60px] bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/25 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)] ${
+                            (!textState.desc.trim() || /^scene\s+\d+$/i.test(textState.desc.trim()) || gibberish.isGibberish) ? "border-amber-500/50" : ""
+                          }`}
+                        />
+                        {(!textState.desc.trim() || /^scene\s+\d+$/i.test(textState.desc.trim())) && (
+                          <p className="text-xs font-medium text-amber-600 mt-1 flex items-center gap-1">
+                            <AlertTriangle className="w-3.5 h-3.5" /> Description is required for script generation.
+                          </p>
+                        )}
+                        {textState.desc.trim() && gibberish.isGibberish && (
+                          <p className="text-xs font-medium text-amber-600 mt-1 flex items-center gap-1">
+                            <AlertTriangle className="w-3.5 h-3.5" /> {gibberish.reason}
+                          </p>
+                        )}
+                      </div>
 
-            {/* Generate buttons */}
-            <div className="pt-3 border-t border-[var(--sketch-border-color)]/20 mt-3 space-y-2">
-              {/* Generate all */}
-              <button
-                onClick={async () => {
-                  try {
-                    await generateScript.mutateAsync({ projectId: projectIdNum });
-                    utils.step.listByProject.invalidate({ projectId: projectIdNum });
-                    utils.project.getById.invalidate({ id: projectIdNum });
-                    toast.success("Scripts generated! Vision AI analyzed your screenshots.");
-                  } catch (err: any) {
-                    toast.error(err.message || "Failed to generate scripts.");
-                  }
-                }}
-                disabled={generateScript.isPending}
-                className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-[#FBBF24] hover:bg-[#F59E0B] disabled:opacity-50 text-black text-xs font-bold rounded-md shadow-sm transition-all cursor-pointer border border-black/10"
-              >
-                {generateScript.isPending ? (
-                  <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    <span>AI is analyzing screenshots...</span>
-                  </>
-                ) : (
-                  <>
-                    <span>✨ Generate All Scripts (Vision AI)</span>
-                  </>
-                )}
-              </button>
+                      {/* Narration Script input */}
+                      <div>
+                        <Label className="text-xs font-bold text-[var(--sketch-fg-muted)] block mb-1">Narration Script (TTS)</Label>
+                        <Textarea
+                          value={textState.script}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setAllSceneTexts(prev => ({ ...prev, [s.id]: { ...prev[s.id], script: val } }));
+                          }}
+                          onBlur={async () => {
+                            await updateStep.mutateAsync({ id: s.id, userEditedScript: textState.script });
+                            utils.project.getById.invalidate({ id: projectIdNum });
+                          }}
+                          placeholder="Narration text goes here..."
+                          className={`text-sm min-h-[70px] bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/25 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)] ${
+                            (textState.script.trim() && scriptGibberish.isGibberish) ? "border-red-500/50" : ""
+                          }`}
+                        />
+                        {textState.script.trim() && scriptGibberish.isGibberish && (
+                          <p className="text-xs font-medium text-red-500 mt-1 flex items-center gap-1">
+                            <AlertTriangle className="w-3.5 h-3.5" /> {scriptGibberish.reason}
+                          </p>
+                        )}
+                      </div>
 
-              {/* Regenerate just this step */}
-              <button
-                onClick={async () => {
-                  try {
-                    const result = await regenerateStep.mutateAsync({ stepId: currentStep.id });
-                    if (result?.script) {
-                      setTempScript(result.script);
-                      utils.project.getById.invalidate({ id: projectIdNum });
-                      toast.success("Script regenerated for this scene!");
-                    }
-                  } catch (err: any) {
-                    toast.error(err.message || "Failed to regenerate script.");
-                  }
-                }}
-                disabled={regenerateStep.isPending}
-                className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 bg-[var(--sketch-accent)]/10 hover:bg-[var(--sketch-accent)]/20 disabled:opacity-50 text-[var(--sketch-fg)] text-[10px] font-semibold rounded-md transition-all cursor-pointer border border-[var(--sketch-accent)]/20"
-              >
-                {regenerateStep.isPending ? (
-                  <>
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    <span>Regenerating this scene...</span>
-                  </>
-                ) : (
-                  <span>↻ Regenerate this scene only</span>
-                )}
-              </button>
+                      {/* Action buttons for this specific scene */}
+                      <div className="flex justify-end pt-1">
+                        <button
+                          onClick={async () => {
+                            if (!textState.desc.trim() || /^scene\s+\d+$/i.test(textState.desc.trim())) {
+                              toast.error(`Please write a description for Scene ${idx + 1} first.`);
+                              return;
+                            }
+                            try {
+                              const result = await regenerateStep.mutateAsync({ stepId: s.id });
+                              if (result?.script) {
+                                setAllSceneTexts(prev => ({
+                                  ...prev,
+                                  [s.id]: { ...prev[s.id], script: result.script }
+                                }));
+                                utils.project.getById.invalidate({ id: projectIdNum });
+                                toast.success(`Script regenerated for Scene ${idx + 1}!`);
+                              }
+                            } catch (err: any) {
+                              toast.error(err.message || "Failed to regenerate script.");
+                            }
+                          }}
+                          disabled={regenerateStep.isPending}
+                          className="flex items-center gap-1.5 py-1.5 px-3 bg-[var(--sketch-accent)]/10 hover:bg-[var(--sketch-accent)]/20 disabled:opacity-50 text-[var(--sketch-fg)] text-xs font-bold rounded-md transition-all cursor-pointer border border-[var(--sketch-accent)]/20"
+                        >
+                          {regenerateStep.isPending ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <>
+                              <RotateCw className="w-3 h-3" />
+                              <span>Regenerate Scene {idx + 1}</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
 
-              <p className="text-[10px] text-[var(--sketch-fg-muted)] leading-relaxed">
-                The AI looks at each screenshot with Gemma 4 vision and writes narration. For video clips, add a description so the AI knows what to narrate.
-              </p>
-            </div>
+                {/* Generate all scripts button at the bottom */}
+                <div className="pt-3 border-t border-[var(--sketch-border-color)]/20 mt-3 space-y-2 flex-shrink-0">
+                  <button
+                    onClick={async () => {
+                      const blankSteps = steps.filter(s => {
+                        const txt = allSceneTexts[s.id]?.desc || s.description || "";
+                        return !txt.trim() || /^scene\s+\d+$/i.test(txt.trim());
+                      });
+                      if (blankSteps.length > 0) {
+                        toast.error(`Scene ${blankSteps[0].order} has no description. Please write a description before generating scripts.`);
+                        return;
+                      }
+                      try {
+                        await generateScript.mutateAsync({ projectId: projectIdNum });
+                        utils.step.listByProject.invalidate({ projectId: projectIdNum });
+                        utils.project.getById.invalidate({ id: projectIdNum });
+                        setAllSceneTexts({});
+                        toast.success("Scripts generated successfully!");
+                      } catch (err: any) {
+                        toast.error(err.message || "Failed to generate scripts.");
+                      }
+                    }}
+                    disabled={generateScript.isPending}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-[#FBBF24] hover:bg-[#F59E0B] disabled:opacity-50 text-black text-sm font-bold rounded-md shadow-sm transition-all cursor-pointer border border-black/10"
+                  >
+                    {generateScript.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>AI is generating scripts...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        <span>Generate All Scripts (Text AI)</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1 flex flex-col space-y-4 overflow-y-auto min-h-0 pr-1">
+                <div className="flex-1 overflow-y-auto space-y-4 min-h-0 pr-1 pb-2">
+                  {/* Scene Description */}
+                  <div>
+                    <Label className="text-sm font-bold text-[var(--sketch-fg-muted)] block mb-1">Scene Description</Label>
+                    <Textarea
+                      value={tempDesc}
+                      onChange={(e) => setTempDesc(e.target.value)}
+                      onBlur={handleSaveStepText}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          (e.target as HTMLTextAreaElement).blur();
+                        }
+                      }}
+                      placeholder="Describe what happens in this scene (e.g. 'Click the login button'). Required to generate voiceover narration."
+                      className="text-sm min-h-[85px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)]"
+                    />
+                    <p className="text-xs text-[var(--sketch-fg-subtle)] mt-1">
+                      Please provide a description. The AI uses this description to write the voiceover narration.
+                    </p>
+                  </div>
+
+                  {/* Narration Script (TTS) */}
+                  <div>
+                    <Label className="text-sm font-bold text-[var(--sketch-fg-muted)] block mb-1">Narration Script (TTS)</Label>
+                    <Textarea
+                      value={tempScript}
+                      onChange={(e) => setTempScript(e.target.value)}
+                      onBlur={handleSaveStepText}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          (e.target as HTMLTextAreaElement).blur();
+                        }
+                      }}
+                      placeholder="AI-generated narration will appear here..."
+                      className="text-sm min-h-[130px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)]"
+                    />
+                  </div>
+
+                  {/* Scene Navigation */}
+                  <div className="flex items-center justify-between pt-2.5 border-t border-[var(--sketch-border-color)]/20 mt-2">
+                    <button
+                      disabled={currentStepIndex === 0}
+                      onClick={() => setCurrentStepIndex(currentStepIndex - 1)}
+                      className="flex items-center gap-1.5 text-xs font-bold text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] transition-colors disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft className="w-4 h-4" /> Prev Scene
+                    </button>
+                    <span className="text-xs font-mono text-[var(--sketch-fg-subtle)] font-bold">
+                      Scene {currentStepIndex + 1} / {steps.length}
+                    </span>
+                    <button
+                      disabled={currentStepIndex === steps.length - 1}
+                      onClick={() => setCurrentStepIndex(currentStepIndex + 1)}
+                      className="flex items-center gap-1.5 text-xs font-bold text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] transition-colors disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      Next Scene <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Generate buttons */}
+                <div className="pt-3 border-t border-[var(--sketch-border-color)]/20 mt-3 space-y-2 flex-shrink-0">
+                  {/* Generate all */}
+                  <button
+                    onClick={async () => {
+                      const blankSteps = steps.filter(s => !s.description || !s.description.trim() || /^scene\s+\d+$/i.test(s.description.trim()));
+                      if (blankSteps.length > 0) {
+                        toast.error(`Scene ${blankSteps[0].order} has no description. Please write a description before generating scripts.`);
+                        return;
+                      }
+                      try {
+                        await generateScript.mutateAsync({ projectId: projectIdNum });
+                        utils.step.listByProject.invalidate({ projectId: projectIdNum });
+                        utils.project.getById.invalidate({ id: projectIdNum });
+                        toast.success("Scripts generated successfully!");
+                      } catch (err: any) {
+                        toast.error(err.message || "Failed to generate scripts.");
+                      }
+                    }}
+                    disabled={generateScript.isPending}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-[#FBBF24] hover:bg-[#F59E0B] disabled:opacity-50 text-black text-sm font-bold rounded-md shadow-sm transition-all cursor-pointer border border-black/10"
+                  >
+                    {generateScript.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>AI is generating scripts...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        <span>Generate All Scripts (Text AI)</span>
+                      </>
+                    )}
+                  </button>
+
+                  {/* Regenerate just this step */}
+                  <button
+                    onClick={async () => {
+                      if (!tempDesc || !tempDesc.trim() || /^scene\s+\d+$/i.test(tempDesc.trim())) {
+                        toast.error("Please write a scene description before regenerating script.");
+                        return;
+                      }
+                      try {
+                        const result = await regenerateStep.mutateAsync({ stepId: currentStep.id });
+                        if (result?.script) {
+                          setTempScript(result.script);
+                          utils.project.getById.invalidate({ id: projectIdNum });
+                          toast.success("Script regenerated for this scene!");
+                        }
+                      } catch (err: any) {
+                        toast.error(err.message || "Failed to regenerate script.");
+                      }
+                    }}
+                    disabled={regenerateStep.isPending}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-[var(--sketch-accent)]/10 hover:bg-[var(--sketch-accent)]/20 disabled:opacity-50 text-[var(--sketch-fg)] text-xs font-bold rounded-md transition-all cursor-pointer border border-[var(--sketch-accent)]/20"
+                  >
+                    {regenerateStep.isPending ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>Regenerating this scene...</span>
+                      </>
+                    ) : (
+                      <>
+                        <RotateCw className="w-3.5 h-3.5" />
+                        <span>Regenerate this scene only</span>
+                      </>
+                    )}
+                  </button>
+
+                  <p className="text-xs text-[var(--sketch-fg-muted)] leading-relaxed">
+                    The AI uses the video title, description, and your step/scene description to write the narration for each step using gpt-oss:120b.
+                  </p>
+                </div>
+              </div>
+            )}
           </>
         ) : (
-          /* Manual script mode — paste from Claude, ChatGPT, etc. */
+          /* Manual Write / Paste Mode */
           <>
-            <div className="p-2.5 bg-[var(--sketch-accent)]/8 border border-[var(--sketch-accent)]/20 rounded-lg">
-              <p className="text-[10px] text-[var(--sketch-fg-muted)] leading-relaxed">
-                💡 Write your script in Claude, ChatGPT, or any AI tool, then paste it here. Each line/paragraph becomes a scene's narration.
-              </p>
-            </div>
+            {scriptViewMode === "all" ? (
+              <div className="flex-1 flex flex-col space-y-4 min-h-0">
+                <div className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-0">
+                  {/* Collapsible Bulk Paste Section */}
+                  <details className="border border-[var(--sketch-border-color)]/20 rounded-xl bg-[var(--sketch-card-bg)]/20 overflow-hidden group mb-2">
+                    <summary className="p-2.5 text-xs font-bold text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] cursor-pointer list-none flex items-center justify-between transition-colors">
+                      <span className="flex items-center gap-1.5">
+                        <FileText className="w-3.5 h-3.5" />
+                        <span>Bulk Paste Full Script (Optional)</span>
+                      </span>
+                      <span className="text-xs text-[var(--sketch-fg-subtle)] group-open:rotate-180 transition-transform">▼</span>
+                    </summary>
+                    <div className="p-3 border-t border-[var(--sketch-border-color)]/10 space-y-3 bg-[var(--sketch-bg)]/40">
+                      <div className="p-2.5 bg-[var(--sketch-accent)]/8 border border-[var(--sketch-accent)]/25 rounded-lg flex items-start gap-2">
+                        <FileText className="w-4 h-4 text-[var(--sketch-accent)] flex-shrink-0 mt-0.5" />
+                        <p className="text-xs text-[var(--sketch-fg-muted)] leading-relaxed">
+                          Paste your script from Claude/ChatGPT here. Each paragraph automatically updates a scene's narration below.
+                        </p>
+                      </div>
+                      <div>
+                        <Label className="text-xs font-bold text-[var(--sketch-fg-muted)] block mb-1">
+                          Paste Full Script <span className="text-[var(--sketch-fg-subtle)] font-normal">(one paragraph per scene)</span>
+                        </Label>
+                        <Textarea
+                          value={manualScriptText}
+                          onChange={(e) => setManualScriptText(e.target.value)}
+                          placeholder={`Welcome to this tutorial on React setup. Today we'll learn...\n\nFirst, open your terminal and run npm create vite...`}
+                          className="text-sm min-h-[120px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)] font-mono"
+                        />
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!manualScriptText.trim()) {
+                            toast.error("Paste a script first!");
+                            return;
+                          }
+                          const paragraphs = manualScriptText
+                            .trim()
+                            .split(/\n\s*\n/)
+                            .map((p) => p.trim())
+                            .filter((p) => p.length > 5);
 
-            <div>
-              <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-1">
-                Paste Full Script <span className="text-[var(--sketch-fg-subtle)] font-normal">(one paragraph per scene)</span>
-              </Label>
-              <Textarea
-                value={manualScriptText}
-                onChange={(e) => setManualScriptText(e.target.value)}
-                placeholder={`Paste your script here. Example:\n\nWelcome to this tutorial on React setup. Today we'll learn how to create a new project.\n\nFirst, open your terminal and run npm create vite.\n\nNext, select React from the framework options...\n\nAnd that's it! You now have a React project ready to go.`}
-                className="text-xs min-h-[180px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)] font-mono"
-              />
-            </div>
+                          const scenes = paragraphs.length > 1
+                            ? paragraphs
+                            : manualScriptText.trim().split("\n").map((s) => s.trim()).filter((s) => s.length > 5);
 
-            <button
-              onClick={async () => {
-                if (!manualScriptText.trim()) {
-                  toast.error("Paste a script first!");
-                  return;
-                }
-                // Split by double newlines (paragraphs) or single newlines
-                const paragraphs = manualScriptText
-                  .trim()
-                  .split(/\n\s*\n/)
-                  .map((p) => p.trim())
-                  .filter((p) => p.length > 5);
+                          if (scenes.length === 0) {
+                            toast.error("Could not parse scenes from the script.");
+                            return;
+                          }
 
-                // If only one paragraph, try splitting by single newlines
-                const scenes = paragraphs.length > 1
-                  ? paragraphs
-                  : manualScriptText.trim().split("\n").map((s) => s.trim()).filter((s) => s.length > 5);
+                          for (let i = 0; i < steps.length && i < scenes.length; i++) {
+                            await updateStep.mutateAsync({
+                              id: steps[i].id,
+                              userEditedScript: scenes[i],
+                              aiScript: scenes[i],
+                            });
+                          }
 
-                if (scenes.length === 0) {
-                  toast.error("Could not parse scenes from the script. Make sure each scene is on a separate line or paragraph.");
-                  return;
-                }
+                          if (scenes.length > steps.length) {
+                            toast.info(`Applied ${steps.length} scenes. Extra scenes were not applied.`);
+                          }
 
-                // Apply scripts to existing steps
-                for (let i = 0; i < steps.length && i < scenes.length; i++) {
-                  await updateStep.mutateAsync({
-                    id: steps[i].id,
-                    userEditedScript: scenes[i],
-                    aiScript: scenes[i],
-                  });
-                }
+                          utils.project.getById.invalidate({ id: projectIdNum });
+                          utils.step.listByProject.invalidate({ projectId: projectIdNum });
+                          setAllSceneTexts({}); // force reload
+                          toast.success(`Applied ${Math.min(scenes.length, steps.length)} scripts!`);
+                          setManualScriptText("");
+                        }}
+                        className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-[#FBBF24] hover:bg-[#F59E0B] text-black text-xs font-bold rounded-md transition-all cursor-pointer border border-black/10"
+                      >
+                        Apply Script to Scenes
+                      </button>
+                    </div>
+                  </details>
 
-                // If there are more scenes than steps, create new steps
-                if (scenes.length > steps.length) {
-                  toast.info(`Script has ${scenes.length} scenes but only ${steps.length} steps exist. Extra scenes were not applied — create more scenes first.`);
-                }
+                  {/* Header/Label */}
+                  <div className="pt-2">
+                    <span className="text-xs font-bold text-[var(--sketch-fg-muted)] uppercase tracking-wider block mb-2">
+                      Narration Script by Scene
+                    </span>
+                  </div>
 
-                utils.project.getById.invalidate({ id: projectIdNum });
-                utils.step.listByProject.invalidate({ projectId: projectIdNum });
-                toast.success(`Applied ${Math.min(scenes.length, steps.length)} scripts to scenes!`);
-                setManualScriptText("");
-              }}
-              className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-[#FBBF24] hover:bg-[#F59E0B] text-black text-xs font-bold rounded-md shadow-sm transition-all cursor-pointer border border-black/10"
-            >
-              Apply Script to Scenes
-            </button>
-            <p className="text-[10px] text-[var(--sketch-fg-muted)] leading-relaxed">
-              Each paragraph (separated by blank line) or line becomes one scene's narration. The script is applied to existing scenes in order.
-            </p>
+                  {/* List of all steps with individual text boxes */}
+                  {steps.map((s, idx) => {
+                    const textState = allSceneTexts[s.id] || { desc: s.description || "", script: s.userEditedScript || s.aiScript || "" };
+                    const scriptGibberish = detectGibberish(textState.script);
+
+                    return (
+                      <div key={s.id} className="p-3 border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)]/30 rounded-xl space-y-3 mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-10 h-10 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/25 rounded-md overflow-hidden flex-shrink-0 flex items-center justify-center">
+                            {s.screenshotPath ? (
+                              <img src={s.screenshotPath} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="font-mono text-xs text-[var(--sketch-fg-subtle)]">{idx + 1}</span>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm font-bold text-[var(--sketch-fg)] block">Scene {idx + 1}</span>
+                            <span className="text-xs text-[var(--sketch-fg-subtle)] truncate block">
+                              {textState.script ? `${textState.script.split(/\s+/).length} words` : "No script"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Narration Script input */}
+                        <div>
+                          <Label className="text-xs font-bold text-[var(--sketch-fg-muted)] block mb-1">Narration Script (TTS)</Label>
+                          <Textarea
+                            value={textState.script}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setAllSceneTexts(prev => ({ ...prev, [s.id]: { ...prev[s.id], script: val } }));
+                            }}
+                            onBlur={async () => {
+                              await updateStep.mutateAsync({ id: s.id, userEditedScript: textState.script });
+                              utils.project.getById.invalidate({ id: projectIdNum });
+                            }}
+                            placeholder="Type or paste narration script for this scene..."
+                            className={`text-sm min-h-[80px] bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/25 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)] ${
+                              (textState.script.trim() && scriptGibberish.isGibberish) ? "border-red-500/50" : ""
+                            }`}
+                          />
+                          {textState.script.trim() && scriptGibberish.isGibberish && (
+                            <p className="text-xs font-medium text-red-500 mt-1 flex items-center gap-1">
+                              <AlertTriangle className="w-3.5 h-3.5" /> {scriptGibberish.reason}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              /* Manual Mode + Current Scene */
+              <div className="flex-1 flex flex-col space-y-4 min-h-0">
+                <div className="flex-1 overflow-y-auto space-y-4 min-h-0 pr-1 pb-2">
+                  {/* Narration Script (TTS) */}
+                  <div>
+                    <Label className="text-xs font-bold text-[var(--sketch-fg-muted)] block mb-1">Narration Script (TTS)</Label>
+                    <Textarea
+                      value={tempScript}
+                      onChange={(e) => setTempScript(e.target.value)}
+                      onBlur={handleSaveStepText}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          (e.target as HTMLTextAreaElement).blur();
+                        }
+                      }}
+                      placeholder="Write or paste narration for this scene..."
+                      className="text-sm min-h-[180px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)]"
+                    />
+                  </div>
+
+                  {/* Scene Navigation */}
+                  <div className="flex items-center justify-between pt-2.5 border-t border-[var(--sketch-border-color)]/20 mt-2">
+                    <button
+                      disabled={currentStepIndex === 0}
+                      onClick={() => setCurrentStepIndex(currentStepIndex - 1)}
+                      className="flex items-center gap-1.5 text-xs font-bold text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] transition-colors disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      <ChevronLeft className="w-4 h-4" /> Prev Scene
+                    </button>
+                    <span className="text-xs font-mono text-[var(--sketch-fg-subtle)] font-bold">
+                      Scene {currentStepIndex + 1} / {steps.length}
+                    </span>
+                    <button
+                      disabled={currentStepIndex === steps.length - 1}
+                      onClick={() => setCurrentStepIndex(currentStepIndex + 1)}
+                      className="flex items-center gap-1.5 text-xs font-bold text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] transition-colors disabled:opacity-30 cursor-pointer disabled:cursor-not-allowed"
+                    >
+                      Next Scene <ChevronRight className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/10 rounded-lg flex-shrink-0 flex items-start gap-2">
+                  <FileText className="w-4 h-4 text-[var(--sketch-accent)] flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-[var(--sketch-fg-subtle)] leading-relaxed">
+                    Directly write your narration voiceover here. Changes are saved automatically when clicking outside the input box.
+                  </p>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -4532,10 +4887,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               <ArrowLeft className="w-4 h-4" />
             </button>
 
-            {/* Logo: Purple-blue play icon */}
-            <div className="w-6 h-6 rounded bg-[var(--primary)] flex items-center justify-center text-white shadow-sm flex-shrink-0">
-              <Film className="w-3.5 h-3.5" />
-            </div>
             {/* Project Title Input & Star & Cloud */}
             <div className="flex items-center gap-2">
               <input
@@ -4571,15 +4922,18 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
             </div>
           </div>
 
-          {/* Right: Light/Dark Mode toggle button & Profile */}
+          {/* Right: Light/Dark Mode toggle button */}
           <div className="flex items-center gap-3">
             {/* Render & Export Trigger Button */}
             <button
               onClick={async () => {
                 // Force-save ALL step annotations before rendering
                 await handleSaveAllSteps();
-                setRenderStarted(true);
-                setShowRenderModal(true);
+                if (props.onContinue) {
+                  props.onContinue();
+                } else {
+                  window.location.href = `/create/${projectIdNum}/render`;
+                }
               }}
               className="py-1 px-3 bg-[#FBBF24] hover:bg-[#FBBF24]/90 dark:bg-[#FBBF24]/20 dark:hover:bg-[#FBBF24]/30 text-black dark:text-[#FBBF24] text-xs font-bold rounded shadow-sm hover:shadow transition-all flex items-center gap-1.5 cursor-pointer border border-[#FBBF24]/30"
             >
@@ -4599,11 +4953,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 <Moon className="w-4 h-4 text-slate-700" />
               )}
             </button>
-
-            {/* Profile Avatar placeholder */}
-            <div className="w-7 h-7 rounded-full bg-[var(--primary)] text-white flex items-center justify-center text-xs font-bold font-sans select-none flex-shrink-0 cursor-pointer">
-              {projectTitle.slice(0, 1).toUpperCase()}
-            </div>
           </div>
         </div>
 
@@ -4627,7 +4976,14 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               <DropdownMenuItem onClick={handleSaveStep}>
                 <Save className="w-3.5 h-3.5 mr-2" /> Save Step
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={async () => { await handleSaveAllSteps(); setRenderStarted(true); setShowRenderModal(true); }}>
+              <DropdownMenuItem onClick={async () => {
+                await handleSaveAllSteps();
+                if (props.onContinue) {
+                  props.onContinue();
+                } else {
+                  window.location.href = `/create/${projectIdNum}/render`;
+                }
+              }}>
                 <Sparkles className="w-3.5 h-3.5 mr-2" /> Export Video…
               </DropdownMenuItem>
             </DropdownMenuContent>

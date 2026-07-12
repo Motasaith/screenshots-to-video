@@ -255,6 +255,7 @@ export default function StepSetup() {
                     <ChevronRight className="w-4 h-4" />
                   </span>
                 )}
+              </Button>
             </div>
           </div>
         </div>

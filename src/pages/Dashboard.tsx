@@ -15,7 +15,11 @@ import {
   Sparkles,
   LogOut,
   X,
+  Sun,
+  Moon,
 } from "lucide-react";
+import { useTheme } from "next-themes";
+import { detectGibberish } from "@/lib/gibberish";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -29,6 +33,7 @@ import { SpaceBackground } from "@/components/shared/SpaceBackground";
 export default function Dashboard() {
   const { user, logout, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const { setTheme, resolvedTheme } = useTheme();
   const [deleteProjectInfo, setDeleteProjectInfo] = useState<{ id: number; type: "tutorial" | "studio" } | null>(null);
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
 
@@ -65,6 +70,36 @@ export default function Dashboard() {
       setDeleteProjectInfo(null);
     },
   });
+
+  const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
+  const [deletingAll, setDeletingAll] = useState(false);
+
+  const deleteAllProjectsMutation = trpc.project.deleteAll.useMutation({
+    onSuccess: () => {
+      utils.project.list.invalidate();
+    },
+  });
+
+  const deleteAllStudioMutation = trpc.studio.deleteAll.useMutation({
+    onSuccess: () => {
+      utils.studio.list.invalidate();
+    },
+  });
+
+  const handleDeleteAll = async () => {
+    try {
+      setDeletingAll(true);
+      await Promise.all([
+        deleteAllProjectsMutation.mutateAsync(),
+        deleteAllStudioMutation.mutateAsync(),
+      ]);
+      setShowDeleteAllDialog(false);
+    } catch (err) {
+      console.error("Failed to delete all projects:", err);
+    } finally {
+      setDeletingAll(false);
+    }
+  };
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -179,6 +214,19 @@ export default function Dashboard() {
                 <Button
                   variant="ghost"
                   size="sm"
+                  onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+                  className="glass-btn glass-btn-secondary p-2 rounded-lg"
+                  aria-label="Toggle dark mode"
+                >
+                  {resolvedTheme === "dark" ? (
+                    <Sun className="w-4 h-4 text-teal-450" />
+                  ) : (
+                    <Moon className="w-4 h-4 text-[var(--space-text-muted)]" />
+                  )}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
                   onClick={logout}
                   className="glass-btn glass-btn-secondary p-2 rounded-lg"
                 >
@@ -213,13 +261,24 @@ export default function Dashboard() {
                 Manage your video projects and drafts
               </p>
             </div>
-            <Button
-              onClick={openMegaMenu}
-              className="glass-btn glass-btn-primary py-3.5 px-6 rounded-xl font-semibold text-xs"
-            >
-              <Plus className="w-4 h-4 mr-1.5" />
-              New Project
-            </Button>
+            <div className="flex items-center gap-3">
+              {projects && projects.length > 0 && (
+                <Button
+                  onClick={() => setShowDeleteAllDialog(true)}
+                  className="bg-red-500/10 hover:bg-red-650 border border-red-500/20 hover:border-red-500 text-red-500 hover:text-white transition-all py-3.5 px-6 rounded-xl font-semibold text-xs cursor-pointer flex items-center"
+                >
+                  <Trash2 className="w-4 h-4 mr-1.5" />
+                  Delete All
+                </Button>
+              )}
+              <Button
+                onClick={openMegaMenu}
+                className="glass-btn glass-btn-primary py-3.5 px-6 rounded-xl font-semibold text-xs"
+              >
+                <Plus className="w-4 h-4 mr-1.5" />
+                New Project
+              </Button>
+            </div>
           </div>
 
           <div className="grid md:grid-cols-3 gap-6 mb-8">
@@ -390,6 +449,34 @@ export default function Dashboard() {
                     placeholder="e.g. How to clean Windows temp files"
                     className="w-full text-sm bg-slate-100/40 dark:bg-slate-950/40 border border-[var(--space-border)] focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/30 rounded-xl px-4 py-2.5 text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)] focus:outline-none transition-all"
                   />
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[10px] text-[var(--space-text-subtle)]">
+                      {newProjectTitle.trim().length === 0 ? (
+                        <span className="text-amber-500 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" /> Min 3 characters required
+                        </span>
+                      ) : newProjectTitle.trim().length < 3 ? (
+                        <span className="text-amber-500 flex items-center gap-1 font-semibold">
+                          <AlertCircle className="w-3 h-3 animate-pulse" /> Title is too short (min 3 chars)
+                        </span>
+                      ) : newProjectTitle.length > 100 ? (
+                        <span className="text-red-500 flex items-center gap-1 font-semibold">
+                          <AlertCircle className="w-3 h-3" /> Title is too long (max 100 chars)
+                        </span>
+                      ) : detectGibberish(newProjectTitle).isGibberish ? (
+                        <span className="text-red-550 flex items-center gap-1 font-semibold">
+                          <AlertCircle className="w-3 h-3 animate-pulse" /> {detectGibberish(newProjectTitle).reason?.replace("a real step description", "a real video title").replace("what the user should do", "a valid video title")}
+                        </span>
+                      ) : (
+                        <span className="text-emerald-550 flex items-center gap-1 font-semibold">
+                          ✓ Looks good!
+                        </span>
+                      )}
+                    </span>
+                    <span className={`text-[10px] font-mono ${newProjectTitle.length > 100 || detectGibberish(newProjectTitle).isGibberish ? 'text-red-500 font-bold' : 'text-[var(--space-text-subtle)]'}`}>
+                      {newProjectTitle.length}/100
+                    </span>
+                  </div>
                 </div>
 
                 <div className="flex flex-col gap-2">
@@ -403,6 +490,34 @@ export default function Dashboard() {
                     className="w-full text-sm bg-slate-100/40 dark:bg-slate-950/40 border border-[var(--space-border)] focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/30 rounded-xl px-4 py-3 text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)] focus:outline-none resize-none transition-all"
                     rows={5}
                   />
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[10px] text-[var(--space-text-subtle)]">
+                      {newProjectDesc.trim().length === 0 ? (
+                        <span className="text-amber-500 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" /> Min 10 characters required
+                        </span>
+                      ) : newProjectDesc.trim().length < 10 ? (
+                        <span className="text-amber-500 flex items-center gap-1 font-semibold">
+                          <AlertCircle className="w-3 h-3 animate-pulse" /> Description is too short (min 10 chars)
+                        </span>
+                      ) : newProjectDesc.length > 1000 ? (
+                        <span className="text-red-500 flex items-center gap-1 font-semibold">
+                          <AlertCircle className="w-3 h-3" /> Description is too long (max 1000 chars)
+                        </span>
+                      ) : detectGibberish(newProjectDesc).isGibberish ? (
+                        <span className="text-red-550 flex items-center gap-1 font-semibold">
+                          <AlertCircle className="w-3 h-3 animate-pulse" /> {detectGibberish(newProjectDesc).reason?.replace("a real step description", "a real video description").replace("what the user should do", "a valid video description")}
+                        </span>
+                      ) : (
+                        <span className="text-emerald-550 flex items-center gap-1 font-semibold">
+                          ✓ Looks good!
+                        </span>
+                      )}
+                    </span>
+                    <span className={`text-[10px] font-mono ${newProjectDesc.length > 1000 || detectGibberish(newProjectDesc).isGibberish ? 'text-red-500 font-bold' : 'text-[var(--space-text-subtle)]'}`}>
+                      {newProjectDesc.length}/1000
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -455,7 +570,15 @@ export default function Dashboard() {
               </Button>
               <Button
                 onClick={handleCreateBlankProject}
-                disabled={newProjectTitle.trim().length < 3 || newProjectDesc.trim().length < 10 || creatingProject}
+                disabled={
+                  newProjectTitle.trim().length < 3 || 
+                  newProjectTitle.length > 100 || 
+                  detectGibberish(newProjectTitle).isGibberish ||
+                  newProjectDesc.trim().length < 10 || 
+                  newProjectDesc.length > 1000 || 
+                  detectGibberish(newProjectDesc).isGibberish ||
+                  creatingProject
+                }
                 className="glass-btn glass-btn-primary px-6 py-2.5 rounded-xl font-bold text-xs disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer bg-gradient-to-r from-teal-500 to-emerald-500 border border-teal-400/20 hover:from-teal-400 hover:to-emerald-400 text-white font-extrabold shadow-[0_4px_20px_rgba(45,212,191,0.25)] hover:shadow-[0_0_20px_rgba(45,212,191,0.4)]"
               >
                 {creatingProject ? (
@@ -502,6 +625,46 @@ export default function Dashboard() {
             >
               <Trash2 className="w-4 h-4 mr-1.5 inline" />
               Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete All Projects Dialog */}
+      <Dialog open={showDeleteAllDialog} onOpenChange={(open) => !deletingAll && setShowDeleteAllDialog(open)}>
+        <DialogContent className="glass-panel border border-[var(--space-border)] bg-[var(--space-card)]/95 rounded-2xl p-6 shadow-xl max-w-md gap-6">
+          <DialogHeader>
+            <DialogTitle className="text-[var(--space-text)] font-bold text-lg">Delete All Projects</DialogTitle>
+            <DialogDescription className="text-[var(--space-text-muted)] text-sm leading-relaxed mt-1">
+              Are you sure you want to delete all projects? This will permanently delete all tutorial and studio projects, along with all their scenes, steps, and render jobs. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex gap-3 justify-end mt-4">
+            <Button
+              variant="ghost"
+              disabled={deletingAll}
+              onClick={() => setShowDeleteAllDialog(false)}
+              className="glass-btn glass-btn-secondary py-3 px-5 rounded-xl font-semibold text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deletingAll}
+              onClick={handleDeleteAll}
+              className="bg-red-500 hover:bg-red-650 text-white rounded-xl text-xs py-3 px-5 font-semibold disabled:opacity-50"
+            >
+              {deletingAll ? (
+                <>
+                  <Clock className="w-4 h-4 mr-1.5 inline animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-1.5 inline" />
+                  Delete All
+                </>
+              )}
             </Button>
           </div>
         </DialogContent>

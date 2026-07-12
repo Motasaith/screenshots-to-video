@@ -85,12 +85,7 @@ export default function StudioRender() {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <div className="relative">
-          <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
-            Step 6 of 7
-          </span>
-        </div>
-        <h2 className="font-body font-bold text-3xl mt-3 tracking-tight text-[var(--sketch-fg)]">
+        <h2 className="font-body font-bold text-3xl tracking-tight text-[var(--sketch-fg)]">
           Render Video
         </h2>
         <p className="font-body text-[var(--sketch-fg-muted)] mt-2">

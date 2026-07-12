@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
 import {
   Sparkles,
   ChevronRight,
@@ -101,6 +102,12 @@ export default function StepScript() {
   }, [project]);
 
   const handleRegenerateStep = async (stepId: number) => {
+    const step = project?.steps?.find((s) => s.id === stepId);
+    if (!step?.description || !step.description.trim() || /^scene\s+\d+$/i.test(step.description.trim())) {
+      toast.error(`Scene ${step?.order || ""} has no description. Please write a description in Step 2 before regenerating script.`);
+      return;
+    }
+
     setRegeneratingStepId(stepId);
     try {
       const result = await regenerateStepScript.mutateAsync({ stepId });

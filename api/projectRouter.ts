@@ -2,8 +2,9 @@ import { z } from "zod";
 import { createRouter, authedQuery, rateLimitByUser } from "./middleware";
 import { getDb } from "./queries/connection";
 import { projects, steps, renderJobs, users } from "@db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
+import { detectGibberish } from "./lib/gibberish";
 
 export const projectRouter = createRouter({
   list: authedQuery
@@ -53,6 +54,22 @@ export const projectRouter = createRouter({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // Reject gibberish inputs
+      const titleCheck = detectGibberish(input.title);
+      if (titleCheck.isGibberish) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: titleCheck.reason?.replace("a real step description", "a real video title").replace("what the user should do", "a valid video title") || "Title contains random or invalid text.",
+        });
+      }
+      const descCheck = detectGibberish(input.description);
+      if (descCheck.isGibberish) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: descCheck.reason?.replace("a real step description", "a real video description").replace("what the user should do", "a valid video description") || "Description contains random or invalid text.",
+        });
+      }
+
       // Free tier enforcement
       if (ctx.user!.plan === "free") {
         const [userRow] = await getDb()
@@ -203,6 +220,29 @@ export const projectRouter = createRouter({
         .where(
           and(eq(projects.id, input.id), eq(projects.userId, ctx.user!.id))
         );
+      return { success: true };
+    }),
+
+  deleteAll: authedQuery
+    .use(rateLimitByUser(60_000, 10))
+    .mutation(async ({ ctx }) => {
+      const userProjects = await getDb()
+        .select({ id: projects.id })
+        .from(projects)
+        .where(eq(projects.userId, ctx.user!.id));
+
+      const projectIds = userProjects.map((p) => p.id);
+      if (projectIds.length > 0) {
+        await getDb()
+          .delete(renderJobs)
+          .where(inArray(renderJobs.projectId, projectIds));
+        await getDb()
+          .delete(steps)
+          .where(inArray(steps.projectId, projectIds));
+        await getDb()
+          .delete(projects)
+          .where(eq(projects.userId, ctx.user!.id));
+      }
       return { success: true };
     }),
 
