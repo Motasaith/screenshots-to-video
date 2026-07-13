@@ -2,7 +2,7 @@ import { z } from "zod";
 import { createRouter, authedQuery, rateLimitByUser } from "./middleware";
 import { getDb } from "./queries/connection";
 import { projects, steps, renderJobs } from "@db/schema";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import { getSignedDownloadUrl, isR2Configured } from "./lib/r2";
 
 export const renderRouter = createRouter({
@@ -27,7 +27,7 @@ export const renderRouter = createRouter({
         .select()
         .from(renderJobs)
         .where(eq(renderJobs.projectId, input.projectId))
-        .orderBy(desc(renderJobs.createdAt))
+        .orderBy(desc(renderJobs.id))
         .limit(1);
 
       const projectSteps = await getDb()
@@ -95,6 +95,22 @@ export const renderRouter = createRouter({
         throw new Error(
           `Steps ${missingScreenshots.map((s) => s.order).join(", ")} are missing uploaded screenshots.`
         );
+      }
+
+      // Check if there is already an active (queued or processing) job for this project to prevent duplicates
+      const [existingJob] = await getDb()
+        .select()
+        .from(renderJobs)
+        .where(
+          and(
+            eq(renderJobs.projectId, input.projectId),
+            inArray(renderJobs.status, ["queued", "processing"])
+          )
+        )
+        .limit(1);
+
+      if (existingJob) {
+        return { success: true, totalSteps: projectSteps.length };
       }
 
       // Mark project as processing

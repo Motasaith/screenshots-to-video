@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useWizardStore, type TransitionType } from "@/hooks/useWizardStore";
 import { trpc } from "@/providers/trpc";
@@ -16,17 +16,6 @@ export default function StepPreview() {
   const [stepTransitions, setStepTransitions] = useState<Record<number, TransitionType>>({});
   const [transitionDuration, setTransitionDuration] = useState(previewData.transitionDuration || 0.5);
 
-  const {
-    introTemplate = "",
-    introText = "",
-    introVideoPath = "",
-    introDuration = 3.0,
-    outroTemplate = "",
-    outroText = "",
-    outroVideoPath = "",
-    outroDuration = 3.0,
-  } = previewData;
-
   const [captionsEnabled, setCaptionsEnabled] = useState(previewData.captionsEnabled ?? true);
   const [captionStyle, setCaptionStyle] = useState(previewData.captionStyle || "standard");
   const [captionSize, setCaptionSize] = useState(previewData.captionSize || "medium");
@@ -35,54 +24,55 @@ export default function StepPreview() {
 
   const updateProject = trpc.project.update.useMutation();
   const updateStep = trpc.step.update.useMutation();
+
+  const { data: project } = trpc.project.getById.useQuery(
+    { id: projectIdNum },
+    { enabled: projectIdNum > 0 }
+  );
   const { data: steps } = trpc.step.listByProject.useQuery({ projectId: projectIdNum });
+
+  // Sync state from project query when loaded
+  useEffect(() => {
+    if (project) {
+      setTransitionDuration(project.transitionDuration ?? 0.5);
+      setCaptionsEnabled(project.captionsEnabled === 1);
+      setCaptionStyle(project.captionStyle || "standard");
+      setCaptionSize(project.captionSize || "medium");
+      setCaptionPosition(project.captionPosition || "bottom");
+      setCaptionColor(project.captionColor || "#FFFFFF");
+    }
+  }, [project]);
+
+  // Sync step transitions when steps load
+  useEffect(() => {
+    if (steps) {
+      const transitions: Record<number, TransitionType> = {};
+      steps.forEach((step) => {
+        if (step.transition) {
+          transitions[step.id] = step.transition as TransitionType;
+        }
+      });
+      setStepTransitions(transitions);
+    }
+  }, [steps]);
 
   const handleStepTransitionChange = (stepId: number, transition: TransitionType) => {
     setStepTransitions((prev) => ({ ...prev, [stepId]: transition }));
   };
 
-  const handleContinue = async () => {
-    // Save project level data
-    await updateProject.mutateAsync({
-      id: projectIdNum,
-      transitionDuration,
-      introTemplate,
-      introText,
-      introVideoPath,
-      introDuration,
-      outroTemplate,
-      outroText,
-      outroVideoPath,
-      outroDuration,
-      captionsEnabled,
-      captionStyle,
-      captionSize,
-      captionPosition,
-      captionColor,
-    });
-
-    // Save step level data (transitions) — per-step if set, else global
-    if (steps) {
-      for (const step of steps) {
-        const transition = stepTransitions[step.id] || globalTransition;
-        await updateStep.mutateAsync({
-          id: step.id,
-          transition,
-        });
-      }
-    }
-
+  const handleContinue = () => {
+    // Save current preview state to wizard store for consistency
     setStepData("preview", {
       stepTransitions,
       transitionDuration,
-      introTemplate,
-      introText,
-      introVideoPath,
-      introDuration,
-      outroTemplate,
-      outroText,
-      outroVideoPath,
-      outroDuration,
+      introTemplate: project?.introTemplate || "",
+      introText: project?.introText || "",
+      introVideoPath: project?.introVideoPath || "",
+      introDuration: project?.introDuration || 3.0,
+      outroTemplate: project?.outroTemplate || "",
+      outroText: project?.outroText || "",
+      outroVideoPath: project?.outroVideoPath || "",
+      outroDuration: project?.outroDuration || 3.0,
       captionsEnabled,
       captionStyle,
       captionSize,

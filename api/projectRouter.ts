@@ -297,7 +297,7 @@ export const projectRouter = createRouter({
         .select()
         .from(renderJobs)
         .where(eq(renderJobs.projectId, input.projectId))
-        .orderBy(desc(renderJobs.createdAt))
+        .orderBy(desc(renderJobs.id))
         .limit(1);
 
       return job || null;

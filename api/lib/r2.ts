@@ -2,6 +2,8 @@ import { UTApi } from "uploadthing/server";
 import { env } from "./env";
 import path from "path";
 import { nanoid } from "nanoid";
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 // Suppress UploadThing SDK deprecation warnings — we already use ufsUrl
 const originalWarn = console.warn;
@@ -39,9 +41,31 @@ function getUtapi() {
   return utapi;
 }
 
+const B2_KEY_ID = process.env.B2_KEY_ID || "";
+const B2_APPLICATION_KEY = process.env.B2_APPLICATION_KEY || "";
+const B2_BUCKET = process.env.B2_BUCKET || "";
+const B2_ENDPOINT = process.env.B2_ENDPOINT || "";
+const B2_REGION = process.env.B2_REGION || "";
+
+let s3Client: S3Client | null = null;
+
+function getB2S3Client() {
+  if (!s3Client) {
+    s3Client = new S3Client({
+      endpoint: B2_ENDPOINT,
+      region: B2_REGION,
+      credentials: {
+        accessKeyId: B2_KEY_ID,
+        secretAccessKey: B2_APPLICATION_KEY,
+      },
+    });
+  }
+  return s3Client;
+}
+
 /**
- * Upload a buffer to UploadThing.
- * Returns the storage URL.
+ * Upload a buffer to UploadThing with Backblaze B2 fallback.
+ * Returns the storage key/URL.
  */
 export async function uploadToR2(
   buffer: Buffer | Uint8Array,
@@ -54,28 +78,64 @@ export async function uploadToR2(
   const ext = opts.filename ? path.extname(opts.filename) : "";
   const name = opts.filename || `${nanoid(16)}${ext}`;
 
-  const file = new File([buffer as any], name, {
-    type: opts.contentType || "application/octet-stream",
-  });
+  try {
+    const file = new File([buffer as any], name, {
+      type: opts.contentType || "application/octet-stream",
+    });
 
-  const response = await getUtapi().uploadFiles(file);
+    const response = await getUtapi().uploadFiles(file);
 
-  if (response.error) {
-    throw new Error(response.error.message);
+    if (response.error) {
+      throw new Error(response.error.message);
+    }
+
+    return response.data.ufsUrl || response.data.url;
+  } catch (err: any) {
+    console.warn(`[Storage] UploadThing failed (${err.message || err}), falling back to Backblaze B2...`);
+    
+    // B2 Upload fallback
+    const key = `${opts.folder}/${name}`;
+    const s3 = getB2S3Client();
+    await s3.send(new PutObjectCommand({
+      Bucket: B2_BUCKET,
+      Key: key,
+      Body: buffer,
+      ContentType: opts.contentType || "application/octet-stream",
+    }));
+
+    console.log(`[Storage] Successfully uploaded to B2: ${key}`);
+    return `b2:${key}`;
   }
-
-  return response.data.ufsUrl || response.data.url;
 }
 
 /**
- * Generate a download URL. UploadThing URLs are public by default.
+ * Generate a download URL.
  */
 export async function getSignedDownloadUrl(
   key: string,
   _expiresIn = 3600,
 ): Promise<string> {
-  void _expiresIn; // UploadThing URLs don't support custom expiry; kept for API compatibility
   if (!key) return "";
+
+  // If the key starts with b2:, generate pre-signed URL
+  if (key.startsWith("b2:")) {
+    const realKey = key.slice("b2:".length);
+    const s3 = getB2S3Client();
+    try {
+      const url = await getSignedUrl(
+        s3,
+        new GetObjectCommand({
+          Bucket: B2_BUCKET,
+          Key: realKey,
+        }),
+        { expiresIn: _expiresIn }
+      );
+      return url;
+    } catch (err: any) {
+      console.error(`[Storage] Failed to generate B2 signed URL for ${realKey}:`, err.message);
+      return "";
+    }
+  }
 
   // If the key is already a full URL, return it
   if (key.startsWith("http://") || key.startsWith("https://")) return key;
@@ -84,10 +144,27 @@ export async function getSignedDownloadUrl(
 }
 
 /**
- * Delete an object from UploadThing.
+ * Delete an object.
  */
 export async function deleteFromR2(key: string): Promise<void> {
   if (!key) return;
+
+  if (key.startsWith("b2:")) {
+    const realKey = key.slice("b2:".length);
+    const s3 = getB2S3Client();
+    try {
+      await s3.send(
+        new DeleteObjectCommand({
+          Bucket: B2_BUCKET,
+          Key: realKey,
+        })
+      );
+      console.log(`[Storage] Deleted B2 object: ${realKey}`);
+    } catch (err: any) {
+      console.error(`[Storage] Failed to delete B2 object ${realKey}:`, err.message);
+    }
+    return;
+  }
 
   // Extract the file key from the URL if needed
   const fileKey = key.startsWith("http") ? key.split("/").pop() : key;
@@ -112,7 +189,7 @@ export async function existsInR2(key: string): Promise<boolean> {
 }
 
 /**
- * Download an object from UploadThing as a buffer.
+ * Download an object as a buffer.
  */
 export async function downloadFromR2(key: string): Promise<Buffer> {
   const url = await getSignedDownloadUrl(key);
@@ -147,5 +224,5 @@ export async function downloadFromR2(key: string): Promise<Buffer> {
  * Check if storage is configured and available.
  */
 export function isR2Configured(): boolean {
-  return !!env.uploadthingSecret;
+  return !!env.uploadthingSecret || (!!B2_KEY_ID && !!B2_APPLICATION_KEY);
 }

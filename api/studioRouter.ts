@@ -490,6 +490,22 @@ export const studioRouter = createRouter({
         throw new Error("No scenes to render. Generate a script first.");
       }
 
+      // Check if there is already an active (queued or processing) job for this project to prevent duplicates
+      const [existingJob] = await getDb()
+        .select()
+        .from(studioRenderJobs)
+        .where(
+          and(
+            eq(studioRenderJobs.projectId, input.projectId),
+            inArray(studioRenderJobs.status, ["queued", "processing"])
+          )
+        )
+        .limit(1);
+
+      if (existingJob) {
+        return { success: true, totalSteps: scenes.length };
+      }
+
       // Mark project as processing
       await getDb()
         .update(studioProjects)
@@ -539,7 +555,7 @@ export const studioRouter = createRouter({
         .select()
         .from(studioRenderJobs)
         .where(eq(studioRenderJobs.projectId, input.projectId))
-        .orderBy(desc(studioRenderJobs.createdAt))
+        .orderBy(desc(studioRenderJobs.id))
         .limit(1);
 
       // Generate signed URL for the final video

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { motion } from "framer-motion";
@@ -27,6 +27,7 @@ export default function StepRender() {
   const projectIdNum = Number(projectId) || 0;
   const [hasStarted, setHasStarted] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
+  const startedRef = useRef(false);
 
   const startRender = trpc.render.start.useMutation();
 
@@ -41,7 +42,8 @@ export default function StepRender() {
 
   // Start render on mount
   useEffect(() => {
-    if (!hasStarted && projectIdNum > 0) {
+    if (!hasStarted && projectIdNum > 0 && !startedRef.current) {
+      startedRef.current = true;
       startRender
         .mutateAsync({ projectId: projectIdNum })
         .then(() => {
@@ -49,6 +51,7 @@ export default function StepRender() {
         })
         .catch((err) => {
           setStartError(err.message || "Failed to start render");
+          startedRef.current = false;
         });
     }
   }, [projectIdNum, hasStarted]);
@@ -173,6 +176,7 @@ export default function StepRender() {
                   <Button
                     className="sketch-btn-primary"
                     onClick={() => {
+                      startedRef.current = false;
                       setHasStarted(false);
                       setStartError(null);
                     }}

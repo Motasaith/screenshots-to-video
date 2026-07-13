@@ -9,6 +9,7 @@ const execFileAsync = promisify(execFile);
 
 import { EdgeTTS } from "node-edge-tts";
 import { env } from "./env";
+import ffmpegPath from "ffmpeg-static";
 
 /**
  * ──────────────────────────────────────────────────────────────────
@@ -179,6 +180,37 @@ export async function getElevenLabsCredits(): Promise<{
  *
  * Returns the path to the generated audio file in a temp directory.
  */
+async function generateSilenceAudio(
+  duration: number,
+  outDir: string
+): Promise<{ filePath: string; duration: number }> {
+  const outputPath = path.join(outDir, `silence_${nanoid(12)}.mp3`);
+  const args = [
+    "-f", "lavfi",
+    "-i", "anullsrc=r=24000:cl=mono",
+    "-t", duration.toString(),
+    "-q:a", "9",
+    "-acodec", "libmp3lame",
+    "-y",
+    outputPath
+  ];
+
+  if (!ffmpegPath) {
+    throw new Error("ffmpeg-static path is undefined");
+  }
+
+  await execFileAsync(ffmpegPath, args);
+  return { filePath: outputPath, duration };
+}
+
+/**
+ * Generate TTS audio. Routes to:
+ *  - "elevenlabs:<voiceId>" → ElevenLabs API (falls back to Edge on failure)
+ *  - "kokoro:<voice>"       → Kokoro local model (falls back to Edge on failure)
+ *  - everything else         → Edge TTS (Microsoft neural voices)
+ *
+ * Returns the path to the generated audio file in a temp directory.
+ */
 export async function generateTTSAudio(
   text: string,
   opts?: {
@@ -192,6 +224,10 @@ export async function generateTTSAudio(
   await fs.mkdir(outDir, { recursive: true });
 
   const cleanText = prepareTextForTTS(text);
+
+  if (voice === "none" || !cleanText) {
+    return generateSilenceAudio(3.0, outDir);
+  }
 
   if (voice.startsWith("elevenlabs:")) {
     try {

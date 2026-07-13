@@ -22,9 +22,6 @@ import os from "os";
 import { nanoid } from "nanoid";
 
 const POLL_INTERVAL_MS = 5000;
-// Use globalThis to prevent multiple worker instances across HMR reloads
-const globalKey = "__aivideo_worker_active__";
-const globalRunningKey = "__aivideo_worker_running__";
 let pollCount = 0;
 
 let lastErrorMsg = "";
@@ -34,20 +31,14 @@ let lastErrorMsg = "";
  * Polls the render_jobs table for queued jobs and processes them.
  */
 export function startRenderWorker(): void {
-  // If already active, stop the old poller instance
-  if ((globalThis as any)[globalKey]) {
-    console.log("[Worker] Stopping old render worker instance for hot-reload...");
-    (globalThis as any)[globalRunningKey] = false;
-  }
+  const workerId = nanoid();
+  (globalThis as any).__aivideo_worker_id__ = workerId;
 
-  (globalThis as any)[globalKey] = true;
-  (globalThis as any)[globalRunningKey] = true;
-
-  console.log("[Worker] Render worker started, polling every", POLL_INTERVAL_MS, "ms");
+  console.log(`[Worker] Render worker started (Instance ID: ${workerId}), polling every ${POLL_INTERVAL_MS} ms`);
 
   const poll = async () => {
-    if (!(globalThis as any)[globalRunningKey]) {
-      console.log("[Worker] Old render worker loop detected stop flag, exiting loop.");
+    if ((globalThis as any).__aivideo_worker_id__ !== workerId) {
+      console.log(`[Worker] Stale render worker instance (ID: ${workerId}) detected new worker active, exiting loop.`);
       return;
     }
 
@@ -71,7 +62,12 @@ export function startRenderWorker(): void {
       }
     }
 
-    setTimeout(poll, POLL_INTERVAL_MS);
+    // Schedule next poll only if we are still the active worker instance
+    if ((globalThis as any).__aivideo_worker_id__ === workerId) {
+      setTimeout(poll, POLL_INTERVAL_MS);
+    } else {
+      console.log(`[Worker] Stale render worker instance (ID: ${workerId}) detected new worker active, exiting loop.`);
+    }
   };
 
   setTimeout(poll, 2000); // Initial delay before first poll
@@ -81,8 +77,7 @@ export function startRenderWorker(): void {
  * Stop the render worker.
  */
 export function stopRenderWorker(): void {
-  (globalThis as any)[globalRunningKey] = false;
-  (globalThis as any)[globalKey] = false;
+  (globalThis as any).__aivideo_worker_id__ = null;
   console.log("[Worker] Render worker stopped");
 }
 
@@ -95,7 +90,7 @@ async function processNextJob(): Promise<void> {
     .select()
     .from(renderJobs)
     .where(eq(renderJobs.status, "queued"))
-    .orderBy(renderJobs.createdAt)
+    .orderBy(renderJobs.id)
     .limit(1);
 
   if (!job) return; // No work to do
@@ -670,7 +665,7 @@ async function processNextStudioJob(): Promise<void> {
     .select()
     .from(studioRenderJobs)
     .where(eq(studioRenderJobs.status, "queued"))
-    .orderBy(studioRenderJobs.createdAt)
+    .orderBy(studioRenderJobs.id)
     .limit(1);
 
   if (!job) return;

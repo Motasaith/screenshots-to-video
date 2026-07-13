@@ -219,9 +219,8 @@ type ToolMode = "select" | "highlight" | "zoom" | "overlay" | "crop" | "blur" | 
 /* ------------------------------------------------------------------ */
 
 function getImageBounds(container: HTMLDivElement, img: HTMLImageElement | HTMLVideoElement) {
-  const containerRect = container.getBoundingClientRect();
-  const cw = containerRect.width;
-  const ch = containerRect.height;
+  const cw = container.offsetWidth;
+  const ch = container.offsetHeight;
   const nw = img instanceof HTMLVideoElement ? img.videoWidth : img.naturalWidth;
   const nh = img instanceof HTMLVideoElement ? img.videoHeight : img.naturalHeight;
   if (!nw || !nh) return null;
@@ -312,6 +311,7 @@ const transitionTypes: { value: TransitionType; label: string }[] = [
 ];
 
 const voices = [
+  { id: "none", name: "None (No Voiceover)", accent: "-", gender: "-", tag: "Mute" },
   { id: "en-US-AndrewMultilingualNeural", name: "Andrew", accent: "US", gender: "Male", tag: "Natural" },
   { id: "en-US-AvaMultilingualNeural", name: "Ava", accent: "US", gender: "Female", tag: "Natural" },
   { id: "en-US-BrianMultilingualNeural", name: "Brian", accent: "US", gender: "Male", tag: "Natural" },
@@ -506,6 +506,11 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
   const handlePlayPreview = async (e: React.MouseEvent, voiceId: string) => {
     e.stopPropagation();
+
+    if (voiceId === "none") {
+      toast.info("No audio preview for 'None (No Voiceover)' option.");
+      return;
+    }
 
     if (playingId === voiceId) {
       audioRef.pause();
@@ -992,8 +997,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       if (nw && nh) {
         const boundsVal = getImageBounds(container, img);
         if (boundsVal) {
-          const mouseX = e.clientX - containerRect.left;
-          const mouseY = e.clientY - containerRect.top;
+          const mouseX = (e.clientX - containerRect.left) / canvasScale;
+          const mouseY = (e.clientY - containerRect.top) / canvasScale;
           const imgRelX = ((mouseX - boundsVal.offsetX) / boundsVal.visibleW) * 100;
           const imgRelY = ((mouseY - boundsVal.offsetY) / boundsVal.visibleH) * 100;
           return {
@@ -1005,10 +1010,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     }
 
     return {
-      x: ((e.clientX - containerRect.left) / containerRect.width) * 100,
-      y: ((e.clientY - containerRect.top) / containerRect.height) * 100,
+      x: (((e.clientX - containerRect.left) / canvasScale) / container.offsetWidth) * 100,
+      y: (((e.clientY - containerRect.top) / canvasScale) / container.offsetHeight) * 100,
     };
-  }, []);
+  }, [canvasScale]);
 
   /* Mouse handlers */
   const handleMouseDown = (e: React.MouseEvent) => {
@@ -5449,28 +5454,38 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   <div
                     style={{
                       display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
                       minWidth: "100%",
                       minHeight: "100%",
                       padding: "40px",
                     }}
                   >
                     <div
-                      ref={canvasRef}
-                      className={`relative overflow-hidden border border-[var(--sketch-border-color)]/35 bg-[#000000] shadow-2xl flex-shrink-0 select-none ${mode === "pan"
-                          ? "cursor-grab active:cursor-grabbing"
-                          : mode === "select"
-                            ? "cursor-default"
-                            : "cursor-crosshair"
-                        }`}
                       style={{
-                        width: `${canvasDim.width}px`,
-                        height: `${canvasDim.height}px`,
-                        transform: `scale(${canvasScale})`,
-                        transformOrigin: "center center",
-                        transition: isPanningRef.current ? "none" : "transform 0.1s ease-out",
+                        width: `${canvasDim.width * canvasScale}px`,
+                        height: `${canvasDim.height * canvasScale}px`,
+                        position: "relative",
+                        margin: "auto",
+                        flexShrink: 0,
                       }}
+                    >
+                      <div
+                        ref={canvasRef}
+                        className={`relative overflow-hidden border border-[var(--sketch-border-color)]/35 bg-[#000000] shadow-2xl flex-shrink-0 select-none ${mode === "pan"
+                            ? "cursor-grab active:cursor-grabbing"
+                            : mode === "select"
+                              ? "cursor-default"
+                              : "cursor-crosshair"
+                          }`}
+                        style={{
+                          width: `${canvasDim.width}px`,
+                          height: `${canvasDim.height}px`,
+                          transform: `scale(${canvasScale})`,
+                          transformOrigin: "top left",
+                          position: "absolute",
+                          left: 0,
+                          top: 0,
+                          transition: isPanningRef.current ? "none" : "transform 0.1s ease-out",
+                        }}
                       onMouseDown={handleMouseDown}
                       onMouseMove={handleMouseMove}
                       onMouseUp={handleMouseUp}
@@ -6371,6 +6386,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                       </div>
                     </div>
                   </div>
+                </div>
                 )}
               </div>
             </div>

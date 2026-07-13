@@ -22,6 +22,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
 const voices = [
+  { id: "none", name: "None (No Voiceover)", accent: "-", gender: "-", tag: "Mute" },
   // Newer Microsoft "Multilingual" voices — the most natural-sounding
   { id: "en-US-AndrewMultilingualNeural", name: "Andrew", accent: "US", gender: "Male", tag: "Natural" },
   { id: "en-US-AvaMultilingualNeural", name: "Ava", accent: "US", gender: "Female", tag: "Natural" },
@@ -104,6 +105,11 @@ export default function StepVoice() {
 
   const handlePlayPreview = async (e: React.MouseEvent, voiceId: string) => {
     e.stopPropagation(); // prevent selecting the voice when clicking play
+    
+    if (voiceId === "none") {
+      toast.info("No audio preview for 'None (No Voiceover)' option.");
+      return;
+    }
     
     if (playingId === voiceId) {
       audioRef.pause();
