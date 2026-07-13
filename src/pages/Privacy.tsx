@@ -59,7 +59,7 @@ export default function Privacy() {
             <section>
               <h2 className="font-bold text-2xl mb-4 text-teal-600 dark:text-teal-400">3. Data Storage and Security</h2>
               <p className="text-sm">
-                Your screenshots and videos are securely stored using UploadThing and Supabase. While we implement industry-standard security measures to protect your data, no method of transmission over the internet or electronic storage is 100% secure.
+                Your screenshots and videos are securely stored using R2/B2 cloud storage. While we implement industry-standard security measures to protect your data, no method of transmission over the internet or electronic storage is 100% secure.
               </p>
             </section>
 

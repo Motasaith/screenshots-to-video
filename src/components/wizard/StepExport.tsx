@@ -4,8 +4,6 @@ import { trpc } from "@/providers/trpc";
 import { useAuth } from "@/hooks/useAuth";
 import { motion } from "framer-motion";
 import {
-  Download,
-  Link2,
   RefreshCw,
   Film,
   Check,
@@ -19,13 +17,13 @@ import {
   ChevronLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import SocialShare from "./SocialShare";
 
 export default function StepExport() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const projectIdNum = Number(projectId) || 0;
   const [regeneratingStep, setRegeneratingStep] = useState<number | null>(null);
-  const [linkCopied, setLinkCopied] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const { user } = useAuth();
 
@@ -48,41 +46,6 @@ export default function StepExport() {
     utils.project.getById.invalidate({ id: projectIdNum });
     utils.render.status.invalidate({ projectId: projectIdNum });
     setRegeneratingStep(null);
-  };
-
-  const handleDownload = async () => {
-    const videoUrl = renderStatus?.finalVideoUrl;
-    if (!videoUrl) return;
-
-    // Trigger download via a temporary link
-    const a = document.createElement("a");
-    a.href = videoUrl;
-    a.download = `${project?.title || "video"}.mp4`;
-    a.target = "_blank";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  };
-
-  const handleCopyLink = async () => {
-    const videoUrl = renderStatus?.finalVideoUrl;
-    if (!videoUrl) return;
-
-    try {
-      await navigator.clipboard.writeText(videoUrl);
-      setLinkCopied(true);
-      setTimeout(() => setLinkCopied(false), 2000);
-    } catch {
-      // Fallback for older browsers
-      const input = document.createElement("input");
-      input.value = videoUrl;
-      document.body.appendChild(input);
-      input.select();
-      document.execCommand("copy");
-      document.body.removeChild(input);
-      setLinkCopied(true);
-      setTimeout(() => setLinkCopied(false), 2000);
-    }
   };
 
   const totalDuration =
@@ -192,36 +155,6 @@ export default function StepExport() {
                   </p>
                 </div>
               )}
-
-              {/* Action buttons */}
-              <div className="flex flex-wrap gap-3">
-                <Button
-                  className="sketch-btn-primary flex-1"
-                  onClick={handleDownload}
-                  disabled={!hasVideo}
-                >
-                  <Download className="w-4 h-4" />
-                  Download MP4
-                </Button>
-                <Button
-                  variant="ghost"
-                  className="sketch-btn-ghost flex-1"
-                  onClick={handleCopyLink}
-                  disabled={!hasVideo}
-                >
-                  {linkCopied ? (
-                    <>
-                      <Check className="w-4 h-4" />
-                      Copied!
-                    </>
-                  ) : (
-                    <>
-                      <Link2 className="w-4 h-4" />
-                      Copy Link
-                    </>
-                  )}
-                </Button>
-              </div>
             </div>
 
             {/* Navigation buttons */}
@@ -229,7 +162,7 @@ export default function StepExport() {
               <Button
                 variant="ghost"
                 type="button"
-                onClick={() => navigate(`/create/${projectIdNum}/voice`)}
+                onClick={() => navigate(`/create/${projectIdNum}/render`)}
                 className="sketch-btn-ghost flex-1"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -245,7 +178,7 @@ export default function StepExport() {
               </Button>
               <Button
                 className="sketch-btn-primary flex-1"
-                onClick={() => navigate("/create/0/setup")}
+                onClick={() => navigate("/dashboard")}
               >
                 <Plus className="w-4 h-4" />
                 New Project
@@ -253,8 +186,15 @@ export default function StepExport() {
             </div>
           </div>
 
-          {/* Right Column: Breakdown, AI Review, & Ad (5 cols) */}
+          {/* Right Column: Share, Breakdown, AI Review (5 cols) */}
           <div className="lg:col-span-5 space-y-6">
+            {/* Social Share — appears after video is ready */}
+            <SocialShare
+              videoUrl={videoUrl || undefined}
+              title={project?.title || "My AIVideo Tutorial"}
+              description={project?.description || undefined}
+            />
+
             {/* Step breakdown */}
             <div id="export-breakdown" className="sketch-card p-5 bg-[var(--sketch-card-bg)] scroll-mt-6">
               <h3 className="font-body font-semibold text-lg mb-4 text-[var(--sketch-fg)]">
@@ -366,16 +306,6 @@ export default function StepExport() {
                   </span>
                 </div>
               </div>
-            </div>
-
-            {/* AdSense Placeholder */}
-            <div className="sketch-card bg-[var(--sketch-card-bg)] border-2 border-dashed border-[var(--sketch-fg-subtle)] p-6 text-center flex flex-col items-center justify-center">
-              <span className="font-mono text-xs text-[var(--sketch-fg-subtle)] uppercase tracking-widest bg-[var(--sketch-fg-subtle)]/10 px-2 py-1 sketch-border-sm mb-2 inline-block">
-                Advertisement
-              </span>
-              <p className="font-body text-sm text-[var(--sketch-fg-muted)]">
-                Google AdSense Placeholder (728x90)
-              </p>
             </div>
           </div>
         </div>

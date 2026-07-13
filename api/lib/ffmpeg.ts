@@ -3,6 +3,9 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { createLogger } from "./logger";
+
+const log = createLogger({ path: "ffmpeg" });
 import { nanoid } from "nanoid";
 
 // Use static binaries so the user doesn't need to install ffmpeg globally
@@ -88,7 +91,7 @@ export async function probeMediaDuration(filePath: string): Promise<number> {
     if (isNaN(duration)) throw new Error("Non-numeric duration");
     return duration;
   } catch (err) {
-    console.warn(`[ffmpeg] probeMediaDuration failed for ${filePath}, falling back to 10s:`, err instanceof Error ? err.message : err);
+    log.warn(`probeMediaDuration failed for ${filePath}, falling back to 10s`, { error: err instanceof Error ? err.message : String(err) });
     return 10; // Fallback
   }
 }
@@ -795,7 +798,7 @@ export async function renderStepVideo(opts: {
       timeout: 300000, // supersampled zoompan is heavier — allow 5 min
       });
   } catch (err: any) {
-    console.warn("[FFmpeg] Primary render failed, retrying simplified:", err.message);
+    log.warn("Primary render failed, retrying simplified", { error: err.message });
     return renderStepVideoFallback(opts, outputPath, paddedDuration);
   }
 
@@ -1139,7 +1142,7 @@ export async function concatenateSegments(
       timeout: 120000,
       });
   } catch (err: any) {
-    console.warn("[FFmpeg] Stream-copy concat failed, re-encoding:", err.message);
+    log.warn("Stream-copy concat failed, re-encoding", { error: err.message });
     return concatenateSegmentsReencode(segmentPaths);
   } finally {
     await fs.unlink(concatFile).catch(() => {});
@@ -1283,10 +1286,10 @@ export async function renderTextSegment(
 
   if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
   try {
-    console.log("[FFmpeg] Rendering text segment:", text.substring(0, 50));
+    log.info("Rendering text segment", { text: text.substring(0, 50) });
     await execFileAsync(ffmpegPath, args, { timeout: 60000 });
   } catch (err: any) {
-    console.warn("[FFmpeg] drawtext failed, trying plain color fallback:", err.message);
+    log.warn("drawtext failed, trying plain color fallback", { error: err.message });
     // Fallback: just colored background without text
     const fbArgs = [
       "-y",
@@ -1382,7 +1385,7 @@ export async function concatenateSegmentsWithTransitions(
       timeout: 600000, // 10 minutes max for complex xfade
       });
   } catch (err: any) {
-    console.warn("[FFmpeg] xfade concat failed, falling back to simple concat:", err.message);
+    log.warn("xfade concat failed, falling back to simple concat", { error: err.message });
     return concatenateSegments(segmentPaths);
   }
 
@@ -1621,7 +1624,7 @@ async function getMusicTrackPath(trackId: string): Promise<string> {
     await fs.access(destPath);
     return destPath;
   } catch {
-    console.log(`[FFmpeg] Downloading background music track: ${trackId} from ${url}`);
+    log.info(`Downloading background music track: ${trackId}`);
     const res = await fetch(url);
     if (!res.ok) throw new Error(`Failed to download music track: status ${res.status}`);
     const arrayBuffer = await res.arrayBuffer();

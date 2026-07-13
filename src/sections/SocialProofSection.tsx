@@ -1,5 +1,5 @@
 import { motion, useInView } from "framer-motion";
-import { useRef, useState, useEffect } from "react";
+import { useRef } from "react";
 import { Users } from "lucide-react";
 
 const integrations = [
@@ -12,26 +12,6 @@ const integrations = [
   { name: "Microsoft Teams Guides" },
   { name: "Universal MP4 Output" },
 ];
-
-function AnimatedCount({ target, isInView }: { target: number; isInView: boolean }) {
-  const [count, setCount] = useState(0);
-
-  useEffect(() => {
-    if (!isInView) return;
-    const duration = 2000;
-    const start = Date.now();
-    const animate = () => {
-      const elapsed = Date.now() - start;
-      const progress = Math.min(elapsed / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setCount(Math.round(eased * target));
-      if (progress < 1) requestAnimationFrame(animate);
-    };
-    requestAnimationFrame(animate);
-  }, [isInView, target]);
-
-  return <span>{count.toLocaleString()}</span>;
-}
 
 export default function SocialProofSection() {
   const ref = useRef(null);
@@ -60,9 +40,9 @@ export default function SocialProofSection() {
               <Users className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
             </div>
             <span className="font-sans text-sm font-bold text-[var(--space-text)]">
-              <AnimatedCount target={2400} isInView={isInView} />+
+              Screenshot-to-Video
             </span>
-            <span className="font-sans text-xs text-[var(--space-text-muted)]">creators worldwide</span>
+            <span className="font-sans text-xs text-[var(--space-text-muted)]">powered by AI</span>
           </div>
         </motion.div>
 

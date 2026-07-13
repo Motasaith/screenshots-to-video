@@ -3,9 +3,24 @@ import { initTRPC, TRPCError } from "@trpc/server";
 import superjson from "superjson";
 import type { TrpcContext } from "./context";
 import { checkRateLimit, getClientIP } from "./lib/ratelimit";
+import { createLogger } from "./lib/logger";
 
 const t = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
+  errorFormatter({ shape, error, ctx }) {
+    const log = createLogger({
+      userId: ctx?.user?.id,
+      ip: ctx ? getClientIP(ctx.req.headers) : undefined,
+      path: shape.data?.path,
+    });
+    // Log all non-client errors (500s) as errors, client errors as debug
+    if (shape.data.code === "INTERNAL_SERVER_ERROR") {
+      log.error("tRPC internal error", error);
+    } else {
+      log.debug(`tRPC ${shape.data.code}: ${error.message}`, { code: shape.data.code });
+    }
+    return shape;
+  },
 });
 
 export const createRouter = t.router;

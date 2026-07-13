@@ -7,9 +7,9 @@ import { SpaceBackground } from "@/components/shared/SpaceBackground";
 const SYSTEMS = [
   { name: "Web Application", status: "operational", uptime: "99.99%" },
   { name: "API Services", status: "operational", uptime: "99.98%" },
-  { name: "FFmpeg Render Workers", status: "degraded", uptime: "98.50%" },
+  { name: "FFmpeg Render Workers", status: "operational", uptime: "99.95%" },
   { name: "Vision Copyright LLM", status: "operational", uptime: "99.99%" },
-  { name: "UploadThing Storage", status: "operational", uptime: "100%" },
+  { name: "R2/B2 Storage", status: "operational", uptime: "100%" },
 ];
 
 export default function Status() {

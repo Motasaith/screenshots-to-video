@@ -4,36 +4,35 @@ import { Sparkles, Cpu, Award, Zap } from "lucide-react";
 
 const stats = [
   {
-    value: 5000,
-    suffix: "+",
-    label: "Videos Rendered",
-    icon: Cpu,
-    percentage: 87,
-    strokeColor: "var(--teal-600)",
-  },
-  {
-    value: 12,
-    suffix: "min",
-    label: "Avg. Build Time",
-    icon: Zap,
-    percentage: 92,
-    strokeColor: "var(--teal-600)",
-  },
-  {
     value: 1080,
     suffix: "p",
-    label: "Output Format",
-    icon: Sparkles,
+    label: "Max Output Quality",
+    icon: Cpu,
     percentage: 100,
     strokeColor: "var(--teal-600)",
   },
   {
-    value: 4.9,
-    suffix: "/5",
-    label: "User Satisfaction",
+    value: 4,
+    suffix: "",
+    label: "Aspect Ratios",
+    icon: Zap,
+    percentage: 85,
+    strokeColor: "var(--teal-600)",
+  },
+  {
+    value: 30,
+    suffix: "+",
+    label: "Editor Tools",
+    icon: Sparkles,
+    percentage: 90,
+    strokeColor: "var(--teal-600)",
+  },
+  {
+    value: 100,
+    suffix: "%",
+    label: "AI Narration",
     icon: Award,
-    decimals: 1,
-    percentage: 98,
+    percentage: 100,
     strokeColor: "var(--teal-600)",
   },
 ];
@@ -197,7 +196,6 @@ export default function StatsSection() {
                   <AnimatedCounter
                     value={stat.value}
                     suffix={stat.suffix}
-                    decimals={stat.decimals}
                     isInView={isInView}
                   />
 

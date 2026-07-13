@@ -1,5 +1,8 @@
 import { env } from "../lib/env";
+import { createLogger } from "../lib/logger";
 import type { UserProfile } from "./types";
+
+const log = createLogger({ path: "kimi-platform" });
 
 async function kimiRequest<T>(
   path: string,
@@ -18,14 +21,12 @@ async function kimiRequest<T>(
     });
     if (!resp.ok) {
       const text = await resp.text();
-      console.warn(
-        `[kimi] Request to ${path} failed (${resp.status}): ${text}`,
-      );
+      log.warn(`Request to ${path} failed (${resp.status})`, { response: text });
       return null;
     }
     return resp.json() as Promise<T>;
   } catch (err) {
-    console.warn(`[kimi] Request to ${path} errored:`, err instanceof Error ? err.message : err);
+    log.warn(`Request to ${path} errored`, { error: err instanceof Error ? err.message : String(err) });
     return null;
   }
 }

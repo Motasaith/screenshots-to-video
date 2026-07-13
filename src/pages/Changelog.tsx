@@ -5,10 +5,21 @@ import { SpaceBackground } from "@/components/shared/SpaceBackground";
 
 const UPDATES = [
   {
+    version: "v3.0.0",
+    date: "July 13, 2026",
+    changes: [
+      { type: "added", text: "Production-ready admin dashboard with detailed stats, user management, log viewer, and system controls." },
+      { type: "added", text: "Structured file-based logging system with automatic rotation and 30-day retention." },
+      { type: "added", text: "Enhanced rate limiting across all endpoints including auth and admin routes." },
+      { type: "improved", text: "Removed guest user mode — authentication is now required for all features." },
+      { type: "improved", text: "Streamlined to a single 3-step workflow: Create, Edit, Render & Export." },
+      { type: "fixed", text: "Removed all dead code, unused files, and legacy studio system." },
+    ],
+  },
+  {
     version: "v2.0.0",
     date: "June 11, 2026",
     changes: [
-      { type: "added", text: "Studio Mode: Generate creative video scenes completely from text prompts." },
       { type: "added", text: "Proactive AI Guide: Context-aware chat assistant that monitors input and suggests improvements." },
       { type: "added", text: "Vision Copyright Checker: Dedicated Vision LLM pipeline to scan images for monetization safety." },
       { type: "added", text: "Multi-Platform Export: Native support for 16:9, 9:16, 1:1, and 4:5 aspect ratios." },
@@ -21,7 +32,7 @@ const UPDATES = [
     changes: [
       { type: "added", text: "Full Video Processing Pipeline: Integrated FFmpeg rendering and worker management." },
       { type: "added", text: "AI Intelligence: LLM integration for automatic script generation and guidance." },
-      { type: "added", text: "Wizard UI: Complete 7-step interactive flow from setup to export." },
+      { type: "added", text: "Interactive editor with annotation tools, zoom controls, and caption styling." },
     ],
   },
   {
@@ -29,7 +40,7 @@ const UPDATES = [
     date: "May 8, 2026",
     changes: [
       { type: "fixed", text: "Resolved FFmpeg and TTS dependency issues for stable rendering." },
-      { type: "improved", text: "Enhanced UploadThing URL handling for seamless asset management." },
+      { type: "improved", text: "Enhanced storage handling with R2/B2 for seamless asset management." },
       { type: "added", text: "Automatic script generation based on uploaded screenshots." },
     ],
   },
@@ -37,7 +48,7 @@ const UPDATES = [
     version: "v1.0.0",
     date: "May 7, 2026",
     changes: [
-      { type: "added", text: "Initial Project Setup: Migration to UploadThing for storage." },
+      { type: "added", text: "Initial project setup and core architecture." },
       { type: "added", text: "Core architecture and project documentation established." },
     ],
   },

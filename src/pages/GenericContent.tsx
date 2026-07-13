@@ -25,7 +25,10 @@ export default function GenericContent({ title, description }: { title: string, 
           
           <div className="glass-panel p-12 text-center border border-[var(--space-border)]">
             <p className="text-[var(--space-text-muted)] font-medium">
-              This section is currently under development. Check back soon for updates.
+              {description}
+            </p>
+            <p className="text-[var(--space-text-subtle)] text-sm mt-4">
+              This page is part of our growing documentation. Check back soon for detailed guides and tutorials.
             </p>
           </div>
         </main>

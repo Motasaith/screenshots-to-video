@@ -5,10 +5,6 @@ import {
   Settings,
   Upload,
   Target,
-  FileText,
-  Volume2,
-  Video,
-  Cpu,
   Download,
   Sparkles,
   ChevronRight,
@@ -32,9 +28,9 @@ interface StepConfig {
 const steps: StepConfig[] = [
   {
     number: "01",
-    title: "Project Setup",
-    tag: "Initialization",
-    description: "Define your project name, target platform preset (YouTube, TikTok, Teams), and choose a screen aspect ratio (16:9 or 9:16).",
+    title: "Create Project",
+    tag: "Setup",
+    description: "Name your project, pick a platform preset (YouTube, TikTok, Teams), and choose an aspect ratio (16:9, 9:16, 1:1, or 4:5). Upload your screenshots.",
     icon: Settings,
     imagePath: "/images/steps/step1.png",
     accentColor: "#0d9488",
@@ -44,21 +40,9 @@ const steps: StepConfig[] = [
   },
   {
     number: "02",
-    title: "Asset Import",
-    tag: "File Upload",
-    description: "Upload high-resolution screenshots of your application UI. The asset manager supports sequential order organization.",
-    icon: Upload,
-    imagePath: "/images/steps/step2.png",
-    accentColor: "#0d9488",
-    accentClass: "text-teal-600 dark:text-teal-400",
-    borderClass: "border-l-teal-600 dark:border-l-teal-400",
-    glowColor: "rgba(13, 148, 136, 0.12)",
-  },
-  {
-    number: "03",
-    title: "UI Annotation",
+    title: "Edit & Annotate",
     tag: "Canvas Editor",
-    description: "Draw highlighting boxes, arrows, or blur private credentials directly on your screens with our secure editor.",
+    description: "Use our built-in editor to add highlight boxes, blur sensitive data, add zoom targets, captions, watermarks, arrows, and step numbers. AI generates voiceover scripts for each step.",
     icon: Target,
     imagePath: "/images/steps/step3.png",
     accentColor: "#0d9488",
@@ -67,58 +51,10 @@ const steps: StepConfig[] = [
     glowColor: "rgba(13, 148, 136, 0.12)",
   },
   {
-    number: "04",
-    title: "AI Scripting",
-    tag: "Copywriting",
-    description: "Our AI model analyzes your screenshot fields and drafts a natural technical voiceover script, which you can fully customize.",
-    icon: FileText,
-    imagePath: "/images/steps/step4.png",
-    accentColor: "#0d9488",
-    accentClass: "text-teal-600 dark:text-teal-400",
-    borderClass: "border-l-teal-600 dark:border-l-teal-400",
-    glowColor: "rgba(13, 148, 136, 0.12)",
-  },
-  {
-    number: "05",
-    title: "Voice Narration",
-    tag: "ElevenLabs AI",
-    description: "Choose from professional AI voice profiles. Adjust audio reading speed and select background ambient audio tracks.",
-    icon: Volume2,
-    imagePath: "/images/steps/step5.png",
-    accentColor: "#0d9488",
-    accentClass: "text-teal-600 dark:text-teal-400",
-    borderClass: "border-l-teal-600 dark:border-l-teal-400",
-    glowColor: "rgba(13, 148, 136, 0.12)",
-  },
-  {
-    number: "06",
-    title: "Camera Zoom & Transitions",
-    tag: "Cinematics",
-    description: "Define focal coordinates on your screens. The engine applies smooth camera pans, zoom adjustments, and slide transitions.",
-    icon: Video,
-    imagePath: "/images/steps/step6.png",
-    accentColor: "#0d9488",
-    accentClass: "text-teal-600 dark:text-teal-400",
-    borderClass: "border-l-teal-600 dark:border-l-teal-400",
-    glowColor: "rgba(13, 148, 136, 0.12)",
-  },
-  {
-    number: "07",
-    title: "Cloud Rendering",
-    tag: "FFmpeg Compiler",
-    description: "Our high-speed cloud graphics pipeline compiles the image frame buffers, audio synthesis layers, and transitions.",
-    icon: Cpu,
-    imagePath: "/images/steps/step7.png",
-    accentColor: "#0d9488",
-    accentClass: "text-teal-600 dark:text-teal-400",
-    borderClass: "border-l-teal-600 dark:border-l-teal-400",
-    glowColor: "rgba(13, 148, 136, 0.12)",
-  },
-  {
-    number: "08",
-    title: "Export & Share",
-    tag: "MP4 Video",
-    description: "Download the completed 1080p MP4 tutorial video immediately, or copy a public shareable video dashboard link.",
+    number: "03",
+    title: "Render & Export",
+    tag: "Cloud Rendering",
+    description: "Our FFmpeg pipeline compiles your annotated screenshots with AI narration, zoom animations, transitions, and background music into a polished MP4. Download instantly.",
     icon: Download,
     imagePath: "/images/steps/step8.png",
     accentColor: "#0d9488",
@@ -182,7 +118,7 @@ export default function HowItWorksSection() {
             <span className="text-gradient-neon">From screenshots to finished tutorials</span>
           </h2>
           <p className="mt-4 text-base lg:text-lg text-[var(--space-text-muted)] max-w-xl mx-auto font-sans leading-relaxed">
-            Follow our 8-step automated production wizard. Our AI engine builds, scripts, narrates, and compiles everything on high-performance cloud GPUs.
+            Follow our 3-step workflow: upload screenshots, edit with annotations and AI scripts, then render and download your video.
           </p>
         </div>
 
@@ -293,7 +229,7 @@ export default function HowItWorksSection() {
                       <span className="w-2.5 h-2.5 rounded-full bg-emerald-500/80" />
                     </div>
                     <span className="text-[9px] font-mono tracking-wider text-[var(--space-text-subtle)] uppercase ml-2">
-                      Wizard Stage: Step {activeStepData.number}/08
+                      Wizard Stage: Step {activeStepData.number}/03
                     </span>
                   </div>
                   <div className="flex items-center gap-1">

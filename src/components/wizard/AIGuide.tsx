@@ -33,17 +33,23 @@ export default function AIGuide({ onCollapse }: { onCollapse?: () => void }) {
 
   const { stepData } = useWizardStore();
   const currentStepData = stepData[step as keyof typeof stepData] || {};
-  
+
+  // Fetch project data for context
+  const { data: project } = trpc.project.getById.useQuery(
+    { id: projectIdNum },
+    { enabled: projectIdNum > 0 }
+  );
+
   const fullContext = {
     projectId: projectIdNum,
-    projectData: stepData.setup,
+    projectData: project ? { title: project.title, description: project.description, platform: project.platform, aspectRatio: project.aspectRatio } : {},
     currentStepData,
   };
 
   const guideQuery = trpc.ai.guide.useQuery(
     {
-      currentStep: step || "setup",
-      eventType: `${step || "setup"}_load`,
+      currentStep: step || "preview",
+      eventType: `${step || "preview"}_load`,
       context: fullContext,
     },
     { enabled: !!step && projectIdNum > 0 }
@@ -86,8 +92,8 @@ export default function AIGuide({ onCollapse }: { onCollapse?: () => void }) {
 
     return () => clearTimeout(timeout);
   }, [
-    stepData.setup.title,
-    stepData.setup.description,
+    project?.title,
+    project?.description,
     (currentStepData as { description?: string })?.description,
     (currentStepData as { narration?: string })?.narration,
     step

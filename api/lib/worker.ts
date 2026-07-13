@@ -1,6 +1,6 @@
 import { getDb } from "../queries/connection";
-import { projects, steps, renderJobs, users, studioProjects, studioScenes, studioRenderJobs } from "@db/schema";
-import { eq } from "drizzle-orm";
+import { projects, steps, renderJobs, users } from "@db/schema";
+import { eq, and, lt } from "drizzle-orm";
 import { uploadToR2, downloadFromR2, deleteFromR2 } from "./r2";
 import { generateTTSAudio, speedToRate } from "./tts";
 import {
@@ -13,9 +13,9 @@ import {
   mixBackgroundMusic,
   probeMediaDuration
 } from "./ffmpeg";
-import { renderSceneWithImage, renderSceneWithVideo } from "./studioRenderer";
-import { downloadMedia } from "./pexels";
 import { cleanupExpiredProjects } from "./cleanup";
+import { logger } from "./logger";
+import { RETENTION_DAYS, RENDER_TIMEOUT_MS, STUCK_JOB_CHECK_INTERVAL_POLLS, CREDIT_COST } from "./render-config";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
@@ -34,11 +34,11 @@ export function startRenderWorker(): void {
   const workerId = nanoid();
   (globalThis as any).__aivideo_worker_id__ = workerId;
 
-  console.log(`[Worker] Render worker started (Instance ID: ${workerId}), polling every ${POLL_INTERVAL_MS} ms`);
+  logger.info(`Render worker started (Instance ID: ${workerId}), polling every ${POLL_INTERVAL_MS} ms`);
 
   const poll = async () => {
     if ((globalThis as any).__aivideo_worker_id__ !== workerId) {
-      console.log(`[Worker] Stale render worker instance (ID: ${workerId}) detected new worker active, exiting loop.`);
+      logger.info(`Stale render worker instance (ID: ${workerId}) detected new worker active, exiting loop.`);
       return;
     }
 
@@ -48,16 +48,20 @@ export function startRenderWorker(): void {
       if (pollCount % 10 === 0) {
         const cleaned = await cleanupExpiredProjects();
         if (cleaned > 0) {
-          console.log(`[Worker] Cleaned up ${cleaned} expired projects`);
+          logger.info(`Cleaned up ${cleaned} expired projects`);
         }
       }
 
+      // Check for stuck/timeout jobs every STUCK_JOB_CHECK_INTERVAL_POLLS polls
+      if (pollCount % STUCK_JOB_CHECK_INTERVAL_POLLS === 0) {
+        await abortStuckJobs();
+      }
+
       await processNextJob();
-      await processNextStudioJob();
       lastErrorMsg = ""; // Clear error on success
     } catch (err: any) {
       if (err.message !== lastErrorMsg) {
-        console.error("[Worker] Error polling job:", err.message);
+        logger.error("Error polling job", err);
         lastErrorMsg = err.message;
       }
     }
@@ -66,7 +70,7 @@ export function startRenderWorker(): void {
     if ((globalThis as any).__aivideo_worker_id__ === workerId) {
       setTimeout(poll, POLL_INTERVAL_MS);
     } else {
-      console.log(`[Worker] Stale render worker instance (ID: ${workerId}) detected new worker active, exiting loop.`);
+      logger.info(`Stale render worker instance (ID: ${workerId}) detected new worker active, exiting loop.`);
     }
   };
 
@@ -78,7 +82,75 @@ export function startRenderWorker(): void {
  */
 export function stopRenderWorker(): void {
   (globalThis as any).__aivideo_worker_id__ = null;
-  console.log("[Worker] Render worker stopped");
+  logger.info("Render worker stopped");
+}
+
+/**
+ * Find and abort jobs that have been in "processing" status for too long.
+ * This prevents a crashed render from blocking the queue forever.
+ */
+async function abortStuckJobs(): Promise<void> {
+  const cutoff = new Date(Date.now() - RENDER_TIMEOUT_MS);
+
+  const stuckJobs = await getDb()
+    .select()
+    .from(renderJobs)
+    .where(
+      and(
+        eq(renderJobs.status, "processing"),
+        lt(renderJobs.updatedAt, cutoff)
+      )
+    );
+
+  for (const job of stuckJobs) {
+    logger.error(`Aborting stuck job #${job.id} (processing since ${job.updatedAt})`, undefined, {
+      jobId: job.id,
+      projectId: job.projectId,
+      updatedAt: job.updatedAt.toISOString(),
+      timeoutMs: RENDER_TIMEOUT_MS,
+    });
+
+    await getDb()
+      .update(renderJobs)
+      .set({
+        status: "error",
+        stage: "timeout",
+        message: `Render timed out after ${RENDER_TIMEOUT_MS / 1000}s. The job was automatically aborted.`,
+      })
+      .where(eq(renderJobs.id, job.id));
+
+    await getDb()
+      .update(projects)
+      .set({ status: "error" })
+      .where(eq(projects.id, job.projectId));
+
+    // Refund credits for timed-out job
+    try {
+      const [projectRow] = await getDb()
+        .select({ userId: projects.userId, resolution: projects.resolution })
+        .from(projects)
+        .where(eq(projects.id, job.projectId))
+        .limit(1);
+
+      if (projectRow?.userId) {
+        const refundAmount = CREDIT_COST[projectRow.resolution as "720p" | "1080p" | "4k"] ?? CREDIT_COST["1080p"];
+        const [userRow] = await getDb()
+          .select({ credits: users.credits })
+          .from(users)
+          .where(eq(users.id, projectRow.userId))
+          .limit(1);
+
+        if (userRow) {
+          await getDb()
+            .update(users)
+            .set({ credits: userRow.credits + refundAmount })
+            .where(eq(users.id, projectRow.userId));
+        }
+      }
+    } catch (refundErr) {
+      logger.error(`Failed to refund credits for stuck job #${job.id}`, refundErr);
+    }
+  }
 }
 
 /**
@@ -95,12 +167,12 @@ async function processNextJob(): Promise<void> {
 
   if (!job) return; // No work to do
 
-  console.log(`[Worker] Processing job #${job.id} for project #${job.projectId}`);
+  logger.info(`Processing job #${job.id} for project #${job.projectId}`);
 
   try {
     await processRenderJob(job.id, job.projectId);
   } catch (err: any) {
-    console.error(`[Worker] Job #${job.id} failed:`, err.message);
+    logger.error(`Job #${job.id} failed`, err);
 
     // Mark job as failed
     await getDb()
@@ -117,6 +189,39 @@ async function processNextJob(): Promise<void> {
       .update(projects)
       .set({ status: "error" })
       .where(eq(projects.id, job.projectId));
+
+    // ── Refund credits on render failure ──
+    try {
+      const [projectRow] = await getDb()
+        .select({ userId: projects.userId, resolution: projects.resolution })
+        .from(projects)
+        .where(eq(projects.id, job.projectId))
+        .limit(1);
+
+      if (projectRow?.userId) {
+        const refundAmount = CREDIT_COST[projectRow.resolution as "720p" | "1080p" | "4k"] ?? CREDIT_COST["1080p"];
+        const [userRow] = await getDb()
+          .select({ credits: users.credits })
+          .from(users)
+          .where(eq(users.id, projectRow.userId))
+          .limit(1);
+
+        if (userRow) {
+          await getDb()
+            .update(users)
+            .set({ credits: userRow.credits + refundAmount })
+            .where(eq(users.id, projectRow.userId));
+
+          logger.info(`Refunded ${refundAmount} credits to user ${projectRow.userId} for failed job #${job.id}`, {
+            userId: projectRow.userId,
+            jobId: job.id,
+            refundAmount,
+          });
+        }
+      }
+    } catch (refundErr) {
+      logger.error(`Failed to refund credits for job #${job.id}`, refundErr);
+    }
   }
 }
 
@@ -204,8 +309,8 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
       (projectSteps[i] as any)._audioLocalPath = audioLocalPath;
       (projectSteps[i] as any)._audioDuration = audioDuration;
 
-      console.log(
-        `[Worker] Step ${i + 1}/${totalSteps}: audio generated (${audioDuration.toFixed(1)}s)`
+      logger.info(
+        `Step ${i + 1}/${totalSteps}: audio generated (${audioDuration.toFixed(1)}s)`
       );
     }
 
@@ -463,7 +568,7 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
         })
         .where(eq(steps.id, step.id));
 
-      console.log(`[Worker] Step ${i + 1}/${totalSteps}: video segment rendered (${stepSegments.length} sub-segments)`);
+      logger.info(`Step ${i + 1}/${totalSteps}: video segment rendered (${stepSegments.length} sub-segments)`);
     }
 
     // ── STAGE 3: Concatenate segments with crossfade transitions ──
@@ -550,7 +655,7 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
         tempFiles.push(mixedPath);
         finalVideoPathToUpload = mixedPath;
       } catch (err: any) {
-        console.error("[Worker] Failed to mix background music for project:", err.message);
+        logger.error("Failed to mix background music for project", err);
       }
     }
 
@@ -563,7 +668,7 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
 
     if (project && project.finalVideoPath) {
       await deleteFromR2(project.finalVideoPath).catch((err) => {
-        console.warn("[Worker] Failed to delete old final video:", err.message);
+        logger.warn("Failed to delete old final video", { error: err.message });
       });
     }
 
@@ -575,7 +680,7 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
     });
 
     // ── DONE ──
-    // Set completion time and expiry for free users
+    // Set completion time and expiry based on the user's plan
     const completedAt = new Date();
     let expiresAt: Date | null = null;
 
@@ -592,8 +697,18 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
         .where(eq(users.id, projectRow.userId))
         .limit(1);
 
-      if (userRow?.plan === "free") {
-        expiresAt = new Date(completedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const plan = userRow?.plan ?? "free";
+      const retentionDays = RETENTION_DAYS[plan];
+
+      if (retentionDays !== null) {
+        expiresAt = new Date(completedAt.getTime() + retentionDays * 24 * 60 * 60 * 1000);
+        logger.info(`Project #${projectId} will expire in ${retentionDays} days (plan: ${plan})`, {
+          projectId, plan, retentionDays, expiresAt: expiresAt.toISOString(),
+        });
+      } else {
+        logger.info(`Project #${projectId} has permanent retention (plan: ${plan})`, {
+          projectId, plan,
+        });
       }
     }
 
@@ -614,7 +729,7 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
       message: "Video generation complete!",
     });
 
-    console.log(`[Worker] Job #${jobId} complete! Final video: ${finalKey}`);
+    logger.info(`Job #${jobId} complete! Final video: ${finalKey}`);
   } finally {
     // Cleanup temp files
     await cleanupTempFiles(tempFiles);
@@ -651,385 +766,4 @@ async function updateStepStatus(
     .update(steps)
     .set({ status })
     .where(eq(steps.id, stepId));
-}
-
-// ════════════════════════════════════════════════════════════════
-// ── AI Video Studio Worker (completely separate from above) ────
-// ════════════════════════════════════════════════════════════════
-
-/**
- * Find and process the next queued studio render job.
- */
-async function processNextStudioJob(): Promise<void> {
-  const [job] = await getDb()
-    .select()
-    .from(studioRenderJobs)
-    .where(eq(studioRenderJobs.status, "queued"))
-    .orderBy(studioRenderJobs.id)
-    .limit(1);
-
-  if (!job) return;
-
-  console.log(`[Worker] Processing studio job #${job.id} for studio project #${job.projectId}`);
-
-  try {
-    await processStudioRenderJob(job.id, job.projectId);
-  } catch (err: any) {
-    console.error(`[Worker] Studio job #${job.id} failed:`, err.message);
-
-    await getDb()
-      .update(studioRenderJobs)
-      .set({
-        status: "error",
-        stage: "error",
-        message: `Render failed: ${err.message}`,
-      })
-      .where(eq(studioRenderJobs.id, job.id));
-
-    await getDb()
-      .update(studioProjects)
-      .set({ status: "error" })
-      .where(eq(studioProjects.id, job.projectId));
-  }
-}
-
-/**
- * Process a studio render job through the full pipeline:
- * 1. Download Pexels media for each scene
- * 2. Generate TTS audio for each scene
- * 3. Render video segments (image Ken Burns or video trim)
- * 4. Concatenate into final video
- * 5. Upload to R2
- */
-async function processStudioRenderJob(jobId: number, projectId: number): Promise<void> {
-  const tempFiles: string[] = [];
-
-  try {
-    const [project] = await getDb()
-      .select()
-      .from(studioProjects)
-      .where(eq(studioProjects.id, projectId))
-      .limit(1);
-
-    if (!project) throw new Error("Studio project not found");
-
-    const scenes = await getDb()
-      .select()
-      .from(studioScenes)
-      .where(eq(studioScenes.projectId, projectId))
-      .orderBy(studioScenes.order);
-
-    if (scenes.length === 0) throw new Error("No scenes in studio project");
-
-    const totalSteps = scenes.length;
-    const outputRes = resolutionToSize(project.resolution || "1080p", project.aspectRatio || "16:9");
-
-    await updateStudioJob(jobId, {
-      status: "processing",
-      stage: "downloading_media",
-      currentStep: 0,
-      totalSteps,
-      message: "Downloading media assets...",
-    });
-
-    // ── STAGE 1: Download media + Generate TTS ──
-    for (let i = 0; i < scenes.length; i++) {
-      const scene = scenes[i];
-
-      await updateStudioJob(jobId, {
-        stage: "preparing_scenes",
-        currentStep: i + 1,
-        message: `Preparing scene ${i + 1} of ${totalSteps}...`,
-      });
-
-      await getDb()
-        .update(studioScenes)
-        .set({ status: "generating" })
-        .where(eq(studioScenes.id, scene.id));
-
-      // Download media from Pexels
-      let mediaLocalPath = "";
-      if (scene.mediaUrl) {
-        try {
-          const ext = scene.mediaType === "video" ? ".mp4" : ".jpg";
-          mediaLocalPath = await downloadMedia(scene.mediaUrl, ext);
-          tempFiles.push(mediaLocalPath);
-        } catch (err: any) {
-          console.warn(`[Worker] Media download failed for scene ${i + 1}:`, err.message);
-        }
-      }
-
-      // Generate TTS audio
-      const { filePath: audioLocalPath, duration: audioDuration } =
-        await generateTTSAudio(scene.narration, {
-          voice: project.voice || "en-US-AriaNeural",
-          rate: speedToRate(project.speed || 1.0),
-        });
-
-      tempFiles.push(audioLocalPath);
-
-      // Upload audio to R2
-      const audioBuffer = await fs.readFile(audioLocalPath);
-      const audioKey = await uploadToR2(audioBuffer, {
-        folder: `studio/${projectId}/audio`,
-        filename: `scene_${scene.id}.mp3`,
-        contentType: "audio/mpeg",
-      });
-
-      await getDb()
-        .update(studioScenes)
-        .set({
-          audioPath: audioKey,
-          audioDuration: audioDuration,
-          mediaLocalPath: mediaLocalPath || null,
-        })
-        .where(eq(studioScenes.id, scene.id));
-
-      // Store on the scene object for rendering
-      (scenes[i] as any)._audioLocalPath = audioLocalPath;
-      (scenes[i] as any)._audioDuration = audioDuration;
-      (scenes[i] as any)._mediaLocalPath = mediaLocalPath;
-
-      console.log(`[Worker] Studio scene ${i + 1}/${totalSteps}: prepared (${audioDuration.toFixed(1)}s)`);
-    }
-
-    // ── STAGE 2: Render video segments ──
-    await updateStudioJob(jobId, {
-      stage: "rendering_scenes",
-      currentStep: 0,
-      message: "Rendering video scenes...",
-    });
-
-    const segmentPaths: string[] = [];
-    const segmentDurations: number[] = []; // Track durations for crossfade
-
-    for (let i = 0; i < scenes.length; i++) {
-      const scene = scenes[i];
-      const audioLocalPath = (scene as any)._audioLocalPath;
-      const audioDuration = (scene as any)._audioDuration;
-      const mediaLocalPath = (scene as any)._mediaLocalPath;
-
-      await updateStudioJob(jobId, {
-        stage: "rendering_scenes",
-        currentStep: i + 1,
-        message: `Rendering scene ${i + 1} of ${totalSteps}...`,
-      });
-
-      let segmentPath: string;
-
-      if (mediaLocalPath && scene.mediaType === "video") {
-        segmentPath = await renderSceneWithVideo({
-          videoPath: mediaLocalPath,
-          audioPath: audioLocalPath,
-          audioDuration,
-          outputRes,
-          captions: {
-            enabled: project.captionsEnabled === 1,
-            style: project.captionStyle || "standard",
-            size: project.captionSize || "medium",
-            position: project.captionPosition || "bottom",
-            color: project.captionColor || "#FFFFFF",
-            text: scene.narration || "",
-          },
-        });
-      } else if (mediaLocalPath) {
-        segmentPath = await renderSceneWithImage({
-          imagePath: mediaLocalPath,
-          audioPath: audioLocalPath,
-          audioDuration,
-          outputRes,
-          captions: {
-            enabled: project.captionsEnabled === 1,
-            style: project.captionStyle || "standard",
-            size: project.captionSize || "medium",
-            position: project.captionPosition || "bottom",
-            color: project.captionColor || "#FFFFFF",
-            text: scene.narration || "",
-          },
-        });
-      } else {
-        // No media — use a black frame with audio
-        segmentPath = await renderSceneWithImage({
-          imagePath: null,
-          audioPath: audioLocalPath,
-          audioDuration,
-          outputRes,
-          captions: {
-            enabled: project.captionsEnabled === 1,
-            style: project.captionStyle || "standard",
-            size: project.captionSize || "medium",
-            position: project.captionPosition || "bottom",
-            color: project.captionColor || "#FFFFFF",
-            text: scene.narration || "",
-          },
-        });
-      }
-
-      segmentPaths.push(segmentPath);
-      segmentDurations.push(audioDuration); // Store duration for crossfade
-      tempFiles.push(segmentPath);
-
-      // Upload segment
-      const segmentBuffer = await fs.readFile(segmentPath);
-      const segmentKey = await uploadToR2(segmentBuffer, {
-        folder: `studio/${projectId}/segments`,
-        filename: `scene_${scene.id}.mp4`,
-        contentType: "video/mp4",
-      });
-
-      await getDb()
-        .update(studioScenes)
-        .set({ videoSegmentPath: segmentKey, status: "done" })
-        .where(eq(studioScenes.id, scene.id));
-
-      console.log(`[Worker] Studio scene ${i + 1}/${totalSteps}: rendered`);
-    }
-
-    // ── STAGE 3: Concatenate with crossfade transitions ──
-    await updateStudioJob(jobId, {
-      stage: "concatenating",
-      currentStep: totalSteps,
-      message: "Merging scenes with transitions...",
-    });
-
-    const transitions: string[] = [];
-    for (let i = 0; i < scenes.length; i++) {
-      transitions.push(scenes[i].transition || "fade");
-    }
-
-    if (project.introTemplate && project.introTemplate !== "none") {
-      const introDuration = project.introDuration || 3.0;
-      const text = project.introText || project.title || "";
-      const introPath = await renderTextSegment(project.introTemplate, text, outputRes, introDuration);
-      segmentPaths.unshift(introPath);
-      segmentDurations.unshift(introDuration);
-      transitions.unshift("fade");
-      tempFiles.push(introPath);
-    }
-    if (project.outroTemplate && project.outroTemplate !== "none") {
-      const outroDuration = project.outroDuration || 3.0;
-      const text = project.outroText || "Thanks for watching!";
-      const outroPath = await renderTextSegment(project.outroTemplate, text, outputRes, outroDuration);
-      segmentPaths.push(outroPath);
-      segmentDurations.push(outroDuration);
-      transitions.push("fade");
-      tempFiles.push(outroPath);
-    }
-
-    let finalLocalPath;
-    const actualTransitions = transitions.slice(0, segmentPaths.length - 1);
-    if (actualTransitions.length > 0) {
-      finalLocalPath = await concatenateSegmentsWithTransitions(
-        segmentPaths, 
-        actualTransitions, 
-        project.transitionDuration || 0.5
-      );
-    } else {
-      finalLocalPath = await concatenateSegments(segmentPaths, segmentDurations);
-    }
-    tempFiles.push(finalLocalPath);
-
-    let expectedDuration = segmentDurations.reduce((a, b) => a + b, 0);
-    expectedDuration += scenes.length * 1.0; // AUDIO_LEAD_IN + AUDIO_TAIL for each scene
-    if (actualTransitions.length > 0) {
-      expectedDuration -= actualTransitions.length * (project.transitionDuration || 0.5);
-    }
-
-    let finalVideoPathToUpload = finalLocalPath;
-    if (project.musicEnabled && project.musicTrack) {
-      try {
-        await updateStudioJob(jobId, {
-          stage: "mixing_audio",
-          message: "Adding background music...",
-        });
-        const mixedPath = await mixBackgroundMusic(finalLocalPath, project.musicTrack, expectedDuration);
-        tempFiles.push(mixedPath);
-        finalVideoPathToUpload = mixedPath;
-      } catch (err: any) {
-        console.error("[Worker] Failed to mix background music for studio project:", err.message);
-      }
-    }
-
-    // ── STAGE 4: Upload final ──
-    await updateStudioJob(jobId, {
-      stage: "finalizing",
-      currentStep: totalSteps,
-      message: "Uploading final video...",
-    });
-
-    if (project && project.finalVideoPath) {
-      await deleteFromR2(project.finalVideoPath).catch((err) => {
-        console.warn("[Worker] Failed to delete old studio final video:", err.message);
-      });
-    }
-
-    const finalBuffer = await fs.readFile(finalVideoPathToUpload);
-    const finalKey = await uploadToR2(finalBuffer, {
-      folder: `studio/${projectId}`,
-      filename: `final_${projectId}_${Date.now()}.mp4`,
-      contentType: "video/mp4",
-    });
-
-    // Set completion
-    const completedAt = new Date();
-    let expiresAt: Date | null = null;
-
-    const [projectRow] = await getDb()
-      .select()
-      .from(studioProjects)
-      .where(eq(studioProjects.id, projectId))
-      .limit(1);
-
-    if (projectRow && projectRow.userId) {
-      const [userRow] = await getDb()
-        .select({ plan: users.plan })
-        .from(users)
-        .where(eq(users.id, projectRow.userId))
-        .limit(1);
-
-      if (userRow?.plan === "free") {
-        expiresAt = new Date(completedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
-      }
-    }
-
-    await getDb()
-      .update(studioProjects)
-      .set({
-        status: "complete",
-        finalVideoPath: finalKey,
-        completedAt,
-        expiresAt,
-      })
-      .where(eq(studioProjects.id, projectId));
-
-    await updateStudioJob(jobId, {
-      status: "complete",
-      stage: "complete",
-      currentStep: totalSteps,
-      message: "Video generation complete!",
-    });
-
-    console.log(`[Worker] Studio job #${jobId} complete! Final video: ${finalKey}`);
-  } finally {
-    await cleanupTempFiles(tempFiles);
-  }
-}
-
-/**
- * Helper to update a studio render job's progress.
- */
-async function updateStudioJob(
-  jobId: number,
-  data: {
-    status?: "queued" | "processing" | "complete" | "error";
-    stage?: string;
-    currentStep?: number;
-    totalSteps?: number;
-    message?: string;
-  }
-): Promise<void> {
-  await getDb()
-    .update(studioRenderJobs)
-    .set(data)
-    .where(eq(studioRenderJobs.id, jobId));
 }

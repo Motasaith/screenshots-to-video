@@ -3,6 +3,9 @@ import path from "path";
 import os from "os";
 import { execFile } from "child_process";
 import { promisify } from "util";
+import { createLogger } from "./logger";
+
+const log = createLogger({ path: "cursorOverlay" });
 import ffmpegPath from "ffmpeg-static";
 import zlib from "zlib";
 
@@ -230,7 +233,7 @@ export async function getClickRipplePngs(
         });
       frames.push(framePath);
     } catch (err: any) {
-      console.warn(`[CursorOverlay] Failed to generate ripple frame ${i}:`, err.message);
+      log.warn(`Failed to generate ripple frame ${i}`, { error: err.message });
     }
   }
 

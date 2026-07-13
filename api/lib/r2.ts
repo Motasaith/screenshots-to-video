@@ -4,16 +4,9 @@ import path from "path";
 import { nanoid } from "nanoid";
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { createLogger } from "./logger";
 
-// Suppress UploadThing SDK deprecation warnings — we already use ufsUrl
-const originalWarn = console.warn;
-console.warn = (...args: any[]) => {
-  const msg = args.join(" ");
-  if (msg.includes("[uploadthing][deprecated]") && (msg.includes("file.url") || msg.includes("file.appUrl"))) {
-    return;
-  }
-  originalWarn.apply(console, args);
-};
+const log = createLogger({ path: "r2" });
 
 let utapi: UTApi | null = null;
 
@@ -91,7 +84,7 @@ export async function uploadToR2(
 
     return response.data.ufsUrl || response.data.url;
   } catch (err: any) {
-    console.warn(`[Storage] UploadThing failed (${err.message || err}), falling back to Backblaze B2...`);
+    log.warn(`UploadThing failed, falling back to Backblaze B2`, { error: err.message || String(err) });
     
     // B2 Upload fallback
     const key = `${opts.folder}/${name}`;
@@ -103,7 +96,7 @@ export async function uploadToR2(
       ContentType: opts.contentType || "application/octet-stream",
     }));
 
-    console.log(`[Storage] Successfully uploaded to B2: ${key}`);
+    log.info(`Successfully uploaded to B2: ${key}`);
     return `b2:${key}`;
   }
 }
@@ -132,7 +125,7 @@ export async function getSignedDownloadUrl(
       );
       return url;
     } catch (err: any) {
-      console.error(`[Storage] Failed to generate B2 signed URL for ${realKey}:`, err.message);
+      log.error(`Failed to generate B2 signed URL for ${realKey}`, err);
       return "";
     }
   }
@@ -159,9 +152,9 @@ export async function deleteFromR2(key: string): Promise<void> {
           Key: realKey,
         })
       );
-      console.log(`[Storage] Deleted B2 object: ${realKey}`);
+      log.info(`Deleted B2 object: ${realKey}`);
     } catch (err: any) {
-      console.error(`[Storage] Failed to delete B2 object ${realKey}:`, err.message);
+      log.error(`Failed to delete B2 object ${realKey}`, err);
     }
     return;
   }
@@ -183,7 +176,7 @@ export async function existsInR2(key: string): Promise<boolean> {
     const res = await fetch(url, { method: "HEAD" });
     return res.ok;
   } catch (err) {
-    console.warn(`[r2] existsInR2 HEAD failed for ${key}:`, err instanceof Error ? err.message : err);
+    log.warn(`existsInR2 HEAD failed for ${key}`, { error: err instanceof Error ? err.message : String(err) });
     return false;
   }
 }
@@ -193,7 +186,7 @@ export async function existsInR2(key: string): Promise<boolean> {
  */
 export async function downloadFromR2(key: string): Promise<Buffer> {
   const url = await getSignedDownloadUrl(key);
-  console.log(`[R2] Downloading from: ${url.substring(0, 120)}...`);
+  log.info(`Downloading from: ${url.substring(0, 120)}...`);
 
   const maxRetries = 2;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -206,10 +199,10 @@ export async function downloadFromR2(key: string): Promise<Buffer> {
 
       const arrayBuffer = await response.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
-      console.log(`[R2] Downloaded ${buffer.length} bytes`);
+      log.info(`Downloaded ${buffer.length} bytes`);
       return buffer;
     } catch (err: any) {
-      console.error(`[R2] Download attempt ${attempt}/${maxRetries} failed for key: ${key.substring(0, 80)}...`, err.message);
+      log.error(`Download attempt ${attempt}/${maxRetries} failed for key: ${key.substring(0, 80)}...`, err);
       if (attempt === maxRetries) {
         throw new Error(`Download failed after ${maxRetries} attempts: ${err.message}`);
       }

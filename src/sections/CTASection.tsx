@@ -6,7 +6,7 @@ import { Link } from "react-router";
 const cycleTexts = [
   { icon: Play, text: "No credit card required" },
   { icon: Film, text: "5 free credits per month" },
-  { icon: Sparkles, text: "Join 2,400+ creators" },
+  { icon: Sparkles, text: "AI-powered video creation" },
 ];
 
 const confettiColors = ["#0d9488", "#14b8a6", "#2dd4bf", "#0f766e", "#64748b", "#334155"];
@@ -145,7 +145,7 @@ export default function CTASection() {
               transition={{ duration: 0.5, delay: 0.3 }}
               className="font-sans text-base lg:text-lg text-[var(--space-text-muted)] mt-4 max-w-xl mx-auto leading-relaxed"
             >
-              Join thousands of creators who turn screenshots into studio-grade videos with automated camera zooms, scripting, and voiceovers.
+              Turn your screenshots into studio-grade videos with automated camera zooms, AI scripting, and voiceovers — all in minutes.
             </motion.p>
 
             {/* CTA Button with breathing glow + ripple + confetti */}

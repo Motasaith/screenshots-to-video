@@ -9,24 +9,6 @@ export type AspectRatio = "16:9" | "9:16" | "1:1" | "4:5";
 export type TransitionType = "none" | "fade" | "slide-left" | "slide-right" | "slide-up" | "flip" | "dissolve";
 
 interface WizardStepData {
-  setup: {
-    title: string;
-    description: string;
-    platform: "youtube" | "teams" | "tiktok" | "linkedin";
-    aspectRatio: AspectRatio;
-  };
-  upload: {
-    steps: Array<{
-      id?: number;
-      order: number;
-      description: string;
-      screenshotPath?: string;
-      file?: File;
-    }>;
-  };
-  script: {
-    scripts: Record<number, string>;
-  };
   preview: {
     stepTransitions: Record<number, TransitionType>;
     transitionDuration: number;
@@ -43,14 +25,6 @@ interface WizardStepData {
     captionSize: string;
     captionPosition: string;
     captionColor: string;
-  };
-  voice: {
-    voice: string;
-    speed: number;
-    resolution: "720p" | "1080p" | "4k";
-    musicEnabled: boolean;
-    musicTrack?: string;
-    randomize: boolean;
   };
 }
 
@@ -86,18 +60,6 @@ const initialState: Omit<
   isLoading: false,
   error: null,
   stepData: {
-    setup: {
-      title: "",
-      description: "",
-      platform: "youtube",
-      aspectRatio: "16:9",
-    },
-    upload: {
-      steps: [],
-    },
-    script: {
-      scripts: {},
-    },
     preview: {
       stepTransitions: {},
       transitionDuration: 0.5,
@@ -114,13 +76,6 @@ const initialState: Omit<
       captionSize: "medium",
       captionPosition: "bottom",
       captionColor: "#FFFFFF",
-    },
-    voice: {
-      voice: "en-US-AriaNeural",
-      speed: 1.0,
-      resolution: "1080p",
-      musicEnabled: false,
-      randomize: false,
     },
   },
 };

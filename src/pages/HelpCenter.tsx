@@ -6,10 +6,10 @@ import { Input } from "@/components/ui/input";
 import { SpaceBackground } from "@/components/shared/SpaceBackground";
 
 const CATEGORIES = [
-  { icon: PlayCircle, title: "Getting Started", desc: "Learn the basics of creating your first video." },
-  { icon: MessageCircle, title: "Proactive AI Guide", desc: "How to use the chat assistant to refine your scripts." },
+  { icon: PlayCircle, title: "Getting Started", desc: "Learn the basics of creating your first video from screenshots." },
+  { icon: MessageCircle, title: "AI Script Guide", desc: "How to use AI-generated scripts and edit them for your narration." },
   { icon: Book, title: "Copyright Checker", desc: "Understanding how the Vision LLM scans your project." },
-  { icon: Settings, title: "Studio Mode vs Wizard", desc: "Choosing the right mode for your video." },
+  { icon: Settings, title: "Editor Tools", desc: "Master zoom, highlights, blur, captions, and transitions." },
   { icon: HelpCircle, title: "Troubleshooting", desc: "Fixing render errors and common issues." },
 ];
 

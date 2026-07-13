@@ -41,7 +41,6 @@ const plans = [
       "Priority render queue",
       "Advanced AI suggestions",
       "Background music library",
-      "API access",
       "Priority support",
     ],
     cta: "Upgrade to Pro",

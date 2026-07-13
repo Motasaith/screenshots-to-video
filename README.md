@@ -1,17 +1,20 @@
-# AI Video Generator Platform
+# AIVideo — Screenshot to Video Editor
 
-A modern, full-stack web application that allows users to create professional tutorial videos and AI-generated stories from simple inputs. By leveraging Vision LLMs, automated Text-to-Speech (TTS), and programmatic video rendering (FFmpeg), users can turn static images or text prompts into dynamic, engaging video content.
+A production-ready, full-stack web application that turns screenshots into professional, AI-narrated video tutorials. Upload screenshots, annotate them with the built-in editor, and let the FFmpeg pipeline render a polished MP4 with zoom animations, captions, transitions, and AI voiceovers.
 
 ## 🚀 Key Features
 
-*   **Two Creation Modes:** Choose between the Screenshot Tutorial wizard for software guides or the AI Video Studio for creative, text-to-video generation.
-*   **Proactive AI Assistant:** A built-in, context-aware chat guide that watches your inputs, provides real-time suggestions, and prevents gibberish text.
-*   **Vision Copyright Checker:** A dedicated Vision LLM pipeline that scans uploaded media for known copyrighted material before rendering, ensuring your videos are safe for monetization (e.g., AdSense).
-*   **Cinematic Video Rendering:** Uses FFmpeg to automatically apply "zoom-and-pan" effects, combined with customizable video transitions (Fade, Slide, Flip) and dynamic Intro/Outro templates.
-*   **Multi-Platform Export:** Dynamically adapts video rendering for YouTube (16:9), TikTok/Reels (9:16), Instagram (1:1), and LinkedIn (4:5) without stretching media.
-*   **Automated Voiceovers (TTS):** Native integration with `node-edge-tts` for fast generation, plus an integrated PRO UI for ElevenLabs Ultra-Real Voices.
-*   **Cloud Storage Integration:** Fully integrated with [UploadThing](https://uploadthing.com/) for fast, secure, and reliable media storage.
+*   **Screenshot-to-Video Workflow:** Upload screenshots, edit with annotations (highlights, blur, zoom, captions, watermarks), and render a complete video.
+*   **AI Script Generation:** LLM-powered voiceover scripts automatically generated from your screenshots and descriptions.
+*   **Vision Copyright Checker:** A dedicated Vision LLM pipeline that scans uploaded media for known copyrighted material before rendering, ensuring your videos are safe for monetization.
+*   **Cinematic Video Rendering:** Uses FFmpeg to automatically apply zoom-and-pan effects, customizable transitions (Fade, Slide, Flip), and dynamic Intro/Outro templates.
+*   **Multi-Platform Export:** Dynamically adapts video rendering for YouTube (16:9), TikTok/Reels (9:16), Instagram (1:1), and LinkedIn (4:5).
+*   **Automated Voiceovers (TTS):** Native integration with `node-edge-tts` for fast generation, plus an integrated UI for ElevenLabs Ultra-Real Voices.
+*   **Cloud Storage:** R2/B2 cloud storage with UploadThing fallback for secure, reliable media storage.
 *   **Background Worker:** Robust, asynchronous job polling system to handle heavy audio generation and video rendering without blocking the UI.
+*   **Admin Dashboard:** Full admin console with user management, project oversight, render job monitoring, system logs viewer, and maintenance controls.
+*   **Structured Logging:** File-based logging with automatic rotation and 30-day retention, viewable from the admin dashboard.
+*   **Rate Limiting:** Comprehensive rate limiting across all API endpoints to prevent abuse.
 
 ## 🛠️ Tech Stack
 

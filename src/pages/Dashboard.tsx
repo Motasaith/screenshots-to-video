@@ -34,22 +34,18 @@ export default function Dashboard() {
   const { user, logout, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
   const { setTheme, resolvedTheme } = useTheme();
-  const [deleteProjectInfo, setDeleteProjectInfo] = useState<{ id: number; type: "tutorial" | "studio" } | null>(null);
+  const [deleteProjectInfo, setDeleteProjectInfo] = useState<{ id: number } | null>(null);
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
 
   const { data: standardProjects, isLoading: standardLoading } = trpc.project.list.useQuery(undefined, {
     enabled: !!user,
   });
-  const { data: studioProjects, isLoading: studioLoading } = trpc.studio.list.useQuery(undefined, {
-    enabled: !!user,
-  });
 
   const projects = [
     ...(standardProjects?.map((p) => ({ ...p, type: "tutorial" as const })) || []),
-    ...(studioProjects?.map((p) => ({ ...p, type: "studio" as const })) || []),
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const isLoading = standardLoading || studioLoading;
+  const isLoading = standardLoading;
 
   const utils = trpc.useUtils();
   const createProject = trpc.project.create.useMutation();
@@ -64,12 +60,6 @@ export default function Dashboard() {
       setDeleteProjectInfo(null);
     },
   });
-  const deleteStudioMutation = trpc.studio.delete.useMutation({
-    onSuccess: () => {
-      utils.studio.list.invalidate();
-      setDeleteProjectInfo(null);
-    },
-  });
 
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
   const [deletingAll, setDeletingAll] = useState(false);
@@ -80,19 +70,10 @@ export default function Dashboard() {
     },
   });
 
-  const deleteAllStudioMutation = trpc.studio.deleteAll.useMutation({
-    onSuccess: () => {
-      utils.studio.list.invalidate();
-    },
-  });
-
   const handleDeleteAll = async () => {
     try {
       setDeletingAll(true);
-      await Promise.all([
-        deleteAllProjectsMutation.mutateAsync(),
-        deleteAllStudioMutation.mutateAsync(),
-      ]);
+      await deleteAllProjectsMutation.mutateAsync();
       setShowDeleteAllDialog(false);
     } catch (err) {
       console.error("Failed to delete all projects:", err);
@@ -321,23 +302,10 @@ export default function Dashboard() {
                     exit={{ opacity: 0, scale: 0.95 }}
                     className="glass-panel p-5 cursor-pointer group bg-[var(--space-card)]/80 border border-[var(--space-border)] hover:scale-[1.02] transition-all duration-300 rounded-2xl flex flex-col justify-between"
                     onClick={() => {
-                      if (project.type === "studio") {
-                        const stepMap: Record<string, string> = {
-                          draft: "describe",
-                          scripted: "script",
-                          media_ready: "media",
-                          processing: "render",
-                          complete: "export",
-                          error: "render",
-                        };
-                        const step = stepMap[project.status] || "describe";
-                        navigate(`/studio/${project.id}/${step}`);
+                      if (project.status === "draft") {
+                        navigate(`/create/${project.id}/preview`);
                       } else {
-                        if (project.status === "draft") {
-                          navigate(`/create/${project.id}/setup`);
-                        } else {
-                          navigate(`/create/${project.id}/export`);
-                        }
+                        navigate(`/create/${project.id}/export`);
                       }
                     }}
                   >
@@ -348,18 +316,11 @@ export default function Dashboard() {
                           <span className="font-mono text-[10px] text-[var(--space-text-subtle)] capitalize">
                             {project.status}
                           </span>
-                          <span className={`font-mono text-[9px] px-1.5 py-0.5 rounded border ${
-                            project.type === "studio"
-                              ? "bg-amber-500/10 text-amber-500 border-amber-500/20"
-                              : "bg-teal-500/10 text-teal-550 border-teal-500/20"
-                          }`}>
-                            {project.type === "studio" ? "🎬 Studio" : "📸 Tutorial"}
-                          </span>
                         </div>
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            setDeleteProjectInfo({ id: project.id, type: project.type });
+                            setDeleteProjectInfo({ id: project.id });
                           }}
                           className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-[var(--space-text-subtle)] hover:text-red-500 focus:outline-none"
                         >
@@ -614,11 +575,7 @@ export default function Dashboard() {
               variant="destructive"
               onClick={() => {
                 if (deleteProjectInfo) {
-                  if (deleteProjectInfo.type === "studio") {
-                    deleteStudioMutation.mutate({ id: deleteProjectInfo.id });
-                  } else {
-                    deleteProjectMutation.mutate({ id: deleteProjectInfo.id });
-                  }
+                  deleteProjectMutation.mutate({ id: deleteProjectInfo.id });
                 }
               }}
               className="bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs py-3 px-5 font-semibold"
@@ -636,7 +593,7 @@ export default function Dashboard() {
           <DialogHeader>
             <DialogTitle className="text-[var(--space-text)] font-bold text-lg">Delete All Projects</DialogTitle>
             <DialogDescription className="text-[var(--space-text-muted)] text-sm leading-relaxed mt-1">
-              Are you sure you want to delete all projects? This will permanently delete all tutorial and studio projects, along with all their scenes, steps, and render jobs. This action cannot be undone.
+              Are you sure you want to delete all projects? This will permanently delete all projects, along with all their steps and render jobs. This action cannot be undone.
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-3 justify-end mt-4">

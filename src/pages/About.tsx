@@ -44,7 +44,7 @@ export default function About() {
             <div className="glass-panel p-8 border border-[var(--space-border)]">
               <h2 className="font-bold text-2xl mb-4 text-[var(--space-text)]">Our Mission</h2>
               <p className="text-[var(--space-text-muted)] leading-relaxed">
-                We believe that creating high-quality, professional video content shouldn't require a film degree. Our mission is to empower developers, creators, and teams to turn simple ideas—whether that's a handful of screenshots or just a text prompt—into cinematic video masterpieces in minutes.
+                We believe that creating high-quality, professional video content shouldn't require a film degree. Our mission is to empower developers, creators, and teams to turn simple screenshots into cinematic video masterpieces in minutes.
               </p>
             </div>
             <div className="glass-panel p-8 border border-[var(--space-border)]">

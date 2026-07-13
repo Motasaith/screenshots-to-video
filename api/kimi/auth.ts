@@ -3,6 +3,9 @@ import { setCookie } from "hono/cookie";
 import * as jose from "jose";
 import * as cookie from "cookie";
 import { env } from "../lib/env";
+import { createLogger } from "../lib/logger";
+
+const log = createLogger({ path: "oauth" });
 import { getSessionCookieOptions } from "../lib/cookies";
 import { Session } from "@contracts/constants";
 import { Errors } from "@contracts/errors";
@@ -129,7 +132,7 @@ export function createOAuthCallbackHandler() {
 
       return c.redirect("/dashboard", 302);
     } catch (error) {
-      console.error("[OAuth] Callback failed", error);
+      log.error("OAuth callback failed", error);
       const message = error instanceof Error ? error.message : "Unknown error";
       return c.json({ error: "OAuth callback failed", details: message }, 500);
     }

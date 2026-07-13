@@ -18,20 +18,16 @@ export default function Videos() {
   const navigate = useNavigate();
   const [selectedVideo, setSelectedVideo] = useState<{title: string, url: string} | null>(null);
 
-  // Fetch only completed projects (both standard and studio)
+  // Fetch only completed projects
   const { data: standardProjects, isLoading: standardLoading } = trpc.project.list.useQuery(undefined, {
-    enabled: !!user,
-  });
-  const { data: studioProjects, isLoading: studioLoading } = trpc.studio.list.useQuery(undefined, {
     enabled: !!user,
   });
 
   const completedProjects = [
     ...(standardProjects?.filter((p) => p.status === "complete").map((p) => ({ ...p, type: "tutorial" as const })) || []),
-    ...(studioProjects?.filter((p) => p.status === "complete").map((p) => ({ ...p, type: "studio" as const })) || []),
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const isLoading = standardLoading || studioLoading;
+  const isLoading = standardLoading;
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -161,11 +157,7 @@ export default function Videos() {
                           className="flex-1 glass-btn glass-btn-primary py-3 rounded-xl font-semibold text-xs"
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (project.type === "studio") {
-                              navigate(`/studio/${project.id}/export`);
-                            } else {
-                              navigate(`/create/${project.id}/export`);
-                            }
+                            navigate(`/create/${project.id}/export`);
                           }}
                         >
                           <Download className="w-4 h-4 mr-2" />

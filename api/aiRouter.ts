@@ -15,7 +15,10 @@ import {
 import { generateTTSAudio, speedToRate, getElevenLabsCredits } from "./lib/tts";
 import { uploadToR2 } from "./lib/r2";
 import { detectGibberish } from "./lib/gibberish";
+import { createLogger } from "./lib/logger";
 import fs from "fs/promises";
+
+const log = createLogger({ path: "aiRouter" });
 
 // ── Fallback responses when LLM is not configured ──
 const FALLBACK_RESPONSES: Record<string, string[]> = {
@@ -100,7 +103,7 @@ export const aiRouter = createRouter({
             input.platform
           );
         } catch (err) {
-          console.warn("LLM validation failed, using fallback:", err);
+          log.warn("LLM validation failed, using fallback", { error: err instanceof Error ? err.message : String(err) });
         }
       }
 
@@ -196,7 +199,7 @@ export const aiRouter = createRouter({
 
       if (isLLMConfigured()) {
         try {
-          console.log("[generateScript] Using text-only script generation with title and description");
+          log.info("Using text-only script generation with title and description");
           scripts = await generateTutorialScript(
             project.title,
             project.description || null,
@@ -208,7 +211,7 @@ export const aiRouter = createRouter({
             }))
           );
         } catch (err) {
-          console.warn("LLM script generation failed, using fallback:", err);
+          log.warn("LLM script generation failed, using fallback", { error: err instanceof Error ? err.message : String(err) });
           const fallback =
             PLATFORM_FALLBACK_SCRIPTS[project.platform] ||
             PLATFORM_FALLBACK_SCRIPTS.youtube;
@@ -296,7 +299,7 @@ export const aiRouter = createRouter({
 
       if (isLLMConfigured()) {
         try {
-          console.log("[regenerateStepScript] Using text-only generation with title and description");
+          log.info("Using text-only generation with title and description");
           const allScripts = await generateTutorialScript(
             project.title,
             project.description || null,
@@ -313,7 +316,7 @@ export const aiRouter = createRouter({
             allScripts[0] ||
             `Proceed with step ${step.order} as shown on screen.`;
         } catch (err) {
-          console.warn("LLM single-step regeneration failed:", err);
+          log.warn("LLM single-step regeneration failed", { error: err instanceof Error ? err.message : String(err) });
           newScript = `${step.description}.`;
         }
       } else {
@@ -433,7 +436,7 @@ export const aiRouter = createRouter({
           );
           return { message };
         } catch (err) {
-          console.warn("LLM guide failed, using fallback:", err);
+          log.warn("LLM guide failed, using fallback", { error: err instanceof Error ? err.message : String(err) });
         }
       }
 
@@ -503,7 +506,7 @@ export const aiRouter = createRouter({
           );
           return { message };
         } catch (err) {
-          console.warn("LLM proactive feedback failed:", err);
+          log.warn("LLM proactive feedback failed", { error: err instanceof Error ? err.message : String(err) });
         }
       }
       return { message: "" };
@@ -528,7 +531,7 @@ export const aiRouter = createRouter({
           );
           return { message };
         } catch (err: any) {
-          console.error("LLM chat failed:", err);
+          log.error("LLM chat failed", err);
           throw new Error("Failed to generate response: " + err.message);
         }
       }
@@ -666,5 +669,18 @@ export const aiRouter = createRouter({
       }
 
       return { count: projectSteps.length };
+    }),
+
+  // ── Search Pexels stock media (used by editor) ──
+  searchMedia: authedQuery
+    .use(rateLimitByUser(60_000, 20))
+    .input(z.object({
+      query: z.string().min(1).max(200),
+      mediaType: z.enum(["both", "image", "video"]).default("both"),
+      perPage: z.number().min(1).max(50).default(12),
+    }))
+    .query(async ({ input }) => {
+      const { searchMedia } = await import("./lib/pexels");
+      return searchMedia(input.query, input.mediaType, input.perPage);
     }),
 });

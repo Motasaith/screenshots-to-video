@@ -4,49 +4,40 @@ import { Star, Quote, MessageSquare, ChevronLeft, ChevronRight } from "lucide-re
 
 const testimonials = [
   {
-    name: "Sarah Chen",
-    role: "DevRel Lead at Vercel",
+    name: "Developer",
+    role: "Open Source Contributor",
     content:
-      "We generate 20+ tutorial videos monthly. AIVideo cut production time by 80%. The dynamic camera zoom on visual elements is exactly what technical guides needed.",
+      "AIVideo cut my tutorial production time dramatically. The dynamic camera zoom on visual elements is exactly what technical guides needed.",
     rating: 5,
-    initials: "SC",
+    initials: "DV",
     gradient: "from-teal-400 to-teal-600",
   },
   {
-    name: "Marcus Johnson",
-    role: "Technical Writer at Stripe",
+    name: "Technical Writer",
+    role: "Documentation Team",
     content:
       "The AI script generator is exceptional. It captures technical documentation semantics and outlines concise video narrations. Render outputs are ready to deploy.",
     rating: 5,
-    initials: "MJ",
+    initials: "TW",
     gradient: "from-slate-400 to-slate-600",
   },
   {
-    name: "Aiko Tanaka",
-    role: "Product Designer at Figma",
+    name: "Product Designer",
+    role: "UI/UX Team",
     content:
       "Perfect for internal visual documentation. The editor canvas is lightning fast. Automating narration transitions keeps our guide materials highly consistent.",
     rating: 5,
-    initials: "AT",
+    initials: "PD",
     gradient: "from-teal-500 to-teal-700",
   },
   {
-    name: "David Park",
-    role: "Engineering Manager at Linear",
+    name: "Engineering Manager",
+    role: "Onboarding Team",
     content:
-      "Our onboarding docs went from text walls to cinematic walkthroughs. New engineers ramp 40% faster now. The copyright scanning alone saved us from legal issues.",
+      "Our onboarding docs went from text walls to cinematic walkthroughs. New engineers ramp faster now. The copyright scanning alone saved us from legal issues.",
     rating: 5,
-    initials: "DP",
+    initials: "EM",
     gradient: "from-teal-400 to-teal-500",
-  },
-  {
-    name: "Elena Rodriguez",
-    role: "Content Lead at Notion",
-    content:
-      "Studio Mode changed everything for us. We write narration, the AI handles camera work, transitions, and voiceover. It feels like having a production team.",
-    rating: 5,
-    initials: "ER",
-    gradient: "from-slate-500 to-slate-700",
   },
 ];
 

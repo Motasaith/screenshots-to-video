@@ -1,9 +1,18 @@
 import { z } from "zod";
 import { createRouter, authedQuery, rateLimitByUser } from "./middleware";
 import { getDb } from "./queries/connection";
-import { projects, steps, renderJobs } from "@db/schema";
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { projects, steps, renderJobs, users } from "@db/schema";
+import { eq, and, desc, inArray, count } from "drizzle-orm";
 import { getSignedDownloadUrl, isR2Configured } from "./lib/r2";
+import { createLogger } from "./lib/logger";
+import {
+  MAX_QUEUE_DEPTH,
+  MAX_CONCURRENT_RENDERS_PER_USER,
+  CREDIT_COST,
+  MIN_CREDITS_TO_RENDER,
+} from "./lib/render-config";
+
+const log = createLogger({ path: "renderRouter" });
 
 export const renderRouter = createRouter({
   status: authedQuery
@@ -97,7 +106,7 @@ export const renderRouter = createRouter({
         );
       }
 
-      // Check if there is already an active (queued or processing) job for this project to prevent duplicates
+      // ── SAFETY CHECK 1: Per-project duplicate render prevention ──
       const [existingJob] = await getDb()
         .select()
         .from(renderJobs)
@@ -112,6 +121,58 @@ export const renderRouter = createRouter({
       if (existingJob) {
         return { success: true, totalSteps: projectSteps.length };
       }
+
+      // ── SAFETY CHECK 2: Per-user concurrent render limit ──
+      const [userActiveJobs] = await getDb()
+        .select({ value: count() })
+        .from(renderJobs)
+        .leftJoin(projects, eq(renderJobs.projectId, projects.id))
+        .where(
+          and(
+            eq(projects.userId, ctx.user!.id),
+            inArray(renderJobs.status, ["queued", "processing"])
+          )
+        );
+
+      if ((userActiveJobs?.value ?? 0) >= MAX_CONCURRENT_RENDERS_PER_USER) {
+        throw new Error(
+          `You already have a render in progress. Please wait for it to complete before starting another.`
+        );
+      }
+
+      // ── SAFETY CHECK 3: Global queue depth limit ──
+      const [queueCount] = await getDb()
+        .select({ value: count() })
+        .from(renderJobs)
+        .where(inArray(renderJobs.status, ["queued", "processing"]));
+
+      if ((queueCount?.value ?? 0) >= MAX_QUEUE_DEPTH) {
+        throw new Error(
+          `The render queue is currently full (${MAX_QUEUE_DEPTH} jobs). Please try again in a few minutes.`
+        );
+      }
+
+      // ── SAFETY CHECK 4: Credit check ──
+      const creditCost = CREDIT_COST[project.resolution] ?? CREDIT_COST["1080p"];
+      if (ctx.user!.credits < MIN_CREDITS_TO_RENDER) {
+        throw new Error(
+          `You need at least ${MIN_CREDITS_TO_RENDER} credit to render a video. You have ${ctx.user!.credits}. Upgrade your plan for more credits.`
+        );
+      }
+
+      // Deduct credits at render start (prevents credit abuse)
+      await getDb()
+        .update(users)
+        .set({ credits: Math.max(0, ctx.user!.credits - creditCost) })
+        .where(eq(users.id, ctx.user!.id));
+
+      log.info(`Render started for project #${project.id} by user ${ctx.user!.id}`, {
+        userId: ctx.user!.id,
+        projectId: project.id,
+        resolution: project.resolution,
+        creditCost,
+        queuePosition: queueCount?.value ?? 0,
+      });
 
       // Mark project as processing
       await getDb()

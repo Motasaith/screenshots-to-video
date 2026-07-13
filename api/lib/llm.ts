@@ -1,4 +1,7 @@
 import { env } from "./env";
+import { createLogger } from "./logger";
+
+const log = createLogger({ path: "llm" });
 
 interface ChatMessage {
   role: "system" | "user" | "assistant";
@@ -64,12 +67,12 @@ export async function chatCompletion(
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
-    console.error(`[LLM] Error with model ${model}:`, errorText);
+    log.error(`Error with model ${model}`, undefined, { model, error: errorText });
     throw new Error(`LLM API error (${response.status}): ${errorText}`);
   }
 
   const data = (await response.json()) as ChatResponse;
-  console.log(`[LLM] Successfully received response from model: ${model}`);
+  log.info(`Successfully received response from model: ${model}`);
   return data.choices?.[0]?.message?.content || "";
 }
 
@@ -136,7 +139,7 @@ The array MUST have exactly ${steps.length} entries, in the same order as the st
       return parsed;
     }
   } catch {
-    console.warn("LLM returned non-JSON response, attempting to parse:", cleanResponse);
+    log.warn("LLM returned non-JSON response, attempting to parse", { response: cleanResponse.substring(0, 200) });
   }
 
   // Second attempt: try to find JSON within the response
@@ -204,7 +207,7 @@ async function loadImageAsDataUrl(mediaPath: string): Promise<{ dataUrl: string 
 
     return { dataUrl: `data:${mime};base64,${buffer.toString("base64")}` };
   } catch (e) {
-    console.warn("[loadImageAsDataUrl] Failed:", mediaPath, e);
+    log.warn("Failed to load image as data URL", { path: mediaPath, error: e instanceof Error ? e.message : String(e) });
     return null;
   }
 }
@@ -310,7 +313,7 @@ Write ONLY the narration text (1-3 sentences). No JSON, no quotes, no labels. Ju
     { temperature: 0.8, maxTokens: 200 }
   );
 
-  let script = response.trim().replace(/^["']|["']$/g, "").trim();
+  const script = response.trim().replace(/^["']|["']$/g, "").trim();
   return script || `Now, let's move on to step ${stepNumber}. ${stepDescription}`;
 }
 
@@ -383,7 +386,7 @@ Ensure the "scripts" array has exactly ${totalSteps} items.`;
     }
   }
 
-  console.log(`[HybridScript] Requesting holistic generation for ${totalSteps} steps...`);
+  log.info(`Requesting holistic generation for ${totalSteps} steps...`);
   
   try {
     const response = await chatCompletion(
@@ -400,7 +403,7 @@ Ensure the "scripts" array has exactly ${totalSteps} items.`;
     cleanedResponse = cleanedResponse.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
     const data = JSON.parse(cleanedResponse);
     if (data.scripts && Array.isArray(data.scripts) && data.scripts.length > 0) {
-      console.log(`[HybridScript] Successfully generated ${data.scripts.length} scripts.`);
+      log.info(`Successfully generated ${data.scripts.length} scripts.`);
       // Ensure we return exactly totalSteps
       const scripts = [];
       for (let i = 0; i < totalSteps; i++) {
@@ -411,7 +414,7 @@ Ensure the "scripts" array has exactly ${totalSteps} items.`;
       throw new Error("JSON response did not contain a valid 'scripts' array.");
     }
   } catch (err) {
-    console.error("[HybridScript] Holistic generation failed:", err);
+    log.error("Holistic generation failed", err);
     // Fallback to text-only generation if JSON parsing fails or model errors
     const fallbackScripts = await generateTutorialScript(
       projectTitle,
@@ -582,7 +585,7 @@ async function extractVideoFrames(videoUrl: string, maxFrames = 3): Promise<Buff
       outPattern
     ]);
   } catch (err) {
-    console.warn("[extractVideoFrames] ffmpeg extraction failed:", err);
+    log.warn("ffmpeg extraction failed", { error: err instanceof Error ? err.message : String(err) });
     // Clean up any frames that were written before the failure.
     for (let i = 1; i <= maxFrames; i++) {
       const framePath = path.join(tmpDir, `frame_${sessionId}_${i.toString().padStart(3, "0")}.jpg`);
@@ -634,7 +637,7 @@ If there is ANY safety violation, set isSafe to false. If there is a copyright v
 
     try {
       if (isVideo) {
-        console.log(`[SafetyCheck] Extracting frames from video: ${mediaPath.substring(0, 80)}...`);
+        log.info(`Extracting frames from video: ${mediaPath.substring(0, 80)}...`);
         const buffers = await extractVideoFrames(mediaPath);
         if (buffers.length === 0) {
            return { isSafe: true, isClear: true, reason: "Could not extract frames from video for checking." };
@@ -651,10 +654,10 @@ If there is ANY safety violation, set isSafe to false. If there is a copyright v
         let mime = "image/jpeg";
 
         if (mediaPath.startsWith("http://") || mediaPath.startsWith("https://")) {
-          console.log(`[SafetyCheck] Fetching remote image: ${mediaPath.substring(0, 80)}...`);
+          log.info(`Fetching remote image: ${mediaPath.substring(0, 80)}...`);
           const resp = await fetch(mediaPath);
           if (!resp.ok) {
-            console.warn(`[SafetyCheck] Failed to fetch image (${resp.status}): ${mediaPath}`);
+            log.warn(`Failed to fetch image (${resp.status})`, { path: mediaPath });
             return { isSafe: true, isClear: true, reason: "Could not fetch image for checking." };
           }
           const contentType = resp.headers.get("content-type") || "";
@@ -676,7 +679,7 @@ If there is ANY safety violation, set isSafe to false. If there is a copyright v
         });
       }
     } catch (e) {
-      console.warn(`[SafetyCheck] Could not load image: ${mediaPath}`, e);
+      log.warn("Could not load image", { path: mediaPath, error: e instanceof Error ? e.message : String(e) });
       return { isSafe: true, isClear: true, reason: "Could not load image." };
     }
     const response = await chatCompletion(
@@ -702,12 +705,12 @@ If there is ANY safety violation, set isSafe to false. If there is a copyright v
         reason: result.reason || (result.isClear && result.isSafe ? "Media appears safe and clear." : "Flagged by AI review."),
       };
     } catch {
-      console.warn("[SafetyCheck] Failed to parse JSON response:", response);
+      log.warn("Failed to parse JSON response", { response: response.substring(0, 200) });
       // Fail closed: if we can't parse the safety verdict, treat as unsafe.
       return { isSafe: false, isClear: false, reason: "Safety check failed: unparseable response." };
     }
   } catch (error) {
-    console.error("Vision API Error during safety check:", error);
+    log.error("Vision API Error during safety check", error);
     // Fail closed: if the API itself errors, treat as unsafe.
     return { isSafe: false, isClear: false, reason: "Safety check failed: API error." };
   }

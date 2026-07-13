@@ -1,20 +1,17 @@
 import * as cookie from "cookie";
 import { Session } from "@contracts/constants";
 import { getSessionCookieOptions } from "./lib/cookies";
-import { createRouter, publicQuery, authedQuery } from "./middleware";
-import { GUEST_USER } from "./context";
+import { createRouter, publicQuery, authedQuery, rateLimitByIP } from "./middleware";
 
 export const authRouter = createRouter({
   /**
-   * Returns the current user. For authenticated users, returns their real profile.
-   * For guest users (no session cookie), returns the guest user object.
-   * This allows the frontend to always have a valid "user" and skip login redirects.
+   * Returns the current authenticated user, or null if not logged in.
    */
-  me: publicQuery.query((opts) => {
-    const user = opts.ctx.user ?? GUEST_USER;
-    const isGuest = opts.ctx.isGuest ?? !opts.ctx.user;
-    return { ...user, isGuest };
-  }),
+  me: publicQuery
+    .use(rateLimitByIP(60_000, 60))
+    .query(({ ctx }) => {
+      return ctx.user ?? null;
+    }),
 
   logout: authedQuery.mutation(async ({ ctx }) => {
     const opts = getSessionCookieOptions(ctx.req.headers);

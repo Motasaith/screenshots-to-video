@@ -47,8 +47,7 @@ export function useAuth(options?: UseAuthOptions) {
   return useMemo(
     () => ({
       user: user ?? null,
-      isGuest: user?.isGuest ?? false,
-      isAuthenticated: !!user && !user?.isGuest,
+      isAuthenticated: !!user,
       isLoading: isLoading || logoutMutation.isPending,
       error,
       logout,

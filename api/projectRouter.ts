@@ -181,6 +181,34 @@ export const projectRouter = createRouter({
         });
       }
 
+      // If voice, speed, captions, or resolution changes, clear cached step video/audio segments
+      const voiceOrSpeedChanged = data.voice !== undefined || data.speed !== undefined;
+      const captionsOrResolutionChanged =
+        data.resolution !== undefined ||
+        captionsEnabled !== undefined ||
+        data.captionStyle !== undefined ||
+        data.captionSize !== undefined ||
+        data.captionPosition !== undefined ||
+        data.captionColor !== undefined;
+
+      if (voiceOrSpeedChanged) {
+        await getDb()
+          .update(steps)
+          .set({
+            audioPath: null,
+            audioDuration: null,
+            videoSegmentPath: null,
+          })
+          .where(eq(steps.projectId, id));
+      } else if (captionsOrResolutionChanged) {
+        await getDb()
+          .update(steps)
+          .set({
+            videoSegmentPath: null,
+          })
+          .where(eq(steps.projectId, id));
+      }
+
       await getDb()
         .update(projects)
         .set(updateData)

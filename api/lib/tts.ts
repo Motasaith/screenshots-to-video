@@ -3,6 +3,9 @@ import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
+import { createLogger } from "./logger";
+
+const log = createLogger({ path: "tts" });
 import { nanoid } from "nanoid";
 
 const execFileAsync = promisify(execFile);
@@ -42,7 +45,7 @@ async function getKokoro(): Promise<any> {
       "onnx-community/Kokoro-82M-v1.0-ONNX",
       { dtype: "q8", device: "cpu" }
     );
-    console.log("[TTS] Kokoro model loaded");
+    log.info("Kokoro model loaded");
     return kokoroInstance;
   } catch (err: any) {
     kokoroLoadFailed = true;
@@ -233,7 +236,7 @@ export async function generateTTSAudio(
     try {
       return await generateElevenLabsAudio(cleanText, voice.slice("elevenlabs:".length), opts?.rate, outDir);
     } catch (err: any) {
-      console.warn("[TTS] ElevenLabs failed, falling back to Edge TTS:", err.message);
+      log.warn("ElevenLabs failed, falling back to Edge TTS", { error: err.message });
       return generateEdgeAudio(cleanText, DEFAULT_EDGE_VOICE, opts?.rate, outDir);
     }
   }
@@ -242,7 +245,7 @@ export async function generateTTSAudio(
     try {
       return await generateKokoroAudio(cleanText, voice.slice("kokoro:".length), opts?.rate, outDir);
     } catch (err: any) {
-      console.warn("[TTS] Kokoro failed, falling back to Edge TTS:", err.message);
+      log.warn("Kokoro failed, falling back to Edge TTS", { error: err.message });
       return generateEdgeAudio(cleanText, DEFAULT_EDGE_VOICE, opts?.rate, outDir);
     }
   }
@@ -352,7 +355,7 @@ export async function probeAudioDuration(filePath: string): Promise<number> {
       // MP3: ~128kbps = ~16000 bytes/sec
       const bytesPerSec = isWav ? 176400 : 16000;
       const estimatedDuration = stat.size / bytesPerSec;
-      console.warn(`ffprobe not available, estimating duration: ${estimatedDuration.toFixed(2)}s (${isWav ? "WAV" : "MP3"})`);
+      log.warn(`ffprobe not available, estimating duration: ${estimatedDuration.toFixed(2)}s (${isWav ? "WAV" : "MP3"})`);
       return Math.max(estimatedDuration, 1);
     } catch {
       return 3; // default fallback

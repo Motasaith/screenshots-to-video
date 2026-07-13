@@ -54,6 +54,8 @@ import {
   Pencil,
   FileText,
   RotateCw,
+  Keyboard,
+  EyeOff,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -425,6 +427,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     return () => { window.removeEventListener("mousemove", handleMouseMove); window.removeEventListener("mouseup", handleMouseUp); };
   }, []);
 
+
+
   const handleSidebarResizeStart = (e: React.MouseEvent) => {
     e.preventDefault();
     sidebarResizeRef.current = { startX: e.clientX, startWidth: sidebarWidth };
@@ -472,11 +476,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const generateScript = trpc.ai.generateScript.useMutation();
   const utils = trpc.useUtils();
 
-  const generateVoiceForStep = trpc.ai.generateVoiceForStep.useMutation();
-  const generateAllVoices = trpc.ai.generateAllVoices.useMutation();
-
   // Voiceover states
-  const [voiceoverViewMode, setVoiceoverViewMode] = useState<"current" | "all">("current");
   const [testVoiceText, setTestVoiceText] = useState("");
 
   // Safety check state
@@ -662,6 +662,181 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       setAnnotations(JSON.parse(JSON.stringify(history[newIndex])));
     }
   };
+
+  // Refs to avoid stale closures in global event handlers
+  const modeRef = useRef(mode);
+  const currentStepRef = useRef(currentStep);
+  const handleUndoRef = useRef(handleUndo);
+  const handleRedoRef = useRef(handleRedo);
+  const historyIndexRef = useRef(historyIndex);
+
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
+
+  useEffect(() => {
+    currentStepRef.current = currentStep;
+  }, [currentStep]);
+
+  useEffect(() => {
+    handleUndoRef.current = handleUndo;
+    handleRedoRef.current = handleRedo;
+    historyIndexRef.current = historyIndex;
+  }, [handleUndo, handleRedo, historyIndex]);
+
+  const previousModeBeforeSpaceRef = useRef<ToolMode | null>(null);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // 1. Ignore if typing in text inputs or textareas
+      const target = e.target as HTMLElement;
+      if (
+        target.tagName === "INPUT" ||
+        target.tagName === "TEXTAREA" ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+
+      // Check if it's one of our handled shortcuts
+      const key = e.key.toLowerCase();
+      const isToolKey = ["v", "h", "z", "t", "b", "w", "u", "r", "p", "l", "f", "m", "c"].includes(key);
+      const isSpace = e.code === "Space" || e.key === " ";
+      const isUndoRedo = (e.ctrlKey || e.metaKey) && !e.altKey && ["z", "y"].includes(key);
+      const isZoomKey = (e.ctrlKey || e.metaKey) && !e.altKey && ["=", "+", "-"].includes(key);
+
+      // Prevent browser default actions (such as scrolling for spacebar) ALWAYS, even on repeat keydowns
+      if (isToolKey || isSpace || isUndoRedo || isZoomKey) {
+        e.preventDefault();
+      }
+
+      // 2. Ignore keydown events triggered by auto-repeat to prevent React rendering loops and lag
+      if (e.repeat) return;
+
+      // Spacebar hold to pan
+      if (isSpace) {
+        if (!previousModeBeforeSpaceRef.current && modeRef.current !== "pan") {
+          previousModeBeforeSpaceRef.current = modeRef.current;
+          setMode("pan");
+        }
+        return;
+      }
+
+      // Check Undo/Redo shortcuts (Ctrl + Z, Ctrl + Shift + Z, Ctrl + Y)
+      if (isUndoRedo) {
+        if (key === "z") {
+          if (e.shiftKey) {
+            handleRedoRef.current();
+          } else {
+            handleUndoRef.current();
+          }
+          return;
+        }
+        if (key === "y") {
+          handleRedoRef.current();
+          return;
+        }
+      }
+
+      // Ctrl + / Ctrl - for canvas zoom scale
+      if (isZoomKey) {
+        if (e.key === "=" || e.key === "+") {
+          setCanvasScale((prev) => Math.min(3.0, prev * 1.1));
+          return;
+        }
+        if (e.key === "-") {
+          setCanvasScale((prev) => Math.max(1.0, prev / 1.1));
+          return;
+        }
+      }
+
+      // Check tool shortcuts (case-insensitive)
+      switch (key) {
+        case "v":
+          setMode("select");
+          break;
+        case "h":
+          setMode("highlight");
+          break;
+        case "z":
+          setMode("zoom");
+          break;
+        case "t":
+          setMode("overlay");
+          break;
+        case "b":
+          setMode("badge");
+          break;
+        case "w":
+          setMode("watermark");
+          break;
+        case "u":
+          setMode("blur");
+          break;
+        case "r":
+          setMode("redact");
+          break;
+        case "p":
+          setMode("pixelate");
+          break;
+        case "l":
+          setMode("spotlight");
+          break;
+        case "f":
+          setMode("filter");
+          break;
+        case "m":
+          setMode("magnify");
+          break;
+        case "c":
+          // Trigger Crop mode just like the toolbar crop button does
+          if (currentStepRef.current) {
+            setAnnotations((prev) => {
+              const ann = prev[currentStepRef.current!.id] || {};
+              if (ann.editorCropX == null || ann.editorCropW == null) {
+                const next = {
+                  ...prev,
+                  [currentStepRef.current!.id]: {
+                    ...ann,
+                    editorCropX: 0,
+                    editorCropY: 0,
+                    editorCropW: 100,
+                    editorCropH: 100,
+                  },
+                };
+                // Push to history
+                setHistory((h) => {
+                  const newH = h.slice(0, historyIndexRef.current + 1);
+                  return [...newH, next];
+                });
+                setHistoryIndex((idx) => idx + 1);
+                return next;
+              }
+              return prev;
+            });
+          }
+          setMode("crop");
+          break;
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === "Space" || e.key === " ") {
+        if (previousModeBeforeSpaceRef.current !== null) {
+          setMode(previousModeBeforeSpaceRef.current);
+          previousModeBeforeSpaceRef.current = null;
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+    };
+  }, []);
 
   const handleUploadFiles = async (files: FileList) => {
     if (files.length === 0) return;
@@ -3809,50 +3984,9 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const renderVoiceoverContent = () => {
     if (!currentStep) return null;
 
-    const selectedVoiceData = [...voices, ...elevenLabsVoices].find((v) => v.id === selectedVoice);
-    const isElevenLabs = elevenLabsVoices.some((v) => v.id === selectedVoice);
-
     return (
       <div className="flex flex-col h-[calc(100vh-140px)] relative">
-        {/* Toggle Mode */}
-        <div className="flex items-center gap-1 p-0.5 bg-[var(--sketch-bg)] rounded-full border border-[var(--sketch-border-color)]/20 mx-4 mt-2 flex-shrink-0">
-          <button
-            onClick={() => setVoiceoverViewMode("current")}
-            className={`flex-1 py-1 px-3 text-[10px] font-bold rounded-full transition-all cursor-pointer ${voiceoverViewMode === "current"
-                ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-fg)]"
-                : "text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg-subtle)]"
-              }`}
-          >
-            Current Scene Only
-          </button>
-          <button
-            onClick={() => setVoiceoverViewMode("all")}
-            className={`flex-1 py-1 px-3 text-[10px] font-bold rounded-full transition-all cursor-pointer ${voiceoverViewMode === "all"
-                ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-fg)]"
-                : "text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg-subtle)]"
-              }`}
-          >
-            All Scenes
-          </button>
-        </div>
-
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 min-h-0">
-          {/* ElevenLabs Credits indicator if relevant */}
-          {isElevenLabs && credits.data && (
-            <div className="p-3 bg-gradient-to-r from-amber-500/10 to-yellow-500/5 border border-amber-500/20 rounded-xl flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <Crown className="w-4 h-4 text-amber-500 animate-pulse" />
-                <div>
-                  <span className="font-semibold text-[var(--sketch-fg)]">ElevenLabs API</span>
-                  <p className="text-[9px] text-[var(--sketch-fg-muted)]">Remaining Credits</p>
-                </div>
-              </div>
-              <span className="font-mono font-bold text-amber-600 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                {credits.data.remaining.toLocaleString()} chars
-              </span>
-            </div>
-          )}
-
           {/* Tester for preview */}
           <div className="p-3 rounded-xl border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)]/50">
             <div className="flex items-center justify-between mb-1.5">
@@ -3887,7 +4021,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   });
                 }}
                 disabled={previewVoice.isPending}
-                className="flex-shrink-0 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-colors flex items-center justify-center"
+                className="flex-shrink-0 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-colors flex items-center justify-center cursor-pointer"
               >
                 {previewVoice.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
               </button>
@@ -3897,49 +4031,46 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           {/* Voice Selection list */}
           <div className="space-y-2">
             <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block">Select AI Voice</Label>
-            <div className="grid grid-cols-2 gap-2 max-h-[220px] overflow-y-auto pr-1">
-              {[...voices, ...elevenLabsVoices].map((v) => {
+            <div className="space-y-1.5 max-h-[260px] overflow-y-auto pr-1">
+              {voices.map((v) => {
                 const isSelected = selectedVoice === v.id;
                 const isPlaying = playingId === v.id;
                 const isLoading = previewLoadingId === v.id;
-                const isPremium = elevenLabsVoices.some(ev => ev.id === v.id);
                 return (
                   <div
                     key={v.id}
                     onClick={() => setSelectedVoice(v.id)}
-                    className={`p-2 border rounded-lg flex flex-col justify-between text-xs transition-all cursor-pointer min-h-[72px] relative ${isSelected
+                    className={`p-2 border rounded-lg flex items-center justify-between text-xs transition-all cursor-pointer ${isSelected
                         ? "border-[#FBBF24] bg-[#FBBF24]/5"
                         : "border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
                       }`}
                   >
                     <div className="flex flex-col">
-                      <div className="flex items-center gap-1">
-                        <span className="font-semibold text-[var(--sketch-fg)] truncate max-w-[80px]">{v.name}</span>
-                        {isPremium && (
-                          <span className="text-[7px] text-amber-600 bg-amber-500/10 px-1 rounded flex items-center gap-0.5 border border-amber-500/20">
-                            <Crown className="w-2 h-2" /> PREMIUM
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-semibold text-[var(--sketch-fg)]">{v.name}</span>
+                        {v.tag && (
+                          <span className="text-[7px] text-blue-600 bg-blue-500/10 px-1 rounded border border-blue-500/20 font-bold">
+                            {v.tag}
                           </span>
                         )}
                       </div>
-                      <span className="text-[8px] text-[var(--sketch-fg-muted)] line-clamp-2 mt-0.5">
-                        {v.accent} • {v.gender}
+                      <span className="text-[9px] text-[var(--sketch-fg-muted)]">
+                        {v.accent === "-" ? "Mute" : `${v.accent} • ${v.gender}`}
                       </span>
                     </div>
-                    <div className="flex justify-end mt-1">
-                      <button
-                        onClick={(e) => handlePlayPreview(e, v.id)}
-                        disabled={previewLoadingId !== null && previewLoadingId !== v.id}
-                        className="p-1 hover:bg-[var(--sketch-fg-subtle)]/10 rounded-full text-[var(--sketch-fg-muted)] disabled:opacity-50 flex items-center justify-center cursor-pointer"
-                      >
-                        {isLoading ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : isPlaying ? (
-                          <Square className="w-3.5 h-3.5 fill-current" />
-                        ) : (
-                          <Play className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                    </div>
+                    <button
+                      onClick={(e) => handlePlayPreview(e, v.id)}
+                      disabled={previewLoadingId !== null && previewLoadingId !== v.id}
+                      className="p-1 hover:bg-[var(--sketch-fg-subtle)]/10 rounded-full text-[var(--sketch-fg-muted)] disabled:opacity-50 flex items-center justify-center cursor-pointer"
+                    >
+                      {isLoading ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : isPlaying ? (
+                        <Square className="w-3.5 h-3.5 fill-current" />
+                      ) : (
+                        <Play className="w-3.5 h-3.5" />
+                      )}
+                    </button>
                   </div>
                 );
               })}
@@ -3964,52 +4095,27 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           </div>
         </div>
 
-        {/* Generate and Save action */}
+        {/* Set Voice action */}
         <div className="p-4 border-t border-[var(--sketch-border-color)]/20 bg-[var(--sketch-panel-bg)] flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="flex-1 min-w-0 flex flex-col">
-              <span className="text-[10px] font-bold text-[var(--sketch-fg)] truncate">
-                {selectedVoiceData?.name || "Select a voice"}
-              </span>
-              <span className="text-[9px] text-[var(--sketch-fg-muted)] truncate">
-                {selectedVoiceData ? ('accent' in selectedVoiceData ? `${selectedVoiceData.accent} • ${selectedVoiceData.gender}` : 'ElevenLabs') : ""}
-              </span>
-            </div>
-            <button
-              onClick={async () => {
-                if (updateProject.isPending || generateAllVoices.isPending || generateVoiceForStep.isPending) return;
-                
-                if (voiceoverViewMode === "current") {
-                  try {
-                    toast.info("Generating voiceover for the current scene...", { duration: 3000 });
-                    await generateVoiceForStep.mutateAsync({ stepId: currentStep.id, voice: selectedVoice, speed: voiceSpeed });
-                    utils.project.getById.invalidate({ id: projectIdNum });
-                    utils.step.listByProject.invalidate({ projectId: projectIdNum });
-                    updateProject.mutate({ id: projectIdNum, voice: selectedVoice, speed: voiceSpeed });
-                    toast.success("Voiceover generated and applied for current scene!");
-                  } catch (err: any) {
-                    toast.error(err.message || "Failed to generate voice for current scene.");
-                  }
-                } else {
-                  try {
-                    toast.info("Generating voiceovers for all scenes...", { duration: 5000 });
-                    const res = await generateAllVoices.mutateAsync({ projectId: projectIdNum, voice: selectedVoice, speed: voiceSpeed });
-                    utils.project.getById.invalidate({ id: projectIdNum });
-                    utils.step.listByProject.invalidate({ projectId: projectIdNum });
-                    updateProject.mutate({ id: projectIdNum, voice: selectedVoice, speed: voiceSpeed });
-                    toast.success(`Generated ${res.count} voiceovers successfully!`);
-                  } catch (err: any) {
-                    toast.error(err.message || "Failed to generate all voiceovers.");
-                  }
-                }
-              }}
-              disabled={updateProject.isPending || generateAllVoices.isPending || generateVoiceForStep.isPending}
-              className="px-4 py-2 bg-[#D3E3FD] dark:bg-blue-900/40 hover:bg-[#C2D7FA] dark:hover:bg-blue-800/40 text-blue-800 dark:text-blue-100 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5"
-            >
-              {(generateAllVoices.isPending || generateVoiceForStep.isPending) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              {voiceoverViewMode === "current" ? "Generate voiceover" : "Generate for all scenes"}
-            </button>
-          </div>
+          <button
+            onClick={async () => {
+              try {
+                await updateProject.mutateAsync({
+                  id: projectIdNum,
+                  voice: selectedVoice,
+                  speed: voiceSpeed,
+                });
+                toast.success("Voiceover settings updated successfully!");
+              } catch (err: any) {
+                toast.error(err.message || "Failed to update voiceover settings.");
+              }
+            }}
+            disabled={updateProject.isPending}
+            className="w-full py-2 bg-[#FBBF24] hover:bg-[#FBBF24]/90 text-black disabled:opacity-50 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 border border-black/10 cursor-pointer"
+          >
+            {updateProject.isPending && <Loader2 className="w-3 h-3 animate-spin text-black" />}
+            Set Voice
+          </button>
         </div>
       </div>
     );
@@ -4041,6 +4147,47 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
             ) : (
               <span>Could not load ElevenLabs credits</span>
             )}
+          </div>
+
+          {/* Tester for preview */}
+          <div className="p-3 rounded-xl border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)]/50 mb-2">
+            <div className="flex items-center justify-between mb-1.5">
+              <Label className="text-[10px] font-bold text-[var(--sketch-fg-muted)]">Test voice</Label>
+            </div>
+            <div className="flex gap-2">
+              <Textarea
+                value={testVoiceText}
+                onChange={(e) => setTestVoiceText(e.target.value)}
+                placeholder={currentStep?.userEditedScript || currentStep?.aiScript || "Type something to test..."}
+                className="flex-1 text-xs min-h-[40px] resize-none"
+              />
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const textToTest = testVoiceText.trim() || currentStep?.userEditedScript || currentStep?.aiScript || "Hi I am your AI guide.";
+                  previewVoice.mutate({ voice: selectedVoice, speed: voiceSpeed, text: textToTest }, {
+                    onSuccess: (data) => {
+                      if (playingId === selectedVoice) {
+                        audioRef.pause();
+                      }
+                      setPlayingId(selectedVoice);
+                      audioRef.src = data.audioData;
+                      audioRef.play();
+                      audioRef.onended = () => {
+                        setPlayingId(null);
+                      };
+                    },
+                    onError: (err) => {
+                      toast.error(err.message || "Failed to generate preview");
+                    }
+                  });
+                }}
+                disabled={previewVoice.isPending}
+                className="flex-shrink-0 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-colors flex items-center justify-center cursor-pointer"
+              >
+                {previewVoice.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
+              </button>
+            </div>
           </div>
 
           <div className="space-y-1.5 max-h-[260px] overflow-y-auto pr-1">
@@ -4536,7 +4683,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const [pexelsQuery, setPexelsQuery] = useState("");
   const [pexelsMediaType, setPexelsMediaType] = useState<"both" | "image" | "video">("both");
   const [importingPexelsId, setImportingPexelsId] = useState<number | null>(null);
-  const pexelsSearch = trpc.studio.searchMedia.useQuery(
+  const pexelsSearch = trpc.ai.searchMedia.useQuery(
     { query: pexelsQuery, mediaType: pexelsMediaType, perPage: 12 },
     { enabled: pexelsQuery.length > 2 && activeRightTab === "media", refetchOnMount: false }
   );
@@ -5233,53 +5380,72 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 Tools
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-52">
-              <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">Selection</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => setMode("select")}>
-                <MousePointer className="w-3.5 h-3.5 mr-2" /> Select
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setMode("pan")}>
-                <Move className="w-3.5 h-3.5 mr-2" /> Pan
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setMode("crop")}>
-                <Crop className="w-3.5 h-3.5 mr-2" /> Crop
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">Zoom & Focus</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => setMode("highlight")}>
-                <Square className="w-3.5 h-3.5 mr-2" /> Highlight Box
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setMode("zoom")}>
-                <Target className="w-3.5 h-3.5 mr-2" /> Zoom Point
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">Text & Marks</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => setMode("overlay")}>
-                <Type className="w-3.5 h-3.5 mr-2" /> Text Overlay
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setMode("badge")}>
-                <BadgeCheck className="w-3.5 h-3.5 mr-2" /> Badge
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setMode("watermark")}>
-                <Stamp className="w-3.5 h-3.5 mr-2" /> Watermark
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">Privacy</DropdownMenuLabel>
-              <DropdownMenuItem onClick={() => setMode("blur")}>
-                <Aperture className="w-3.5 h-3.5 mr-2" /> Blur
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setMode("redact")}>
-                <Shield className="w-3.5 h-3.5 mr-2" /> Redact
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setMode("pixelate")}>
-                <Grid3x3 className="w-3.5 h-3.5 mr-2" /> Pixelate
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setMode("spotlight")}>
-                <Sun className="w-3.5 h-3.5 mr-2" /> Spotlight
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setMode("filter")}>
-                <Palette className="w-3.5 h-3.5 mr-2" /> Color Filter
-              </DropdownMenuItem>
+            <DropdownMenuContent align="start" className="w-56 p-0">
+              <div className="max-h-[360px] overflow-y-auto p-1 scrollbar-thin">
+                <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">Selection</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => setMode("select")}>
+                  <MousePointer className="w-3.5 h-3.5 mr-2" /> Select
+                  <span className="ml-auto text-[9px] text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/5 px-1 py-0.5 rounded border border-[var(--sketch-border-color)]/10 font-mono">V</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setMode("pan")}>
+                  <Move className="w-3.5 h-3.5 mr-2" /> Pan
+                  <span className="ml-auto text-[9px] text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/5 px-1 py-0.5 rounded border border-[var(--sketch-border-color)]/10 font-mono">Space</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setMode("crop")}>
+                  <Crop className="w-3.5 h-3.5 mr-2" /> Crop
+                  <span className="ml-auto text-[9px] text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/5 px-1 py-0.5 rounded border border-[var(--sketch-border-color)]/10 font-mono">C</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">Zoom & Focus</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => setMode("highlight")}>
+                  <Square className="w-3.5 h-3.5 mr-2" /> Highlight Box
+                  <span className="ml-auto text-[9px] text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/5 px-1 py-0.5 rounded border border-[var(--sketch-border-color)]/10 font-mono">H</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setMode("zoom")}>
+                  <Target className="w-3.5 h-3.5 mr-2" /> Zoom Point
+                  <span className="ml-auto text-[9px] text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/5 px-1 py-0.5 rounded border border-[var(--sketch-border-color)]/10 font-mono">Z</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setMode("magnify")}>
+                  <Target className="w-3.5 h-3.5 mr-2" /> Magnify Lens
+                  <span className="ml-auto text-[9px] text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/5 px-1 py-0.5 rounded border border-[var(--sketch-border-color)]/10 font-mono">M</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">Text & Marks</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => setMode("overlay")}>
+                  <Type className="w-3.5 h-3.5 mr-2" /> Text Overlay
+                  <span className="ml-auto text-[9px] text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/5 px-1 py-0.5 rounded border border-[var(--sketch-border-color)]/10 font-mono">T</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setMode("badge")}>
+                  <BadgeCheck className="w-3.5 h-3.5 mr-2" /> Badge
+                  <span className="ml-auto text-[9px] text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/5 px-1 py-0.5 rounded border border-[var(--sketch-border-color)]/10 font-mono">B</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setMode("watermark")}>
+                  <Stamp className="w-3.5 h-3.5 mr-2" /> Watermark
+                  <span className="ml-auto text-[9px] text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/5 px-1 py-0.5 rounded border border-[var(--sketch-border-color)]/10 font-mono">W</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">Privacy</DropdownMenuLabel>
+                <DropdownMenuItem onClick={() => setMode("blur")}>
+                  <Aperture className="w-3.5 h-3.5 mr-2" /> Blur
+                  <span className="ml-auto text-[9px] text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/5 px-1 py-0.5 rounded border border-[var(--sketch-border-color)]/10 font-mono">U</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setMode("redact")}>
+                  <Shield className="w-3.5 h-3.5 mr-2" /> Redact
+                  <span className="ml-auto text-[9px] text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/5 px-1 py-0.5 rounded border border-[var(--sketch-border-color)]/10 font-mono">R</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setMode("pixelate")}>
+                  <Grid3x3 className="w-3.5 h-3.5 mr-2" /> Pixelate
+                  <span className="ml-auto text-[9px] text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/5 px-1 py-0.5 rounded border border-[var(--sketch-border-color)]/10 font-mono">P</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setMode("spotlight")}>
+                  <Sun className="w-3.5 h-3.5 mr-2" /> Spotlight
+                  <span className="ml-auto text-[9px] text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/5 px-1 py-0.5 rounded border border-[var(--sketch-border-color)]/10 font-mono">L</span>
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setMode("filter")}>
+                  <Palette className="w-3.5 h-3.5 mr-2" /> Color Filter
+                  <span className="ml-auto text-[9px] text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/5 px-1 py-0.5 rounded border border-[var(--sketch-border-color)]/10 font-mono">F</span>
+                </DropdownMenuItem>
+              </div>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -5368,8 +5534,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
               {/* Tools row */}
               <div className="flex items-center gap-1 px-1 overflow-x-auto scrollbar-none py-0.5 flex-1 min-w-0">
-                <ToolbarToolButton active={mode === "select"} onClick={() => setMode("select")} icon={<MousePointer className="w-3.5 h-3.5" />} label="Select" />
-                <ToolbarToolButton active={mode === "pan"} onClick={() => setMode("pan")} icon={<Move className="w-3.5 h-3.5" />} label="Pan" />
+                <ToolbarToolButton active={mode === "select"} onClick={() => setMode("select")} icon={<MousePointer className="w-3.5 h-3.5" />} label="Select" shortcut="V" />
+                <ToolbarToolButton active={mode === "pan"} onClick={() => setMode("pan")} icon={<Move className="w-3.5 h-3.5" />} label="Pan" shortcut="Space" />
                 <ToolbarToolButton
                   active={mode === "crop"}
                   onClick={() => {
@@ -5393,20 +5559,21 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   }}
                   icon={<Crop className="w-3.5 h-3.5" />}
                   label="Crop"
+                  shortcut="C"
                 />
                 <div className="h-4 w-[1px] bg-[#D3D3D3]/50 mx-1 flex-shrink-0" />
-                <ToolbarToolButton active={mode === "highlight"} onClick={() => setMode("highlight")} icon={<Square className="w-3.5 h-3.5" />} label="Highlight" />
-                <ToolbarToolButton active={mode === "zoom"} onClick={() => setMode("zoom")} icon={<Target className="w-3.5 h-3.5" />} label="Zoom" />
+                <ToolbarToolButton active={mode === "highlight"} onClick={() => setMode("highlight")} icon={<Square className="w-3.5 h-3.5" />} label="Highlight" shortcut="H" />
+                <ToolbarToolButton active={mode === "zoom"} onClick={() => setMode("zoom")} icon={<Target className="w-3.5 h-3.5" />} label="Zoom" shortcut="Z" />
                 <div className="h-4 w-[1px] bg-[#D3D3D3]/50 mx-1 flex-shrink-0" />
-                <ToolbarToolButton active={mode === "overlay"} onClick={() => setMode("overlay")} icon={<Type className="w-3.5 h-3.5" />} label="Text Overlay" />
-                <ToolbarToolButton active={mode === "badge"} onClick={() => setMode("badge")} icon={<BadgeCheck className="w-3.5 h-3.5" />} label="Badge" />
-                <ToolbarToolButton active={mode === "watermark"} onClick={() => setMode("watermark")} icon={<Stamp className="w-3.5 h-3.5" />} label="Watermark" />
+                <ToolbarToolButton active={mode === "overlay"} onClick={() => setMode("overlay")} icon={<Type className="w-3.5 h-3.5" />} label="Text Overlay" shortcut="T" />
+                <ToolbarToolButton active={mode === "badge"} onClick={() => setMode("badge")} icon={<BadgeCheck className="w-3.5 h-3.5" />} label="Badge" shortcut="B" />
+                <ToolbarToolButton active={mode === "watermark"} onClick={() => setMode("watermark")} icon={<Stamp className="w-3.5 h-3.5" />} label="Watermark" shortcut="W" />
                 <div className="h-4 w-[1px] bg-[#D3D3D3]/50 mx-1 flex-shrink-0" />
-                <ToolbarToolButton active={mode === "blur"} onClick={() => setMode("blur")} icon={<Aperture className="w-3.5 h-3.5" />} label="Blur" />
-                <ToolbarToolButton active={mode === "redact"} onClick={() => setMode("redact")} icon={<Shield className="w-3.5 h-3.5" />} label="Redact" />
-                <ToolbarToolButton active={mode === "pixelate"} onClick={() => setMode("pixelate")} icon={<Grid3x3 className="w-3.5 h-3.5" />} label="Pixelate" />
-                <ToolbarToolButton active={mode === "spotlight"} onClick={() => setMode("spotlight")} icon={<Sun className="w-3.5 h-3.5" />} label="Spotlight" />
-                <ToolbarToolButton active={mode === "filter"} onClick={() => setMode("filter")} icon={<Palette className="w-3.5 h-3.5" />} label="Filter" />
+                <ToolbarToolButton active={mode === "blur"} onClick={() => setMode("blur")} icon={<Aperture className="w-3.5 h-3.5" />} label="Blur" shortcut="U" />
+                <ToolbarToolButton active={mode === "redact"} onClick={() => setMode("redact")} icon={<Shield className="w-3.5 h-3.5" />} label="Redact" shortcut="R" />
+                <ToolbarToolButton active={mode === "pixelate"} onClick={() => setMode("pixelate")} icon={<Grid3x3 className="w-3.5 h-3.5" />} label="Pixelate" shortcut="P" />
+                <ToolbarToolButton active={mode === "spotlight"} onClick={() => setMode("spotlight")} icon={<Sun className="w-3.5 h-3.5" />} label="Spotlight" shortcut="L" />
+                <ToolbarToolButton active={mode === "filter"} onClick={() => setMode("filter")} icon={<Palette className="w-3.5 h-3.5" />} label="Filter" shortcut="F" />
               </div>
             </div>
 
@@ -5443,7 +5610,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           {/* Canvas area */}
           <div className="flex-1 flex flex-col bg-[var(--sketch-bg)] relative min-w-0 p-4 min-h-0">
             <div className="flex-1 w-full relative min-h-0 flex flex-col overflow-hidden">
-              {currentStep && (
+              {currentStep ? (
                 <div
                   ref={scrollContainerRef}
                   className={`w-full flex-grow flex-1 min-h-0 border border-[var(--sketch-border-color)]/20 rounded-md bg-[var(--sketch-bg)] relative ${canvasScale > 1.0
@@ -5543,12 +5710,18 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                           />
                         )
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center">
-                          <div className="text-center">
-                            <Target className="w-12 h-12 text-[var(--sketch-fg-subtle)] mx-auto mb-2" />
-                            <p className="font-body text-sm text-[var(--sketch-fg-subtle)]">
-                              No screenshot uploaded
+                        <div className="w-full h-full flex flex-col items-center justify-start p-6 overflow-y-auto gap-4 bg-[var(--sketch-bg)]">
+                          <div className="text-center py-4">
+                            <Target className="w-10 h-10 text-[var(--sketch-fg-subtle)] mx-auto mb-2 animate-pulse" />
+                            <p className="font-body text-sm text-[var(--sketch-fg-subtle)] font-semibold">
+                              No screenshot uploaded for this scene.
                             </p>
+                            <p className="text-[11px] text-[var(--sketch-fg-muted)] mt-1">
+                              Drag and drop or upload an image in the timeline below to begin annotating.
+                            </p>
+                          </div>
+                          <div className="w-full max-w-2xl border-t border-[var(--sketch-border-color)]/15 pt-4">
+                            <ShortcutGuideNote />
                           </div>
                         </div>
                       )}
@@ -6387,7 +6560,19 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                     </div>
                   </div>
                 </div>
-                )}
+              ) : (
+                <div className="flex-grow w-full h-full flex flex-col items-center justify-center p-6 bg-[var(--sketch-bg)] overflow-y-auto">
+                  <div className="text-center max-w-2xl space-y-4 py-8">
+                    <Target className="w-10 h-10 text-[var(--sketch-fg-subtle)] mx-auto mb-2 animate-bounce" />
+                    <p className="font-body text-sm text-[var(--sketch-fg-subtle)] font-bold">
+                      No scene selected. Click a scene clip in the timeline below to begin editing.
+                    </p>
+                    <div className="border-t border-[var(--sketch-border-color)]/15 pt-4">
+                      <ShortcutGuideNote />
+                    </div>
+                  </div>
+                </div>
+              )}
               </div>
             </div>
 
@@ -6730,21 +6915,128 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
 
 
+function ShortcutGuideNote() {
+  return (
+    <div className="flex-grow flex items-center justify-center p-8 bg-[var(--sketch-panel-bg)]/40 rounded-lg border border-dashed border-[var(--sketch-border-color)]/30 backdrop-blur-sm overflow-y-auto w-full h-full max-h-[85%] select-none">
+      <div className="max-w-2xl w-full space-y-6 text-center">
+        <div className="space-y-2">
+          <h3 className="text-base font-bold text-[var(--sketch-fg)] flex items-center justify-center gap-2">
+            <Keyboard className="w-5 h-5 text-[#FBBF24]" /> Canvas Editor Keyboard Shortcuts
+          </h3>
+          <p className="text-xs text-[var(--sketch-fg-muted)]">
+            Press any of these hotkeys while editing to select tools instantly.
+          </p>
+        </div>
+        
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
+          <div className="p-4 rounded-xl border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] space-y-3 shadow-sm">
+            <h4 className="text-xs font-bold text-[var(--sketch-fg)] border-b border-[var(--sketch-border-color)]/25 pb-1 flex items-center gap-1.5">
+              <MousePointer className="w-3.5 h-3.5 text-blue-500" /> Navigation & Editing
+            </h4>
+            <div className="space-y-2 text-[11px]">
+              <div className="flex justify-between items-center">
+                <span className="text-[var(--sketch-fg-muted)]">Select Tool</span>
+                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">V</kbd>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[var(--sketch-fg-muted)]">Pan Tool (Hold Spacebar)</span>
+                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">Space</kbd>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[var(--sketch-fg-muted)]">Crop Screen</span>
+                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">C</kbd>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[var(--sketch-fg-muted)]">Undo Action</span>
+                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">Ctrl + Z</kbd>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[var(--sketch-fg-muted)]">Redo Action</span>
+                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">Ctrl + Shift + Z</kbd>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] space-y-3 shadow-sm">
+            <h4 className="text-xs font-bold text-[var(--sketch-fg)] border-b border-[var(--sketch-border-color)]/25 pb-1 flex items-center gap-1.5">
+              <Square className="w-3.5 h-3.5 text-amber-500" /> Annotation Tools
+            </h4>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
+              <div className="flex justify-between items-center">
+                <span className="text-[var(--sketch-fg-muted)]">Highlight</span>
+                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">H</kbd>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[var(--sketch-fg-muted)]">Zoom Focus</span>
+                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">Z</kbd>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[var(--sketch-fg-muted)]">Text Overlay</span>
+                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">T</kbd>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[var(--sketch-fg-muted)]">Badge</span>
+                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">B</kbd>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[var(--sketch-fg-muted)]">Watermark</span>
+                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">W</kbd>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-[var(--sketch-fg-muted)]">Magnify</span>
+                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">M</kbd>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 rounded-xl border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] space-y-3 shadow-sm text-left">
+          <h4 className="text-xs font-bold text-[var(--sketch-fg)] border-b border-[var(--sketch-border-color)]/25 pb-1 flex items-center gap-1.5">
+            <EyeOff className="w-3.5 h-3.5 text-emerald-500" /> Censorship & Special Effects
+          </h4>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-[11px]">
+            <div className="flex justify-between items-center">
+              <span className="text-[var(--sketch-fg-muted)]">Blur</span>
+              <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">U</kbd>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-[var(--sketch-fg-muted)]">Redact</span>
+              <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">R</kbd>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-[var(--sketch-fg-muted)]">Pixelate</span>
+              <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">P</kbd>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-[var(--sketch-fg-muted)]">Spotlight</span>
+              <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">L</kbd>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+
 function ToolbarToolButton({
   active,
   onClick,
   icon,
   label,
+  shortcut,
 }: {
   active: boolean;
   onClick: () => void;
   icon: React.ReactNode;
   label: string;
+  shortcut?: string;
 }) {
   return (
     <button
       onClick={onClick}
-      title={label}
+      title={shortcut ? `${label} (${shortcut})` : label}
       className={`px-2 py-1 hover:bg-[var(--sketch-fg-subtle)]/20 rounded text-[var(--sketch-fg)] transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap text-[11px] font-medium ${active ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-muted)]"
         }`}
     >

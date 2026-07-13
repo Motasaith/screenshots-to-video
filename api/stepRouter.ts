@@ -263,6 +263,86 @@ export const stepRouter = createRouter({
         }
       }
 
+      // Clear audio/video segment cache on changes
+      const isTextUpdated =
+        data.description !== undefined ||
+        data.aiScript !== undefined ||
+        data.userEditedScript !== undefined;
+
+      const isVideoFieldsUpdated =
+        data.zoomTargetX !== undefined ||
+        data.zoomTargetY !== undefined ||
+        data.zoomRectX !== undefined ||
+        data.zoomRectY !== undefined ||
+        data.zoomRectWidth !== undefined ||
+        data.zoomRectHeight !== undefined ||
+        data.editorHighlights !== undefined ||
+        data.editorCaptionText !== undefined ||
+        data.editorCaptionPosition !== undefined ||
+        data.editorCaptionStyle !== undefined ||
+        data.editorCaptionColor !== undefined ||
+        data.editorCaptionSize !== undefined ||
+        data.editorOverlayText !== undefined ||
+        data.editorOverlayX !== undefined ||
+        data.editorOverlayY !== undefined ||
+        data.editorOverlayColor !== undefined ||
+        data.editorOverlaySize !== undefined ||
+        data.editorCropX !== undefined ||
+        data.editorCropY !== undefined ||
+        data.editorCropW !== undefined ||
+        data.editorCropH !== undefined ||
+        data.editorBlurX !== undefined ||
+        data.editorBlurY !== undefined ||
+        data.editorBlurW !== undefined ||
+        data.editorBlurH !== undefined ||
+        data.editorBlurIntensity !== undefined ||
+        data.editorBlurs !== undefined ||
+        data.editorRedactX !== undefined ||
+        data.editorRedactY !== undefined ||
+        data.editorRedactW !== undefined ||
+        data.editorRedactH !== undefined ||
+        data.editorRedactColor !== undefined ||
+        data.editorWatermarkText !== undefined ||
+        data.editorWatermarkPosition !== undefined ||
+        data.editorWatermarkSize !== undefined ||
+        data.editorWatermarkColor !== undefined ||
+        data.editorWatermarkOpacity !== undefined ||
+        data.editorPixelateX !== undefined ||
+        data.editorPixelateY !== undefined ||
+        data.editorPixelateW !== undefined ||
+        data.editorPixelateH !== undefined ||
+        data.editorPixelateBlockSize !== undefined ||
+        data.editorPixelates !== undefined ||
+        data.editorSpotlightX !== undefined ||
+        data.editorSpotlightY !== undefined ||
+        data.editorSpotlightW !== undefined ||
+        data.editorSpotlightH !== undefined ||
+        data.editorSpotlightIntensity !== undefined ||
+        data.editorSpotlights !== undefined ||
+        data.editorBadgeNumber !== undefined ||
+        data.editorBadgeX !== undefined ||
+        data.editorBadgeY !== undefined ||
+        data.editorBadgeColor !== undefined ||
+        data.editorMagnifyX !== undefined ||
+        data.editorMagnifyY !== undefined ||
+        data.editorMagnifyW !== undefined ||
+        data.editorMagnifyH !== undefined ||
+        data.editorMagnifyScale !== undefined ||
+        data.editorMagnifyCorner !== undefined ||
+        data.editorColorFilter !== undefined ||
+        data.editorZoomScale !== undefined ||
+        data.editorDuration !== undefined ||
+        data.editorMultiZooms !== undefined ||
+        data.screenshotPath !== undefined;
+
+      if (isTextUpdated) {
+        updateData.audioPath = null;
+        updateData.audioDuration = null;
+        updateData.videoSegmentPath = null;
+      } else if (isVideoFieldsUpdated) {
+        updateData.videoSegmentPath = null;
+      }
+
       await getDb()
         .update(steps)
         .set(updateData)

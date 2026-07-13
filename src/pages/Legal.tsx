@@ -51,7 +51,7 @@ export default function Legal() {
               <h2 className="font-bold text-2xl text-[var(--space-text)]">Security & Compliance</h2>
             </div>
             <p className="text-[var(--space-text-muted)] text-sm leading-relaxed mb-4">
-              We store all uploaded media securely via UploadThing. We use advanced LLMs (including Vision models for copyright scanning and Text models for script generation). We do not use your private project data to train base foundational AI models without your explicit, opt-in consent.
+              We store all uploaded media securely via R2/B2 cloud storage. We use advanced LLMs (including Vision models for copyright scanning and Text models for script generation). We do not use your private project data to train base foundational AI models without your explicit, opt-in consent.
             </p>
             <p className="text-[var(--space-text-subtle)] text-xs font-mono">
               For specific DPA (Data Processing Agreement) requests or compliance audits, please reach out to our team at legal@aivideo.ai.

@@ -3,6 +3,9 @@ import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { nanoid } from "nanoid";
+import { createLogger } from "./logger";
+
+const log = createLogger({ path: "pexels" });
 
 const PEXELS_BASE = "https://api.pexels.com";
 
@@ -147,7 +150,7 @@ export async function searchMedia(
       const photos = await searchPhotos(query, fetchCount);
       results.push(...photos);
     } catch (err) {
-      console.warn("[Pexels] Photo search failed:", err);
+      log.warn("Photo search failed", { error: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -156,7 +159,7 @@ export async function searchMedia(
       const videos = await searchVideos(query, fetchCount);
       results.push(...videos);
     } catch (err) {
-      console.warn("[Pexels] Video search failed:", err);
+      log.warn("Video search failed", { error: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -181,7 +184,7 @@ export async function downloadMedia(
   const filename = `media_${nanoid(12)}${extension}`;
   const outputPath = path.join(outDir, filename);
 
-  console.log(`[Pexels] Downloading media from: ${mediaUrl.substring(0, 120)}...`);
+  log.info(`Downloading media from: ${mediaUrl.substring(0, 120)}...`);
 
   try {
     const response = await fetch(mediaUrl, {
@@ -201,10 +204,10 @@ export async function downloadMedia(
       throw new Error("Downloaded media file is empty");
     }
 
-    console.log(`[Pexels] Downloaded media: ${outputPath} (${stat.size} bytes)`);
+    log.info(`Downloaded media: ${outputPath} (${stat.size} bytes)`);
     return outputPath;
   } catch (err: any) {
-    console.error(`[Pexels] Download failed:`, err.message);
+    log.error("Pexels download failed", err);
     throw new Error(`Media download failed: ${err.message}`);
   }
 }

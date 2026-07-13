@@ -45,15 +45,15 @@ export default function Docs() {
               </h2>
               <div className="glass-panel p-6 border border-[var(--space-border)] bg-[var(--space-card)]/80 rounded-2xl">
                 <p className="text-[var(--space-text-muted)] text-sm mb-4 leading-relaxed">
-                  Creating your first AIVideo is simple, whether you're making a technical tutorial or generating a story from text.
+                  Creating your first AIVideo is simple. Upload screenshots, edit them with our built-in annotation tools, and render a polished video.
                 </p>
                 <ol className="list-decimal pl-5 space-y-3.5 text-sm text-[var(--space-text-muted)] leading-relaxed">
-                  <li><strong>Choose Your Mode:</strong> Select the Screenshot Wizard for software guides, or the AI Video Studio to generate scenes entirely from text prompts.</li>
-                  <li><strong>Provide Context:</strong> For tutorials, upload your screenshots. For Studio mode, type your scene descriptions. The Proactive AI Guide will actively help you refine your ideas.</li>
-                  <li><strong>AI Scripting:</strong> Our LLM will convert your descriptions into a professional, conversational script tailored to your chosen platform (YouTube, TikTok, etc.).</li>
-                  <li><strong>Cinematic Styling:</strong> Mark your zoom targets, select slide/fade transitions, and choose Intro/Outro templates.</li>
-                  <li><strong>Voice Selection:</strong> Choose an Edge-TTS voice or an ElevenLabs Ultra-Real voice. Adjust the speaking speed as needed.</li>
-                  <li><strong>Scan & Export:</strong> The Vision LLM checks your project for copyright safety. Then, the FFmpeg engine renders a final MP4 in your chosen aspect ratio.</li>
+                  <li><strong>Create a Project:</strong> Name your project, pick a platform preset (YouTube, TikTok, Teams), and choose an aspect ratio (16:9, 9:16, 1:1, or 4:5). Upload your screenshots.</li>
+                  <li><strong>Edit & Annotate:</strong> Use the canvas editor to add highlight boxes, blur sensitive data, set zoom targets, add captions, watermarks, and step numbers. AI generates voiceover scripts for each step.</li>
+                  <li><strong>AI Scripting:</strong> Our LLM converts your descriptions into a professional, conversational script tailored to your chosen platform. Edit any script to fine-tune the narration.</li>
+                  <li><strong>Cinematic Styling:</strong> Set zoom targets, choose slide/fade transitions, and select Intro/Outro templates. Adjust voice and speaking speed.</li>
+                  <li><strong>Render:</strong> The FFmpeg engine compiles your annotated screenshots with AI narration, zoom animations, and transitions into a final MP4.</li>
+                  <li><strong>Export:</strong> Download the completed video immediately from your dashboard.</li>
                 </ol>
               </div>
             </section>
