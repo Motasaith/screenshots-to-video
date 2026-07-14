@@ -42,7 +42,7 @@ export default function Careers() {
             className="text-center mb-16"
           >
             <h1 className="font-extrabold text-5xl lg:text-6xl tracking-tight mb-6 text-[var(--space-text)]">
-              Redefining <span className="text-teal-650">documentation.</span>
+              Redefining <span className="text-teal-600">documentation.</span>
             </h1>
             <p className="text-lg text-[var(--space-text-muted)] max-w-2xl mx-auto leading-relaxed">
               We are a small, fast-shipping team building the future of automated cinematic tutorials and AI video generation. 

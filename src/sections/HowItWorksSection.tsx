@@ -332,7 +332,7 @@ export default function HowItWorksSection() {
                             <span className="border-t border-l border-teal-400 w-2 h-2" />
                             <span className="border-t border-r border-teal-400 w-2 h-2" />
                           </div>
-                          <div className="self-center bg-white/95 dark:bg-slate-900/90 border border-teal-200 dark:border-teal-450/30 px-2.5 py-1 rounded text-[8px] text-teal-600 dark:text-teal-400 font-mono flex items-center gap-1.5">
+                          <div className="self-center bg-white/95 dark:bg-slate-900/90 border border-teal-200 dark:border-teal-400/30 px-2.5 py-1 rounded text-[8px] text-teal-600 dark:text-teal-400 font-mono flex items-center gap-1.5">
                             <Eye className="w-3 h-3" /> Cam Path zoom: 1.5x
                           </div>
                           <div className="flex justify-between w-full">

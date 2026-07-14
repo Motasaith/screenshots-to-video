@@ -56,6 +56,8 @@ import {
   RotateCw,
   Keyboard,
   EyeOff,
+  Menu,
+  Sliders,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -1052,7 +1054,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       if (e.deltaY < 0) {
         nextScale = Math.min(3.0, currentScale * zoomFactor);
       } else {
-        nextScale = Math.max(1.0, currentScale / zoomFactor);
+        nextScale = Math.max(0.2, currentScale / zoomFactor);
       }
 
       if (nextScale === currentScale) return;
@@ -1068,9 +1070,58 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       setCanvasScale(nextScale);
     };
 
+    let initialDistance = 0;
+    let initialScale = 1.0;
+
+    const getTouchDistance = (touches: TouchList) => {
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      return Math.sqrt(dx * dx + dy * dy);
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        initialDistance = getTouchDistance(e.touches);
+        initialScale = canvasScaleRef.current;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && initialDistance > 10) {
+        e.preventDefault();
+
+        const currentDistance = getTouchDistance(e.touches);
+        const ratio = currentDistance / initialDistance;
+        let nextScale = initialScale * ratio;
+        nextScale = Math.max(0.2, Math.min(3.0, nextScale));
+
+        const currentScale = canvasScaleRef.current;
+        if (nextScale === currentScale) return;
+
+        const containerRect = container.getBoundingClientRect();
+        const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - containerRect.left;
+        const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - containerRect.top;
+
+        const scrollLeft = container.scrollLeft;
+        const scrollTop = container.scrollTop;
+
+        const scaleRatio = nextScale / currentScale;
+        const newScrollLeft = (scrollLeft + midX) * scaleRatio - midX;
+        const newScrollTop = (scrollTop + midY) * scaleRatio - midY;
+
+        targetScrollRef.current = { left: newScrollLeft, top: newScrollTop };
+        setCanvasScale(nextScale);
+      }
+    };
+
     container.addEventListener("wheel", handleWheelNative, { passive: false });
+    container.addEventListener("touchstart", handleTouchStart, { passive: true });
+    container.addEventListener("touchmove", handleTouchMove, { passive: false });
+
     return () => {
       container.removeEventListener("wheel", handleWheelNative);
+      container.removeEventListener("touchstart", handleTouchStart);
+      container.removeEventListener("touchmove", handleTouchMove);
     };
   }, [currentStep?.id, isLoading]);
 
@@ -1162,11 +1213,29 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   }, [project]);
 
   /* Coordinate mapping */
-  const getCanvasCoords = useCallback((e: React.MouseEvent) => {
+  const getCanvasCoords = useCallback((e: React.MouseEvent | MouseEvent | React.TouchEvent | TouchEvent) => {
     if (!canvasRef.current) return null;
     const container = canvasRef.current;
     const img = imageRef.current;
     const containerRect = container.getBoundingClientRect();
+
+    let clientX = 0;
+    let clientY = 0;
+
+    if ("touches" in e) {
+      if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+      } else if ("changedTouches" in e && e.changedTouches && e.changedTouches.length > 0) {
+        clientX = e.changedTouches[0].clientX;
+        clientY = e.changedTouches[0].clientY;
+      } else {
+        return null;
+      }
+    } else {
+      clientX = (e as MouseEvent).clientX;
+      clientY = (e as MouseEvent).clientY;
+    }
 
     if (img) {
       const nw = img instanceof HTMLVideoElement ? img.videoWidth : img.naturalWidth;
@@ -1174,8 +1243,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       if (nw && nh) {
         const boundsVal = getImageBounds(container, img);
         if (boundsVal) {
-          const mouseX = (e.clientX - containerRect.left) / canvasScale;
-          const mouseY = (e.clientY - containerRect.top) / canvasScale;
+          const mouseX = (clientX - containerRect.left) / canvasScale;
+          const mouseY = (clientY - containerRect.top) / canvasScale;
           const imgRelX = ((mouseX - boundsVal.offsetX) / boundsVal.visibleW) * 100;
           const imgRelY = ((mouseY - boundsVal.offsetY) / boundsVal.visibleH) * 100;
           return {
@@ -1187,8 +1256,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     }
 
     return {
-      x: (((e.clientX - containerRect.left) / canvasScale) / container.offsetWidth) * 100,
-      y: (((e.clientY - containerRect.top) / canvasScale) / container.offsetHeight) * 100,
+      x: (((clientX - containerRect.left) / canvasScale) / container.offsetWidth) * 100,
+      y: (((clientY - containerRect.top) / canvasScale) / container.offsetHeight) * 100,
     };
   }, [canvasScale]);
 
@@ -1668,6 +1737,77 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     setDragCurrent(null);
   };
 
+  const getCanvasCoordsRef = useRef(getCanvasCoords);
+  const handleMouseDownRef = useRef(handleMouseDown);
+  const handleMouseMoveRef = useRef(handleMouseMove);
+  const handleMouseUpRef = useRef(handleMouseUp);
+
+  useEffect(() => {
+    getCanvasCoordsRef.current = getCanvasCoords;
+    handleMouseDownRef.current = handleMouseDown;
+    handleMouseMoveRef.current = handleMouseMove;
+    handleMouseUpRef.current = handleMouseUp;
+  }, [getCanvasCoords, handleMouseDown, handleMouseMove, handleMouseUp]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const handleTouchStartNative = (e: TouchEvent) => {
+      if (modeRef.current !== "pan") {
+        if (e.touches.length === 1) {
+          e.preventDefault();
+          const touch = e.touches[0];
+          const coords = getCanvasCoordsRef.current(e);
+          if (!coords) return;
+
+          const simulatedEvent = {
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+            preventDefault: () => {},
+            stopPropagation: () => {},
+          } as unknown as React.MouseEvent;
+
+          handleMouseDownRef.current(simulatedEvent);
+        }
+      }
+    };
+
+    const handleTouchMoveNative = (e: TouchEvent) => {
+      if (modeRef.current !== "pan") {
+        if (e.touches.length === 1) {
+          e.preventDefault();
+          const touch = e.touches[0];
+          const simulatedEvent = {
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+            preventDefault: () => {},
+            stopPropagation: () => {},
+          } as unknown as React.MouseEvent;
+
+          handleMouseMoveRef.current(simulatedEvent);
+        }
+      }
+    };
+
+    const handleTouchEndNative = (e: TouchEvent) => {
+      if (modeRef.current !== "pan") {
+        e.preventDefault();
+        handleMouseUpRef.current();
+      }
+    };
+
+    canvas.addEventListener("touchstart", handleTouchStartNative, { passive: false });
+    canvas.addEventListener("touchmove", handleTouchMoveNative, { passive: false });
+    canvas.addEventListener("touchend", handleTouchEndNative, { passive: false });
+
+    return () => {
+      canvas.removeEventListener("touchstart", handleTouchStartNative);
+      canvas.removeEventListener("touchmove", handleTouchMoveNative);
+      canvas.removeEventListener("touchend", handleTouchEndNative);
+    };
+  }, []);
+
   /* Actions */
 
   const fieldsList = [
@@ -1803,6 +1943,28 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     }
   };
   const canvasDim = getCanvasDimensions();
+
+  const getFitScale = useCallback(() => {
+    if (!scrollContainerRef.current) return 1.0;
+    const padding = 32;
+    const containerWidth = scrollContainerRef.current.clientWidth - padding;
+    const containerHeight = scrollContainerRef.current.clientHeight - padding;
+    if (containerWidth <= 0 || containerHeight <= 0) return 1.0;
+
+    const scaleX = containerWidth / canvasDim.width;
+    const scaleY = containerHeight / canvasDim.height;
+    return Math.min(scaleX, scaleY);
+  }, [canvasDim.width, canvasDim.height]);
+
+  // Fit canvas on initial mount or when screen/aspect ratio changes
+  useEffect(() => {
+    const rafId = requestAnimationFrame(() => {
+      if (scrollContainerRef.current) {
+        setCanvasScale(getFitScale());
+      }
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [canvasDim.width, canvasDim.height, getFitScale]);
 
 
   const tempRect =
@@ -5047,7 +5209,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
             </button>
 
             {/* Project Title Input & Star & Cloud */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 min-w-0 flex-1 mr-2">
               <input
                 type="text"
                 value={projectTitle}
@@ -5062,10 +5224,9 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                     (e.target as HTMLInputElement).blur();
                   }
                 }}
-                className="font-medium text-sm text-[var(--sketch-fg)] hover:bg-[var(--sketch-fg-subtle)]/10 focus:bg-[var(--sketch-card-bg)] focus:ring-1 focus:ring-[var(--sketch-accent)] rounded px-1.5 py-0.5 border-none bg-transparent transition-all outline-none min-w-0 truncate"
-                style={{ width: `${Math.max(8, Math.min(projectTitle.length + 2, 30))}ch` }}
+                className="font-medium text-sm text-[var(--sketch-fg)] hover:bg-[var(--sketch-fg-subtle)]/10 focus:bg-[var(--sketch-card-bg)] focus:ring-1 focus:ring-[var(--sketch-accent)] rounded px-1.5 py-0.5 border-none bg-transparent transition-all outline-none min-w-0 w-full truncate"
               />
-              <span className="hidden sm:flex text-[10px] text-[var(--sketch-fg-subtle)] font-medium bg-[var(--sketch-fg-subtle)]/10 px-1.5 py-0.5 rounded items-center gap-1">
+              <span className="hidden sm:flex text-[10px] text-[var(--sketch-fg-subtle)] font-medium bg-[var(--sketch-fg-subtle)]/10 px-1.5 py-0.5 rounded items-center gap-1 flex-shrink-0">
                 {updateStep.isPending || updateProject.isPending ? (
                   <>
                     <Loader2 className="w-2.5 h-2.5 animate-spin" />
@@ -5188,8 +5349,11 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               <DropdownMenuItem onClick={() => setCanvasScale(0.5)}>
                 <ZoomOut className="w-3.5 h-3.5 mr-2" /> 50%
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setCanvasScale(getFitScale())}>
+                <Maximize className="w-3.5 h-3.5 mr-2" /> Fit
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setCanvasScale(1.0)}>
-                <Maximize className="w-3.5 h-3.5 mr-2" /> Fit (100%)
+                <Maximize className="w-3.5 h-3.5 mr-2" /> 100%
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setCanvasScale(2.0)}>
                 <ZoomIn className="w-3.5 h-3.5 mr-2" /> 200%
@@ -5484,14 +5648,15 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           </DropdownMenu>
         </div>
 
-        {/* Mobile Menu Button — visible only on small screens */}
-        <div className="editor-menu-bar-mobile items-center gap-1 text-[11px] text-[var(--sketch-fg-muted)] font-medium leading-none select-none pl-2">
+        {/* Mobile Controls (Menu, Properties, Panels) — visible only on small screens */}
+        <div className="editor-menu-bar-mobile flex items-center gap-1 text-[11px] text-[var(--sketch-fg-muted)] font-medium leading-none select-none pl-2">
+          {/* Menu Dropdown */}
           <DropdownMenu open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-1.5 hover:bg-[var(--sketch-fg-subtle)]/10 px-2.5 py-1.5 rounded transition-colors cursor-pointer leading-none text-xs font-bold">
-                <Settings2 className="w-4 h-4" />
+              <button className="flex items-center gap-1 hover:bg-[var(--sketch-fg-subtle)]/10 px-2 py-1.5 rounded transition-colors cursor-pointer leading-none text-[11px] font-bold text-[var(--sketch-fg)]">
+                <Menu className="w-3.5 h-3.5" />
                 <span>Menu</span>
-                <ChevronDown className="w-3 h-3" />
+                <ChevronDown className="w-2.5 h-2.5" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-56 max-h-[70vh] overflow-y-auto">
@@ -5537,22 +5702,63 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 <Crop className="w-3.5 h-3.5 mr-2" /> Crop
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">Panels</DropdownMenuLabel>
+              <DropdownMenuItem onClick={async () => {
+                await handleSaveAllSteps();
+                if (props.onContinue) { props.onContinue(); } else { window.location.href = `/create/${projectIdNum}/render`; }
+              }}>
+                <Sparkles className="w-3.5 h-3.5 mr-2" /> Export Video…
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Properties Button (toggles right sidebar with Properties tab) */}
+          <button
+            onClick={() => { toggleRightTab("properties"); setIsMobileSidebarOpen(true); }}
+            className={`flex items-center gap-1 hover:bg-[var(--sketch-fg-subtle)]/10 px-2 py-1.5 rounded transition-colors cursor-pointer leading-none text-[11px] font-bold ${activeRightTab === "properties" ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-accent)]" : "text-[var(--sketch-fg)]"}`}
+          >
+            <Sliders className="w-3.5 h-3.5" />
+            <span>Properties</span>
+          </button>
+
+          {/* Panels Dropdown Button */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className={`flex items-center gap-1 hover:bg-[var(--sketch-fg-subtle)]/10 px-2 py-1.5 rounded transition-colors cursor-pointer leading-none text-[11px] font-bold ${activeRightTab && activeRightTab !== "properties" ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-accent)]" : "text-[var(--sketch-fg)]"}`}>
+                <Settings2 className="w-3.5 h-3.5" />
+                <span>Panels</span>
+                <ChevronDown className="w-2.5 h-2.5" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56 max-h-[70vh] overflow-y-auto">
               <DropdownMenuItem onClick={() => { toggleRightTab("script"); setIsMobileSidebarOpen(true); }}>
                 <Type className="w-3.5 h-3.5 mr-2" /> Script
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => { toggleRightTab("voiceover"); setIsMobileSidebarOpen(true); }}>
                 <Volume2 className="w-3.5 h-3.5 mr-2" /> Voiceover
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { toggleRightTab("elevenlabs"); setIsMobileSidebarOpen(true); }}>
+                <Crown className="w-3.5 h-3.5 mr-2" /> ElevenLabs
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { toggleRightTab("captions"); setIsMobileSidebarOpen(true); }}>
+                <Type className="w-3.5 h-3.5 mr-2" /> Captions
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => { toggleRightTab("transitions"); setIsMobileSidebarOpen(true); }}>
                 <Film className="w-3.5 h-3.5 mr-2" /> Transitions
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={async () => {
-                await handleSaveAllSteps();
-                if (props.onContinue) { props.onContinue(); } else { window.location.href = `/create/${projectIdNum}/render`; }
-              }}>
-                <Sparkles className="w-3.5 h-3.5 mr-2" /> Export Video…
+              <DropdownMenuItem onClick={() => { toggleRightTab("introoutro"); setIsMobileSidebarOpen(true); }}>
+                <Clapperboard className="w-3.5 h-3.5 mr-2" /> Intro / Outro
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { toggleRightTab("aiguide"); setIsMobileSidebarOpen(true); }}>
+                <Bot className="w-3.5 h-3.5 mr-2" /> AI Guide
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { toggleRightTab("media"); setIsMobileSidebarOpen(true); }}>
+                <Clapperboard className="w-3.5 h-3.5 mr-2" /> Media
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { toggleRightTab("safety"); setIsMobileSidebarOpen(true); }}>
+                <Shield className="w-3.5 h-3.5 mr-2" /> Safety
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { toggleRightTab("help"); setIsMobileSidebarOpen(true); }}>
+                <HelpCircle className="w-3.5 h-3.5 mr-2" /> Help Guide
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -5575,21 +5781,25 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               <div className="flex items-center gap-1 pr-2 border-r border-[var(--sketch-border-color)]/20">
                 <Search className="w-3.5 h-3.5 text-[var(--sketch-fg-muted)]" />
                 <select
-                  value={Math.round(canvasScale * 100)}
+                  value={
+                    Math.abs(canvasScale - getFitScale()) < 0.01
+                      ? "fit"
+                      : Math.round(canvasScale * 100).toString()
+                  }
                   onChange={(e) => {
-                    const val = Number(e.target.value);
-                    if (val === 100) setCanvasScale(1.0);
-                    else setCanvasScale(val / 100);
+                    const val = e.target.value;
+                    if (val === "fit") setCanvasScale(getFitScale());
+                    else setCanvasScale(Number(val) / 100);
                   }}
                   className="bg-transparent text-[11px] font-medium text-[var(--sketch-fg-muted)] border-none outline-none cursor-pointer py-0.5 pr-1 focus:ring-0"
                 >
-                  <option value={100}>Fit</option>
-                  <option value={50}>50%</option>
-                  <option value={75}>75%</option>
-                  <option value={100}>100%</option>
-                  <option value={150}>150%</option>
-                  <option value={200}>200%</option>
-                  <option value={300}>300%</option>
+                  <option value="fit" className="bg-white text-slate-900 dark:bg-[#0B1E1B] dark:text-slate-100">Fit</option>
+                  <option value="50" className="bg-white text-slate-900 dark:bg-[#0B1E1B] dark:text-slate-100">50%</option>
+                  <option value="75" className="bg-white text-slate-900 dark:bg-[#0B1E1B] dark:text-slate-100">75%</option>
+                  <option value="100" className="bg-white text-slate-900 dark:bg-[#0B1E1B] dark:text-slate-100">100%</option>
+                  <option value="150" className="bg-white text-slate-900 dark:bg-[#0B1E1B] dark:text-slate-100">150%</option>
+                  <option value="200" className="bg-white text-slate-900 dark:bg-[#0B1E1B] dark:text-slate-100">200%</option>
+                  <option value="300" className="bg-white text-slate-900 dark:bg-[#0B1E1B] dark:text-slate-100">300%</option>
                 </select>
               </div>
 
@@ -6743,8 +6953,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           </div>
         )}
 
-        {/* Far-right vertical tab strip — full height on desktop, horizontal on mobile */}
-        <div className="editor-tab-strip-vertical w-16 bg-[var(--sketch-panel-bg)] border-l border-[var(--sketch-border-color)]/40 flex flex-col items-center flex-shrink-0 h-full overflow-y-auto scrollbar-thin py-2 gap-1">
+        {/* Far-right vertical tab strip — full height on desktop, hidden on mobile */}
+        <div className="editor-tab-strip-vertical w-16 bg-[var(--sketch-panel-bg)] border-l border-[var(--sketch-border-color)]/40 flex flex-col items-center flex-shrink-0 h-full overflow-y-auto scrollbar-thin py-2 gap-1 hidden md:flex">
           <RightTabButton active={activeRightTab === "properties"} onClick={() => toggleRightTab("properties")} icon={<Settings2 className="w-4.5 h-4.5" />} label="Properties" />
           <RightTabButton active={activeRightTab === "script"} onClick={() => toggleRightTab("script")} icon={<Type className="w-4.5 h-4.5" />} label="Script" />
           <RightTabButton active={activeRightTab === "voiceover"} onClick={() => toggleRightTab("voiceover")} icon={<Volume2 className="w-4.5 h-4.5" />} label="Voiceover" />
@@ -7043,8 +7253,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
 function ShortcutGuideNote() {
   return (
-    <div className="flex-grow flex items-center justify-center p-8 bg-[var(--sketch-panel-bg)]/40 rounded-lg border border-dashed border-[var(--sketch-border-color)]/30 backdrop-blur-sm overflow-y-auto w-full h-full max-h-[85%] select-none">
-      <div className="max-w-2xl w-full space-y-6 text-center">
+    <div className="flex-grow flex items-center justify-center p-4 md:p-8 bg-[var(--sketch-panel-bg)]/40 rounded-lg border border-dashed border-[var(--sketch-border-color)]/30 backdrop-blur-sm overflow-y-auto w-full h-full max-h-[85%] select-none">
+      
+      {/* Desktop Keyboard Shortcuts */}
+      <div className="hidden md:block max-w-2xl w-full space-y-6 text-center">
         <div className="space-y-2">
           <h3 className="text-base font-bold text-[var(--sketch-fg)] flex items-center justify-center gap-2">
             <Keyboard className="w-5 h-5 text-[#FBBF24]" /> Canvas Editor Keyboard Shortcuts
@@ -7140,6 +7352,61 @@ function ShortcutGuideNote() {
           </div>
         </div>
       </div>
+
+      {/* Mobile Touch & Gesture Guide */}
+      <div className="block md:hidden max-w-md w-full space-y-4 text-center">
+        <div className="space-y-1">
+          <h3 className="text-sm font-bold text-[var(--sketch-fg)] flex items-center justify-center gap-1.5">
+            <Sparkles className="w-4 h-4 text-[#FBBF24]" /> Mobile Gesture Guide
+          </h3>
+          <p className="text-[10px] text-[var(--sketch-fg-muted)]">
+            Quick tips to edit your video screenshots on touchscreens.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 gap-3 text-left">
+          <div className="p-3.5 rounded-xl border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] space-y-2.5 shadow-sm">
+            <h4 className="text-[11px] font-bold text-[var(--sketch-fg)] border-b border-[var(--sketch-border-color)]/25 pb-1 flex items-center gap-1.5">
+              <Target className="w-3.5 h-3.5 text-blue-500" /> Touch Editing & Zooming
+            </h4>
+            <div className="space-y-2 text-[10px] text-[var(--sketch-fg-muted)]">
+              <div className="flex gap-2 items-start">
+                <span className="bg-blue-500/10 text-blue-500 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0">Pinch</span>
+                <span>Use **two fingers** on the grey screen to zoom the canvas in or out.</span>
+              </div>
+              <div className="flex gap-2 items-start">
+                <span className="bg-amber-500/10 text-amber-500 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0">Draw</span>
+                <span>Select any tool on the toolbar (e.g. highlight) and **drag one finger** to draw.</span>
+              </div>
+              <div className="flex gap-2 items-start">
+                <span className="bg-emerald-500/10 text-emerald-500 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0">Pan</span>
+                <span>Select the **Pan (Hand)** tool on the toolbar to scroll around zoomed screens.</span>
+              </div>
+              <div className="flex gap-2 items-start">
+                <span className="bg-purple-500/10 text-purple-500 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0">Edit</span>
+                <span>Tap an annotation box to resize, reposition, or customize it.</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-xl border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] space-y-2.5 shadow-sm">
+            <h4 className="text-[11px] font-bold text-[var(--sketch-fg)] border-b border-[var(--sketch-border-color)]/25 pb-1 flex items-center gap-1.5">
+              <Sliders className="w-3.5 h-3.5 text-purple-500" /> Controls & Sidebar Panels
+            </h4>
+            <div className="space-y-2 text-[10px] text-[var(--sketch-fg-muted)]">
+              <div className="flex gap-2 items-start">
+                <span className="bg-pink-500/10 text-pink-500 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0">Properties</span>
+                <span>Tap **Properties** in the header to configure size, colors, and opacity.</span>
+              </div>
+              <div className="flex gap-2 items-start">
+                <span className="bg-teal-500/10 text-teal-500 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0">Panels</span>
+                <span>Open **Panels** to edit scripts, voiceover voices, captions, and transitions.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }

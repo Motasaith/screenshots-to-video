@@ -121,7 +121,6 @@ export default function Dashboard() {
   const handleCreateBlankProject = async () => {
     try {
       setCreatingProject(true);
-      setShowNewProjectDialog(false);
       const rawPlatform = platformForRatio(selectedRatio);
       const platform: "youtube" | "teams" | "tiktok" | "linkedin" =
         rawPlatform === "instagram" ? "linkedin" : rawPlatform;
@@ -133,6 +132,7 @@ export default function Dashboard() {
       });
       setNewProjectTitle("");
       setNewProjectDesc("");
+      setShowNewProjectDialog(false);
       navigate(`/create/${result.id}/preview`);
     } catch (err) {
       console.error("Failed to create project:", err);
@@ -200,7 +200,7 @@ export default function Dashboard() {
                   aria-label="Toggle dark mode"
                 >
                   {resolvedTheme === "dark" ? (
-                    <Sun className="w-4 h-4 text-teal-450" />
+                    <Sun className="w-4 h-4 text-teal-400" />
                   ) : (
                     <Moon className="w-4 h-4 text-[var(--space-text-muted)]" />
                   )}
@@ -246,7 +246,7 @@ export default function Dashboard() {
               {projects && projects.length > 0 && (
                 <Button
                   onClick={() => setShowDeleteAllDialog(true)}
-                  className="bg-red-500/10 hover:bg-red-650 border border-red-500/20 hover:border-red-500 text-red-500 hover:text-white transition-all py-3.5 px-6 rounded-xl font-semibold text-xs cursor-pointer flex items-center"
+                  className="bg-red-500/10 hover:bg-red-600 border border-red-500/20 hover:border-red-500 text-red-500 hover:text-white transition-all py-3.5 px-6 rounded-xl font-semibold text-xs cursor-pointer flex items-center"
                 >
                   <Trash2 className="w-4 h-4 mr-1.5" />
                   Delete All
@@ -328,7 +328,7 @@ export default function Dashboard() {
                         </button>
                       </div>
 
-                      <h3 className="font-bold text-lg leading-tight line-clamp-2 text-[var(--space-text)] group-hover:text-teal-650 transition-colors">
+                      <h3 className="font-bold text-lg leading-tight line-clamp-2 text-[var(--space-text)] group-hover:text-teal-600 transition-colors">
                         {project.title}
                       </h3>
                       <p className="text-xs text-[var(--space-text-subtle)] mt-1 capitalize font-mono">
@@ -372,7 +372,14 @@ export default function Dashboard() {
         </main>
       </div>
       {/* Upgraded Mega Menu — New Project Dialog */}
-      <Dialog open={showNewProjectDialog} onOpenChange={(open) => { if (!open) closeMegaMenu(); else setShowNewProjectDialog(true); }}>
+      <Dialog
+        open={showNewProjectDialog}
+        onOpenChange={(open) => {
+          if (creatingProject) return;
+          if (!open) closeMegaMenu();
+          else setShowNewProjectDialog(true);
+        }}
+      >
         <DialogContent showCloseButton={false} className="border border-[var(--space-border)] bg-[var(--space-card)] dark:bg-[#041715] sm:max-w-3xl w-[92vw] h-auto rounded-3xl shadow-2xl p-0 overflow-hidden flex flex-col select-none">
           {/* Header bar */}
           <div className="flex items-center justify-between px-8 py-5 border-b border-[var(--space-border)]">
@@ -389,7 +396,11 @@ export default function Dashboard() {
                 </p>
               </div>
             </div>
-            <button onClick={closeMegaMenu} className="p-2 rounded-xl hover:bg-[var(--space-border)]/20 text-[var(--space-text-subtle)] hover:text-[var(--space-text)] transition-all cursor-pointer">
+            <button
+              onClick={closeMegaMenu}
+              disabled={creatingProject}
+              className="p-2 rounded-xl hover:bg-[var(--space-border)]/20 text-[var(--space-text-subtle)] hover:text-[var(--space-text)] transition-all cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+            >
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -425,11 +436,11 @@ export default function Dashboard() {
                           <AlertCircle className="w-3 h-3" /> Title is too long (max 100 chars)
                         </span>
                       ) : detectGibberish(newProjectTitle).isGibberish ? (
-                        <span className="text-red-550 flex items-center gap-1 font-semibold">
+                        <span className="text-red-500 flex items-center gap-1 font-semibold">
                           <AlertCircle className="w-3 h-3 animate-pulse" /> {detectGibberish(newProjectTitle).reason?.replace("a real step description", "a real video title").replace("what the user should do", "a valid video title")}
                         </span>
                       ) : (
-                        <span className="text-emerald-550 flex items-center gap-1 font-semibold">
+                        <span className="text-emerald-500 flex items-center gap-1 font-semibold">
                           ✓ Looks good!
                         </span>
                       )}
@@ -466,11 +477,11 @@ export default function Dashboard() {
                           <AlertCircle className="w-3 h-3" /> Description is too long (max 1000 chars)
                         </span>
                       ) : detectGibberish(newProjectDesc).isGibberish ? (
-                        <span className="text-red-550 flex items-center gap-1 font-semibold">
+                        <span className="text-red-500 flex items-center gap-1 font-semibold">
                           <AlertCircle className="w-3 h-3 animate-pulse" /> {detectGibberish(newProjectDesc).reason?.replace("a real step description", "a real video description").replace("what the user should do", "a valid video description")}
                         </span>
                       ) : (
-                        <span className="text-emerald-550 flex items-center gap-1 font-semibold">
+                        <span className="text-emerald-500 flex items-center gap-1 font-semibold">
                           ✓ Looks good!
                         </span>
                       )}
@@ -525,7 +536,8 @@ export default function Dashboard() {
               <Button
                 variant="ghost"
                 onClick={closeMegaMenu}
-                className="glass-btn glass-btn-secondary px-5 py-2.5 rounded-xl font-semibold text-xs cursor-pointer"
+                disabled={creatingProject}
+                className="glass-btn glass-btn-secondary px-5 py-2.5 rounded-xl font-semibold text-xs cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Cancel
               </Button>
@@ -609,7 +621,7 @@ export default function Dashboard() {
               variant="destructive"
               disabled={deletingAll}
               onClick={handleDeleteAll}
-              className="bg-red-500 hover:bg-red-650 text-white rounded-xl text-xs py-3 px-5 font-semibold disabled:opacity-50"
+              className="bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs py-3 px-5 font-semibold disabled:opacity-50"
             >
               {deletingAll ? (
                 <>

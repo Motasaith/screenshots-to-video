@@ -71,23 +71,23 @@ export default function StepExport() {
   }
 
   return (
-    <div className="w-full max-w-6xl mx-auto px-4">
+    <div className="w-full max-w-6xl mx-auto px-2 sm:px-4">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <div className="relative inline-block mb-1">
           <span className="font-hand text-xl text-[var(--sketch-fg-muted)] animate-float hidden sm:block">
             Ta-da! 🎬
           </span>
         </div>
-        <h2 className="font-body font-bold text-3xl tracking-tight text-[var(--sketch-fg)]">
+        <h2 className="font-body font-bold text-2xl sm:text-3xl tracking-tight text-[var(--sketch-fg)]">
           Your video is ready
         </h2>
 
         {/* Responsive layout grid */}
-        <div className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 items-start">
           {/* Left Column: Player & Navigation (7 cols) */}
           <div className="lg:col-span-7 space-y-6">
             {/* Video player - sketched frame */}
-            <div id="export-player" className="sketch-card p-6 bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)] scroll-mt-6">
+            <div id="export-player" className="sketch-card p-4 sm:p-6 bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)] scroll-mt-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 bg-[#FBBF24]/10 border-2 border-[#FBBF24] flex items-center justify-center sketch-border-sm">
                   <Film className="w-6 h-6 text-[var(--sketch-fg)]" />
@@ -158,26 +158,26 @@ export default function StepExport() {
             </div>
 
             {/* Navigation buttons */}
-            <div className="flex gap-3">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
               <Button
                 variant="ghost"
                 type="button"
                 onClick={() => navigate(`/create/${projectIdNum}/render`)}
-                className="sketch-btn-ghost flex-1"
+                className="sketch-btn-ghost flex-1 w-full"
               >
                 <ChevronLeft className="w-4 h-4" />
                 Back
               </Button>
               <Button
                 variant="ghost"
-                className="sketch-btn-ghost flex-1"
+                className="sketch-btn-ghost flex-1 w-full"
                 onClick={() => navigate("/dashboard")}
               >
                 <LayoutDashboard className="w-4 h-4" />
                 Dashboard
               </Button>
               <Button
-                className="sketch-btn-primary flex-1"
+                className="sketch-btn-primary flex-1 w-full"
                 onClick={() => navigate("/dashboard")}
               >
                 <Plus className="w-4 h-4" />

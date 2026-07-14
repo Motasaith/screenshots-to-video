@@ -69,14 +69,14 @@ function UIProcessingIllustration() {
               <div className="w-16 h-2 bg-slate-200 dark:bg-slate-800 rounded" />
               {/* Highlight Target Card */}
               <div className="border border-slate-100 dark:border-white/5 rounded p-1.5 flex flex-col gap-1 bg-slate-50/50 dark:bg-slate-900/30 w-36 h-12 relative">
-                <div className="w-10 h-1.5 bg-slate-250 dark:bg-slate-800 rounded" />
+                <div className="w-10 h-1.5 bg-slate-200 dark:bg-slate-800 rounded" />
                 <div className="w-20 h-2 bg-slate-200 dark:bg-slate-800 rounded mt-0.5" />
               </div>
             </div>
 
             {/* Right Mock UI Column (Sensitive Data) */}
             <div className="w-32 border-l border-slate-100 dark:border-white/5 pl-3 flex flex-col justify-center gap-1.5 pr-2">
-              <div className="w-10 h-2 bg-slate-200 dark:bg-slate-850 rounded" />
+              <div className="w-10 h-2 bg-slate-200 dark:bg-slate-800 rounded" />
               <div className="h-6 rounded border border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-slate-900/40 flex items-center px-1.5 justify-between relative overflow-hidden">
                 {/* Sensitive Text underneath */}
                 <span className="text-[6px] font-mono text-[var(--space-text-subtle)] leading-none select-none">
@@ -244,18 +244,18 @@ function ZoomPathIllustration() {
             {/* Mock Dashboard Screenshot in Background */}
             <div className="w-[85%] h-[85%] rounded border border-dashed border-slate-300 dark:border-white/10 bg-white dark:bg-slate-900/60 p-2.5 flex flex-col gap-2 relative pointer-events-none select-none opacity-60">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/5 pb-1.5">
-                <div className="w-12 h-2.5 bg-slate-200 dark:bg-slate-850 rounded" />
+                <div className="w-12 h-2.5 bg-slate-200 dark:bg-slate-800 rounded" />
                 <div className="w-6 h-2.5 bg-slate-100 dark:bg-slate-800 rounded" />
               </div>
               
               <div className="grid grid-cols-2 gap-2 flex-1">
                 <div className="border border-slate-100 dark:border-white/5 rounded p-1.5 flex flex-col gap-1.5 bg-slate-50/50 dark:bg-slate-900/40">
-                  <div className="w-8 h-2 bg-slate-200 dark:bg-slate-850 rounded" />
+                  <div className="w-8 h-2 bg-slate-200 dark:bg-slate-800 rounded" />
                   <div className="w-14 h-4 bg-slate-100 dark:bg-slate-800 rounded" />
                 </div>
                 <div className="border border-teal-500/10 bg-teal-500/5 rounded p-1.5 flex flex-col gap-1.5 items-center justify-center relative">
-                  <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-850" />
-                  <div className="w-12 h-2 bg-slate-200 dark:bg-slate-850 rounded" />
+                  <div className="w-6 h-6 rounded-full bg-slate-200 dark:bg-slate-800" />
+                  <div className="w-12 h-2 bg-slate-200 dark:bg-slate-800 rounded" />
                 </div>
               </div>
             </div>
@@ -523,7 +523,7 @@ function WaveformIllustration() {
                 {waveHeights.map((h, i) => (
                   <div
                     key={i}
-                    className="w-[3px] bg-slate-400 dark:bg-slate-650 rounded-full"
+                    className="w-[3px] bg-slate-400 dark:bg-slate-700 rounded-full"
                     style={{ height: `${h * 0.9}%` }}
                   />
                 ))}
@@ -548,7 +548,7 @@ function WaveformIllustration() {
                   {waveHeights.map((h, i) => (
                     <div
                       key={i}
-                      className="w-[3px] bg-gradient-to-t from-orange-500 to-rose-450 rounded-full flex-shrink-0"
+                      className="w-[3px] bg-gradient-to-t from-orange-500 to-rose-500 rounded-full flex-shrink-0"
                       style={{ height: `${h * 0.9}%` }}
                     />
                   ))}
@@ -634,7 +634,7 @@ function WaveformIllustration() {
               ))}
             </div>
 
-            <span className="font-semibold text-[6px] text-emerald-600 dark:text-emerald-450">-6dB</span>
+            <span className="font-semibold text-[6px] text-emerald-600 dark:text-emerald-400">-6dB</span>
           </div>
 
         </div>
@@ -828,7 +828,7 @@ function BentoCard({
             </span>
           </div>
 
-          <h3 className="font-sans font-bold text-lg text-[var(--space-text)] mb-2 group-hover:text-teal-600 dark:group-hover:text-teal-450 transition-colors">
+          <h3 className="font-sans font-bold text-lg text-[var(--space-text)] mb-2 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
             {feature.title}
           </h3>
 

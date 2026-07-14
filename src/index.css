@@ -1221,7 +1221,7 @@
 }
 
 .theme-3d-immersive [class*="accent-[#FBBF24]"] {
-  accent-color: var(--teal-550) !important;
+  accent-color: var(--teal-500) !important;
 }
 
 /* ─── Mobile Responsiveness Utilities ─── */

@@ -90,14 +90,14 @@ export default function Wizard() {
 
   if (currentStep === "preview") {
     return (
-      <div className="w-screen h-screen overflow-hidden bg-[var(--sketch-bg)] text-[var(--sketch-fg)] flex flex-col font-body">
+      <div className="w-screen h-dvh overflow-hidden bg-[var(--sketch-bg)] text-[var(--sketch-fg)] flex flex-col font-body">
         {stepComponents.preview}
       </div>
     );
   }
 
   return (
-    <div className="theme-3d-immersive min-h-screen lg:h-screen relative overflow-x-hidden lg:overflow-hidden font-sans flex flex-col pb-2">
+    <div className="theme-3d-immersive min-h-screen lg:h-dvh relative overflow-x-hidden lg:overflow-hidden font-sans flex flex-col pb-2">
       <SpaceBackground />
       
       {/* Header */}
@@ -178,7 +178,7 @@ export default function Wizard() {
           <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden w-full mt-2 gap-4 pb-2">
 
 
-            <main className="flex-1 glass-panel rounded-2xl border border-[var(--space-border)] p-6 lg:overflow-y-auto">
+            <main className="flex-1 glass-panel rounded-2xl border border-[var(--space-border)] p-4 sm:p-6 overflow-y-auto">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={currentStep}
@@ -197,34 +197,36 @@ export default function Wizard() {
       </div> {/* Closes relative z-10 flex-1 flex flex-row ... */}
 
       {/* Floating AI Guide Drawer (Slides out from right) */}
-      <AnimatePresence>
-        {isGuideOpen ? (
-          <motion.div
-            initial={{ x: "110%", opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: "110%", opacity: 0 }}
-            transition={{ type: "spring", damping: 25, stiffness: 220 }}
-            className="fixed right-4 top-[92px] bottom-6 z-50 w-80 max-w-[calc(100vw-32px)] glass-panel rounded-3xl border border-[var(--space-border)] bg-[var(--space-card)]/95 backdrop-blur-xl shadow-[0_15px_50px_rgba(0,0,0,0.3)] flex flex-col overflow-hidden"
-          >
-            <AIGuide onCollapse={() => setIsGuideOpen(false)} />
-          </motion.div>
-        ) : (
-          <motion.button
-            initial={{ x: "100%", opacity: 0, y: "-50%" }}
-            animate={{ x: 0, opacity: 1, y: "-50%" }}
-            exit={{ x: "100%", opacity: 0, y: "-50%" }}
-            onClick={() => setIsGuideOpen(true)}
-            className="fixed right-0 top-1/2 z-40 bg-[var(--space-card)]/95 backdrop-blur-md border border-r-0 border-teal-500/40 w-7 h-28 rounded-l-xl shadow-[0_0_15px_rgba(20,184,166,0.35)] flex flex-col items-center justify-center hover:bg-teal-500/10 hover:border-teal-400 hover:shadow-[0_0_20px_rgba(45,212,191,0.5)] transition-all duration-300 group cursor-pointer"
-          >
-            <div className="absolute -left-2.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-5 h-5 rounded-full border border-teal-500 bg-teal-500 shadow-[0_0_12px_rgba(45,212,191,0.6)]">
-              <ChevronLeft className="w-3.5 h-3.5 text-white group-hover:-translate-x-0.5 transition-transform" />
-            </div>
-            <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--space-text-muted)] group-hover:text-teal-300 font-bold select-none whitespace-nowrap rotate-90 pl-1.5">
-              AI Guide
-            </span>
-          </motion.button>
-        )}
-      </AnimatePresence>
+      {currentStep !== "render" && currentStep !== "export" && (
+        <AnimatePresence>
+          {isGuideOpen ? (
+            <motion.div
+              initial={{ x: "110%", opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: "110%", opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 220 }}
+              className="fixed right-4 top-[92px] bottom-6 z-50 w-80 max-w-[calc(100vw-32px)] glass-panel rounded-3xl border border-[var(--space-border)] bg-[var(--space-card)]/95 backdrop-blur-xl shadow-[0_15px_50px_rgba(0,0,0,0.3)] flex flex-col overflow-hidden"
+            >
+              <AIGuide onCollapse={() => setIsGuideOpen(false)} />
+            </motion.div>
+          ) : (
+            <motion.button
+              initial={{ x: "100%", opacity: 0, y: "-50%" }}
+              animate={{ x: 0, opacity: 1, y: "-50%" }}
+              exit={{ x: "100%", opacity: 0, y: "-50%" }}
+              onClick={() => setIsGuideOpen(true)}
+              className="fixed right-0 top-1/2 z-40 bg-[var(--space-card)]/95 backdrop-blur-md border border-r-0 border-teal-500/40 w-7 h-28 rounded-l-xl shadow-[0_0_15px_rgba(20,184,166,0.35)] flex flex-col items-center justify-center hover:bg-teal-500/10 hover:border-teal-400 hover:shadow-[0_0_20px_rgba(45,212,191,0.5)] transition-all duration-300 group cursor-pointer"
+            >
+              <div className="absolute -left-2.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-5 h-5 rounded-full border border-teal-500 bg-teal-500 shadow-[0_0_12px_rgba(45,212,191,0.6)]">
+                <ChevronLeft className="w-3.5 h-3.5 text-white group-hover:-translate-x-0.5 transition-transform" />
+              </div>
+              <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--space-text-muted)] group-hover:text-teal-300 font-bold select-none whitespace-nowrap rotate-90 pl-1.5">
+                AI Guide
+              </span>
+            </motion.button>
+          )}
+        </AnimatePresence>
+      )}
     </div>
   );
 }

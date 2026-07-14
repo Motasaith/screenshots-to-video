@@ -18,7 +18,7 @@ export default function Community() {
             className="text-center mb-16"
           >
             <h1 className="font-extrabold text-5xl lg:text-6xl tracking-tight mb-4 text-[var(--space-text)]">
-              Join the <span className="text-teal-650">Community</span>
+              Join the <span className="text-teal-600">Community</span>
             </h1>
             <p className="text-lg text-[var(--space-text-muted)] max-w-xl mx-auto leading-relaxed">
               Connect with other creators, share your videos, and learn new technical documentation and AI Video generation techniques.

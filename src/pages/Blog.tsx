@@ -33,7 +33,7 @@ export default function Blog() {
             className="mb-16"
           >
             <h1 className="font-extrabold text-5xl lg:text-6xl tracking-tight mb-4 text-[var(--space-text)]">
-              The AIVideo <span className="text-teal-650">Blog</span>
+              The AIVideo <span className="text-teal-600">Blog</span>
             </h1>
             <p className="text-lg text-[var(--space-text-muted)] max-w-2xl leading-relaxed">
               Insights on AI video generation, technical communication, and the art of the cinematic tutorial.
@@ -53,7 +53,7 @@ export default function Blog() {
                       {post.category}
                     </span>
                   </div>
-                  <h2 className="font-bold text-2xl mb-3 text-[var(--space-text)] group-hover:text-teal-650 transition-colors line-clamp-2 leading-tight">
+                  <h2 className="font-bold text-2xl mb-3 text-[var(--space-text)] group-hover:text-teal-600 transition-colors line-clamp-2 leading-tight">
                     {post.title}
                   </h2>
                   <p className="text-sm text-[var(--space-text-muted)] leading-relaxed mb-6 line-clamp-3">
@@ -71,7 +71,7 @@ export default function Blog() {
                       {post.readTime}
                     </span>
                   </div>
-                  <div className="text-sm font-bold flex items-center gap-2 text-teal-600 dark:text-teal-450 group-hover:gap-3 transition-all">
+                  <div className="text-sm font-bold flex items-center gap-2 text-teal-600 dark:text-teal-400 group-hover:gap-3 transition-all">
                     Read More <ArrowRight className="w-4 h-4" />
                   </div>
                 </div>

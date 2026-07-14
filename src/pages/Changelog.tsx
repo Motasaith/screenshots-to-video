@@ -73,7 +73,7 @@ export default function Changelog() {
             className="mb-16 text-center"
           >
             <h1 className="font-extrabold text-5xl lg:text-6xl tracking-tight mb-4 text-[var(--space-text)]">
-              <span className="text-teal-650">Changelog</span>
+              <span className="text-teal-600">Changelog</span>
             </h1>
             <p className="text-lg text-[var(--space-text-muted)]">
               Tracking every improvement, fix, and new feature of AIVideo.

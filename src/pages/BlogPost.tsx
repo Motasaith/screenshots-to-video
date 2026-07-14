@@ -79,7 +79,7 @@ function RelatedPosts({ posts }: { posts: BlogPost[] }) {
             <span className="text-[9px] font-mono font-semibold uppercase tracking-wider px-2 py-0.5 bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20 rounded mb-3 inline-block">
               {post.category}
             </span>
-            <h3 className="font-bold text-lg mb-2 text-[var(--space-text)] group-hover:text-teal-650 transition-colors line-clamp-2 leading-tight">
+            <h3 className="font-bold text-lg mb-2 text-[var(--space-text)] group-hover:text-teal-600 transition-colors line-clamp-2 leading-tight">
               {post.title}
             </h3>
             <p className="text-sm text-[var(--space-text-muted)] line-clamp-2 leading-relaxed">{post.excerpt}</p>

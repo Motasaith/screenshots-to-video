@@ -44,12 +44,12 @@ export default function Status() {
                   {sys.status === "operational" ? (
                     <>
                       <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                      <span className="font-semibold text-emerald-600 dark:text-emerald-450 text-sm">Operational</span>
+                      <span className="font-semibold text-emerald-600 dark:text-emerald-400 text-sm">Operational</span>
                     </>
                   ) : (
                     <>
                       <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
-                      <span className="font-semibold text-amber-600 dark:text-amber-450 text-sm">Degraded</span>
+                      <span className="font-semibold text-amber-600 dark:text-amber-400 text-sm">Degraded</span>
                     </>
                   )}
                 </div>

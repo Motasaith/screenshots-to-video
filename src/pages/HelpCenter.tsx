@@ -26,7 +26,7 @@ export default function HelpCenter() {
             className="text-center mb-16"
           >
             <h1 className="font-extrabold text-5xl lg:text-6xl tracking-tight mb-6 text-[var(--space-text)]">
-              How can we <span className="text-teal-650">help?</span>
+              How can we <span className="text-teal-600">help?</span>
             </h1>
             <div className="max-w-2xl mx-auto relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--space-text-subtle)] w-5 h-5" />
@@ -43,7 +43,7 @@ export default function HelpCenter() {
               return (
                 <div key={idx} className="glass-panel p-6 cursor-pointer group hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 border border-[var(--space-border)]">
                   <Icon className="w-8 h-8 text-teal-500 mb-4 group-hover:scale-110 transition-transform" />
-                  <h3 className="font-bold text-xl mb-2 text-[var(--space-text)] group-hover:text-teal-650 transition-colors">
+                  <h3 className="font-bold text-xl mb-2 text-[var(--space-text)] group-hover:text-teal-600 transition-colors">
                     {cat.title}
                   </h3>
                   <p className="text-[var(--space-text-muted)] text-sm leading-relaxed">{cat.desc}</p>

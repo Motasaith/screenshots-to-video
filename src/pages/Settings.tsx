@@ -77,7 +77,7 @@ export default function Settings() {
                   />
                 ) : (
                   <div className="w-16 h-16 bg-teal-500/10 border border-teal-500/20 flex items-center justify-center rounded-2xl">
-                    <span className="font-bold text-xl text-teal-550">
+                    <span className="font-bold text-xl text-teal-600">
                       {(user.name || "U")[0].toUpperCase()}
                     </span>
                   </div>
@@ -212,7 +212,7 @@ export default function Settings() {
                 </div>
                 <Button
                   variant="destructive"
-                  className="bg-red-500 hover:bg-red-650 text-white rounded-xl text-xs py-2 px-4"
+                  className="bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs py-2 px-4"
                 >
                   Delete
                 </Button>
