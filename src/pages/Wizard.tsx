@@ -102,7 +102,7 @@ export default function Wizard() {
       
       {/* Header */}
       <header className="w-full px-2 lg:px-3 pt-2 flex-shrink-0 z-20">
-        <div className="w-full rounded-xl bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] shadow-[0_10px_35px_rgba(0,0,0,0.06)] px-4 py-1.5">
+        <div className="w-full rounded-xl bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] shadow-[0_10px_35px_rgba(0,0,0,0.06)] px-2 sm:px-4 py-1.5">
           <div className="flex items-center justify-between">
             <button
               onClick={() => navigate("/dashboard")}
@@ -112,8 +112,8 @@ export default function Wizard() {
               <span className="text-sm font-medium">Dashboard</span>
             </button>
             {project && (
-              <div className="flex flex-col items-center justify-center">
-                <span className="text-sm font-semibold text-[var(--space-text)] leading-tight">
+              <div className="flex flex-col items-center justify-center min-w-0">
+                <span className="text-sm font-semibold text-[var(--space-text)] leading-tight truncate max-w-[120px] sm:max-w-none">
                   {project.title}
                 </span>
                 {/* Horizontal Stepper */}
@@ -137,11 +137,11 @@ export default function Wizard() {
                         >
                           {isCompleted ? "✓" : i + 1}
                         </button>
-                        <span className={`text-[8.5px] font-mono tracking-tight ${isActive ? "text-teal-300 font-semibold" : isCompleted ? "text-[var(--space-text-muted)]" : "text-[var(--space-text-muted)]/50"}`}>
+                        <span className={`hidden sm:inline text-[8.5px] font-mono tracking-tight ${isActive ? "text-teal-300 font-semibold" : isCompleted ? "text-[var(--space-text-muted)]" : "text-[var(--space-text-muted)]/50"}`}>
                           {label}
                         </span>
                         {i < stepOrder.length - 1 && (
-                          <span className="text-[8.5px] text-[var(--space-border)]/40 mx-0.5">/</span>
+                          <span className="hidden sm:inline text-[8.5px] text-[var(--space-border)]/40 mx-0.5">/</span>
                         )}
                       </div>
                     );
@@ -150,7 +150,7 @@ export default function Wizard() {
               </div>
             )}
             <div className="flex items-center gap-3">
-              <span className="font-mono text-xs text-[var(--space-text-muted)] bg-teal-500/10 px-2.5 py-1 rounded-md border border-[var(--space-border)]">
+              <span className="hidden sm:inline font-mono text-xs text-[var(--space-text-muted)] bg-teal-500/10 px-2.5 py-1 rounded-md border border-[var(--space-border)]">
                 Step {currentStepIdx + 1} of {stepOrder.length}
               </span>
               <button

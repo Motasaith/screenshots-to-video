@@ -185,7 +185,7 @@ export default function Admin() {
     <div className="min-h-screen bg-background">
       <Navbar />
 
-      <main className="w-full max-w-7xl mx-auto px-6 lg:px-12 pt-28 pb-20">
+      <main className="w-full max-w-7xl mx-auto px-3 sm:px-6 lg:px-12 pt-28 pb-20">
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-8 justify-between">
           <div className="flex items-center gap-3">
@@ -197,7 +197,7 @@ export default function Admin() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Button
               variant="outline"
               size="sm"
@@ -360,7 +360,7 @@ export default function Admin() {
 
         {/* Tabs */}
         <Tabs defaultValue="users" className="w-full">
-          <TabsList className="neo-card mb-8 p-1 inline-flex h-12 items-center justify-center flex-wrap">
+          <TabsList className="neo-card mb-8 p-1 inline-flex h-auto sm:h-12 items-center justify-center flex-wrap admin-tabs-mobile">
             <TabsTrigger
               value="users"
               className="font-dm text-sm h-10 px-6 data-[state=active]:bg-primary/10 data-[state=active]:border-2 data-[state=active]:border-border font-medium"
@@ -422,7 +422,7 @@ export default function Admin() {
                 </div>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-left font-dm text-sm">
+                <table className="w-full text-left font-dm text-sm admin-table-mobile">
                   <thead className="bg-muted font-syne border-b-2 border-border">
                     <tr>
                       <th className="p-4 font-bold">ID</th>
@@ -583,7 +583,7 @@ export default function Admin() {
           <TabsContent value="jobs">
             <div className="neo-card overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full text-left font-dm text-sm">
+                <table className="w-full text-left font-dm text-sm admin-table-mobile">
                   <thead className="bg-muted font-syne border-b-2 border-border">
                     <tr>
                       <th className="p-4 font-bold">ID</th>
@@ -693,7 +693,7 @@ export default function Admin() {
                 </Select>
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full text-left font-dm text-sm">
+                <table className="w-full text-left font-dm text-sm admin-table-mobile">
                   <thead className="bg-muted font-syne border-b-2 border-border">
                     <tr>
                       <th className="p-4 font-bold">ID</th>
@@ -847,7 +847,7 @@ export default function Admin() {
 // ── Sub-components ──
 
 function LogsTab() {
-  const [logDate, setLogDate] = useState<string>("");
+  const [logDate, setLogDate] = useState<string>("today");
   const [logLevel, setLogLevel] = useState<string>("all");
   const [logSearch, setLogSearch] = useState<string>("");
   const [logUserId, setLogUserId] = useState<string>("");
@@ -857,7 +857,7 @@ function LogsTab() {
 
   const { data: logData, isFetching: logsLoading } = trpc.admin.getLogs.useQuery(
     {
-      date: logDate || undefined,
+      date: logDate === "today" ? undefined : logDate,
       level: logLevel === "all" ? undefined : (logLevel as "debug" | "info" | "warn" | "error"),
       userId: logUserId ? parseInt(logUserId) : undefined,
       search: logSearch || undefined,
@@ -876,7 +876,7 @@ function LogsTab() {
   return (
     <div className="space-y-4">
       {/* Log stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
         <Card className="neo-card p-3">
           <p className="font-dm text-xs text-muted-foreground">Log Files</p>
           <p className="font-syne font-bold text-lg">{logStats?.totalFiles ?? 0}</p>
@@ -908,14 +908,14 @@ function LogsTab() {
       </div>
 
       {/* Filters */}
-      <div className="neo-card p-4 flex flex-wrap items-center gap-3">
+      <div className="neo-card p-3 sm:p-4 flex flex-wrap items-center gap-2 sm:gap-3">
         <Label className="font-syne text-sm">Date:</Label>
         <Select value={logDate} onValueChange={setLogDate}>
-          <SelectTrigger className="w-40">
+          <SelectTrigger className="w-28 sm:w-40">
             <SelectValue placeholder="Today" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">Today</SelectItem>
+            <SelectItem value="today">Today</SelectItem>
             {(logDates ?? [])
               .filter((d) => d !== new Date().toISOString().slice(0, 10))
               .map((d) => (
@@ -928,7 +928,7 @@ function LogsTab() {
 
         <Label className="font-syne text-sm">Level:</Label>
         <Select value={logLevel} onValueChange={setLogLevel}>
-          <SelectTrigger className="w-32">
+          <SelectTrigger className="w-24 sm:w-32">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -946,10 +946,10 @@ function LogsTab() {
           placeholder="Filter by user..."
           value={logUserId}
           onChange={(e) => setLogUserId(e.target.value)}
-          className="w-36"
+          className="w-24 sm:w-36"
         />
 
-        <div className="relative flex-1 min-w-[200px]">
+        <div className="relative flex-1 min-w-[140px] sm:min-w-[200px]">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search logs..."

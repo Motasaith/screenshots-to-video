@@ -162,7 +162,7 @@ export default function Dashboard() {
       <SpaceBackground />
       <div className="relative z-10">
         <header className="fixed top-0 left-0 right-0 z-50 px-4 pt-4 transition-all duration-300">
-          <div className="max-w-6xl mx-auto rounded-full bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] shadow-[0_10px_35px_rgba(0,0,0,0.06)] px-6 py-1">
+          <div className="max-w-6xl mx-auto rounded-full bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] shadow-[0_10px_35px_rgba(0,0,0,0.06)] px-3 sm:px-6 py-1">
             <div className="flex items-center justify-between h-14">
               <div
                 className="flex items-center gap-2 cursor-pointer"
@@ -171,7 +171,7 @@ export default function Dashboard() {
                 <Film className="w-5 h-5 text-teal-500" />
                 <span className="font-bold text-lg text-[var(--space-text)]">AIVideo</span>
               </div>
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 sm:gap-4">
                 <span className="text-xs font-mono text-[var(--space-text-subtle)] hidden sm:block">
                   {user.name || user.email}
                 </span>
@@ -218,7 +218,7 @@ export default function Dashboard() {
           </div>
         </header>
 
-        <main className="w-full max-w-6xl mx-auto px-6 py-8 pt-28">
+        <main className="w-full max-w-6xl mx-auto px-3 sm:px-6 py-8 pt-28">
           {user?.plan === "free" && (
             <div className="mb-6 p-4 bg-teal-500/5 border border-teal-500/20 rounded-2xl">
               <p className="text-sm text-[var(--space-text-muted)] leading-relaxed">

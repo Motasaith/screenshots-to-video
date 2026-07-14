@@ -54,24 +54,24 @@ export default function Videos() {
       <SpaceBackground />
       <div className="relative z-10">
         <header className="border-b border-[var(--space-border)] bg-[var(--space-card)]/90 backdrop-blur-sm relative">
-          <div className="w-full px-6 lg:px-12">
+          <div className="w-full px-4 sm:px-6 lg:px-12">
             <div className="flex items-center justify-between h-16">
               <div
                 className="flex items-center gap-2 cursor-pointer"
                 onClick={() => navigate("/")}
               >
-                <Film className="w-6 h-6 text-teal-500" />
-                <span className="font-bold text-xl text-[var(--space-text)]">AIVideo</span>
+                <Film className="w-5 h-5 sm:w-6 sm:h-6 text-teal-500" />
+                <span className="font-bold text-lg sm:text-xl text-[var(--space-text)]">AIVideo</span>
               </div>
               <div className="flex items-center gap-2 sm:gap-4">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => navigate("/dashboard")}
-                  className="glass-btn glass-btn-secondary gap-2 hidden sm:flex py-1.5 px-3 rounded-lg text-xs"
+                  className="glass-btn glass-btn-secondary gap-2 flex py-1.5 px-2.5 sm:px-3 rounded-lg text-xs"
                 >
                   <LayoutDashboard className="w-4 h-4" />
-                  Dashboard
+                  <span className="hidden xs:inline sm:inline">Dashboard</span>
                 </Button>
                 <Button
                   variant="ghost"
@@ -94,13 +94,13 @@ export default function Videos() {
           </div>
         </header>
 
-        <main className="max-w-7xl mx-auto px-6 lg:px-12 py-12">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-12">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-12 py-8 sm:py-12">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 sm:mb-12">
             <div>
-              <h1 className="font-extrabold text-4xl lg:text-5xl tracking-tight mb-2 text-[var(--space-text)]">
+              <h1 className="font-extrabold text-3xl sm:text-4xl lg:text-5xl tracking-tight mb-2 text-[var(--space-text)]">
                 My Videos
               </h1>
-              <p className="text-lg text-[var(--space-text-muted)] leading-relaxed">
+              <p className="text-sm sm:text-base md:text-lg text-[var(--space-text-muted)] leading-relaxed">
                 Your completed cinematic tutorials ready for the world.
               </p>
             </div>

@@ -1223,3 +1223,117 @@
 .theme-3d-immersive [class*="accent-[#FBBF24]"] {
   accent-color: var(--teal-550) !important;
 }
+
+/* ─── Mobile Responsiveness Utilities ─── */
+
+/* Editor sidebar overlay on mobile */
+.editor-sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.editor-sidebar-mobile {
+  position: fixed;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 61;
+  max-width: 85vw;
+  width: 340px;
+  box-shadow: -8px 0 30px rgba(0, 0, 0, 0.2);
+}
+
+/* Mobile horizontal toolbar scroll */
+.toolbar-scroll-mobile {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.toolbar-scroll-mobile::-webkit-scrollbar {
+  display: none;
+}
+
+/* Touch-friendly minimum tap targets */
+@media (max-width: 768px) {
+  .touch-target-min {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Admin tabs mobile grid layout */
+@media (max-width: 640px) {
+  .admin-tabs-mobile {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    width: 100% !important;
+    gap: 4px !important;
+  }
+  .admin-tabs-mobile > * {
+    padding-left: 8px !important;
+    padding-right: 8px !important;
+    font-size: 11px !important;
+    justify-content: center !important;
+  }
+}
+
+/* Editor menu bar - mobile hamburger replacement */
+@media (max-width: 768px) {
+  .editor-menu-bar-desktop {
+    display: none !important;
+  }
+  .editor-menu-bar-mobile {
+    display: flex !important;
+  }
+}
+@media (min-width: 769px) {
+  .editor-menu-bar-mobile {
+    display: none !important;
+  }
+}
+
+/* Editor right tab strip — horizontal on mobile */
+@media (max-width: 768px) {
+  .editor-tab-strip-vertical {
+    flex-direction: row !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    border-left: none !important;
+    border-top: 1px solid var(--sketch-border-color, rgba(0, 0, 0, 0.1)) !important;
+    padding: 4px 8px !important;
+    gap: 2px !important;
+  }
+  .editor-tab-strip-vertical > * {
+    flex-shrink: 0 !important;
+  }
+}
+
+/* Mobile table improvements */
+@media (max-width: 768px) {
+  .admin-table-mobile th,
+  .admin-table-mobile td {
+    padding: 8px 10px !important;
+    font-size: 12px !important;
+    white-space: nowrap;
+  }
+  .admin-table-mobile th:first-child,
+  .admin-table-mobile td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: inherit;
+  }
+}
+
+/* Prevent horizontal page overflow on mobile */
+@media (max-width: 768px) {
+  body {
+    overflow-x: hidden;
+  }
+}

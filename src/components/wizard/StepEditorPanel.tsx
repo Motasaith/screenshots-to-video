@@ -409,6 +409,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const [activeTransitionClipId, setActiveTransitionClipId] = useState<number | null>(null);
   const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
   const [projectTitle, setProjectTitle] = useState("Untitled video");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
   // Sidebar resize state (CSS-based, replaces PanelGroup for horizontal split)
   const [sidebarWidth, setSidebarWidth] = useState(320); // px
@@ -3426,7 +3428,12 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   };
 
   const toggleRightTab = (tab: "properties" | "script" | "voiceover" | "elevenlabs" | "captions" | "transitions" | "aiguide" | "safety" | "help" | "media" | "introoutro") => {
-    setActiveRightTab((prev) => (prev === tab ? null : tab));
+    const newTab = activeRightTab === tab ? null : tab;
+    setActiveRightTab(newTab);
+    // On mobile, open the sidebar overlay when selecting a tab
+    if (newTab && window.innerWidth < 768) {
+      setIsMobileSidebarOpen(true);
+    }
   };
 
   // Script generation state
@@ -5020,10 +5027,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   return (
     <div className="w-full h-full flex flex-col bg-[var(--sketch-bg)] text-[var(--sketch-fg)] select-none font-sans overflow-hidden">
       {/* 1. Main Top Header Bar */}
-      <header className="w-full bg-[var(--sketch-toolbar-bg)] border-b-2 border-[var(--sketch-border-color)] px-4 py-2 flex flex-col gap-1.5 flex-shrink-0">
+      <header className="w-full bg-[var(--sketch-toolbar-bg)] border-b-2 border-[var(--sketch-border-color)] px-2 sm:px-4 py-2 flex flex-col gap-1.5 flex-shrink-0">
         <div className="flex items-center justify-between">
           {/* Left: Logo, Title row */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
             {/* Back button to dashboard */}
             <button
               onClick={() => {
@@ -5055,10 +5062,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                     (e.target as HTMLInputElement).blur();
                   }
                 }}
-                className="font-medium text-sm text-[var(--sketch-fg)] hover:bg-[var(--sketch-fg-subtle)]/10 focus:bg-[var(--sketch-card-bg)] focus:ring-1 focus:ring-[var(--sketch-accent)] rounded px-1.5 py-0.5 border-none bg-transparent transition-all outline-none"
-                style={{ width: `${Math.max(10, projectTitle.length + 2)}ch` }}
+                className="font-medium text-sm text-[var(--sketch-fg)] hover:bg-[var(--sketch-fg-subtle)]/10 focus:bg-[var(--sketch-card-bg)] focus:ring-1 focus:ring-[var(--sketch-accent)] rounded px-1.5 py-0.5 border-none bg-transparent transition-all outline-none min-w-0 truncate"
+                style={{ width: `${Math.max(8, Math.min(projectTitle.length + 2, 30))}ch` }}
               />
-              <span className="text-[10px] text-[var(--sketch-fg-subtle)] font-medium bg-[var(--sketch-fg-subtle)]/10 px-1.5 py-0.5 rounded flex items-center gap-1">
+              <span className="hidden sm:flex text-[10px] text-[var(--sketch-fg-subtle)] font-medium bg-[var(--sketch-fg-subtle)]/10 px-1.5 py-0.5 rounded items-center gap-1">
                 {updateStep.isPending || updateProject.isPending ? (
                   <>
                     <Loader2 className="w-2.5 h-2.5 animate-spin" />
@@ -5108,8 +5115,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           </div>
         </div>
 
-        {/* Nested Menus — functional dropdown menus */}
-        <div className="flex items-center gap-1 text-[11px] text-[var(--sketch-fg-muted)] font-medium leading-none select-none pl-9">
+        {/* Nested Menus — functional dropdown menus (hidden on mobile) */}
+        <div className="editor-menu-bar-desktop flex items-center gap-1 text-[11px] text-[var(--sketch-fg-muted)] font-medium leading-none select-none pl-9">
           {/* File Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -5476,6 +5483,80 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+
+        {/* Mobile Menu Button — visible only on small screens */}
+        <div className="editor-menu-bar-mobile items-center gap-1 text-[11px] text-[var(--sketch-fg-muted)] font-medium leading-none select-none pl-2">
+          <DropdownMenu open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+            <DropdownMenuTrigger asChild>
+              <button className="flex items-center gap-1.5 hover:bg-[var(--sketch-fg-subtle)]/10 px-2.5 py-1.5 rounded transition-colors cursor-pointer leading-none text-xs font-bold">
+                <Settings2 className="w-4 h-4" />
+                <span>Menu</span>
+                <ChevronDown className="w-3 h-3" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-56 max-h-[70vh] overflow-y-auto">
+              <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">File</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => { window.location.href = "/dashboard"; }}>
+                <ArrowLeft className="w-3.5 h-3.5 mr-2" /> Back to Dashboard
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => fileInputRef.current?.click()}>
+                <Upload className="w-3.5 h-3.5 mr-2" /> Upload Screenshots…
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleSaveStep}>
+                <Save className="w-3.5 h-3.5 mr-2" /> Save Step
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">Edit</DropdownMenuLabel>
+              <DropdownMenuItem onClick={handleUndo} disabled={historyIndex <= 0}>
+                <Undo2 className="w-3.5 h-3.5 mr-2" /> Undo
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleRedo} disabled={historyIndex >= history.length - 1}>
+                <Redo2 className="w-3.5 h-3.5 mr-2" /> Redo
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">Tools</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => setMode("select")}>
+                <MousePointer className="w-3.5 h-3.5 mr-2" /> Select
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setMode("pan")}>
+                <Move className="w-3.5 h-3.5 mr-2" /> Pan
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setMode("highlight")}>
+                <Square className="w-3.5 h-3.5 mr-2" /> Highlight
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setMode("zoom")}>
+                <Target className="w-3.5 h-3.5 mr-2" /> Zoom Point
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setMode("overlay")}>
+                <Type className="w-3.5 h-3.5 mr-2" /> Text Overlay
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setMode("blur")}>
+                <Aperture className="w-3.5 h-3.5 mr-2" /> Blur
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setMode("crop")}>
+                <Crop className="w-3.5 h-3.5 mr-2" /> Crop
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel className="text-[10px] uppercase tracking-wider">Panels</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => { toggleRightTab("script"); setIsMobileSidebarOpen(true); }}>
+                <Type className="w-3.5 h-3.5 mr-2" /> Script
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { toggleRightTab("voiceover"); setIsMobileSidebarOpen(true); }}>
+                <Volume2 className="w-3.5 h-3.5 mr-2" /> Voiceover
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { toggleRightTab("transitions"); setIsMobileSidebarOpen(true); }}>
+                <Film className="w-3.5 h-3.5 mr-2" /> Transitions
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={async () => {
+                await handleSaveAllSteps();
+                if (props.onContinue) { props.onContinue(); } else { window.location.href = `/create/${projectIdNum}/render`; }
+              }}>
+                <Sparkles className="w-3.5 h-3.5 mr-2" /> Export Video…
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </header>
 
       {/* 2. Sub-header Toolbar (horizontal ribbon) */}
@@ -5486,10 +5567,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
             animate={{ height: 42, opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="w-full bg-[var(--sketch-panel-bg)] border-b-2 border-[var(--sketch-border-color)] px-4 flex items-center justify-between flex-shrink-0 select-none overflow-hidden h-[42px]"
+            className="w-full bg-[var(--sketch-panel-bg)] border-b-2 border-[var(--sketch-border-color)] px-2 sm:px-4 flex items-center justify-between flex-shrink-0 select-none overflow-hidden h-[42px]"
           >
             {/* Left: Fit, Undo/Redo, Tools */}
-            <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-1 min-w-0 overflow-x-auto toolbar-scroll-mobile">
               {/* Zoom Fit */}
               <div className="flex items-center gap-1 pr-2 border-r border-[var(--sketch-border-color)]/20">
                 <Search className="w-3.5 h-3.5 text-[var(--sketch-fg-muted)]" />
@@ -5603,12 +5684,12 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       )}
 
       {/* 3. Main Split Workspace — canvas+timeline (left) | sidebar+tabs (right) */}
-      <div className="flex-1 flex flex-row items-stretch min-h-0 w-full overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row items-stretch min-h-0 w-full overflow-hidden">
 
         {/* LEFT COLUMN: Canvas + Timeline stacked vertically */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {/* Canvas area */}
-          <div className="flex-1 flex flex-col bg-[var(--sketch-bg)] relative min-w-0 p-4 min-h-0">
+          <div className="flex-1 flex flex-col bg-[var(--sketch-bg)] relative min-w-0 p-2 sm:p-4 min-h-0">
             <div className="flex-1 w-full relative min-h-0 flex flex-col overflow-hidden">
               {currentStep ? (
                 <div
@@ -6609,7 +6690,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         {activeRightTab && (
           <div
             onMouseDown={handleSidebarResizeStart}
-            className="w-1.5 bg-[var(--sketch-border-color)] hover:bg-[var(--sketch-accent)]/40 transition-colors cursor-col-resize flex-shrink-0 relative group"
+            className="w-1.5 bg-[var(--sketch-border-color)] hover:bg-[var(--sketch-accent)]/40 transition-colors cursor-col-resize flex-shrink-0 relative group hidden md:block"
             title="Drag to resize sidebar"
           >
             <div className="absolute inset-y-0 -left-1 -right-1" />
@@ -6619,7 +6700,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         {/* RIGHT SIDEBAR CONTENT — full height, conditionally shown */}
         {activeRightTab && (
           <div
-            className="h-full bg-[var(--sketch-panel-bg)] border-l border-[var(--sketch-border-color)]/40 flex flex-col flex-shrink-0"
+            className="h-full bg-[var(--sketch-panel-bg)] border-l border-[var(--sketch-border-color)]/40 flex flex-col flex-shrink-0 hidden md:flex"
             style={{ width: sidebarWidth }}
           >
             <div className="h-full overflow-y-auto scrollbar-thin p-4 flex flex-col w-full">
@@ -6662,8 +6743,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           </div>
         )}
 
-        {/* Far-right vertical tab strip — full height, scrollable when overflow */}
-        <div className="w-16 bg-[var(--sketch-panel-bg)] border-l border-[var(--sketch-border-color)]/40 flex flex-col items-center flex-shrink-0 h-full overflow-y-auto scrollbar-thin py-2 gap-1">
+        {/* Far-right vertical tab strip — full height on desktop, horizontal on mobile */}
+        <div className="editor-tab-strip-vertical w-16 bg-[var(--sketch-panel-bg)] border-l border-[var(--sketch-border-color)]/40 flex flex-col items-center flex-shrink-0 h-full overflow-y-auto scrollbar-thin py-2 gap-1">
           <RightTabButton active={activeRightTab === "properties"} onClick={() => toggleRightTab("properties")} icon={<Settings2 className="w-4.5 h-4.5" />} label="Properties" />
           <RightTabButton active={activeRightTab === "script"} onClick={() => toggleRightTab("script")} icon={<Type className="w-4.5 h-4.5" />} label="Script" />
           <RightTabButton active={activeRightTab === "voiceover"} onClick={() => toggleRightTab("voiceover")} icon={<Volume2 className="w-4.5 h-4.5" />} label="Voiceover" />
@@ -6678,6 +6759,51 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           <RightTabButton active={activeRightTab === "help"} onClick={() => toggleRightTab("help")} icon={<HelpCircle className="w-4.5 h-4.5" />} label="Help" />
         </div>
       </div>
+
+      {/* Mobile sidebar overlay — shown on small screens when sidebar is open */}
+      {isMobileSidebarOpen && activeRightTab && (
+        <>
+          <div className="editor-sidebar-overlay md:hidden" onClick={() => setIsMobileSidebarOpen(false)} />
+          <div className="editor-sidebar-mobile md:hidden bg-[var(--sketch-panel-bg)] flex flex-col">
+            <div className="h-full overflow-y-auto scrollbar-thin p-4 flex flex-col w-full">
+              <div className="flex items-center justify-between mb-4 flex-shrink-0">
+                <h3 className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-wider font-semibold">
+                  {activeRightTab === "properties" && "Properties"}
+                  {activeRightTab === "script" && "Script & Scene"}
+                  {activeRightTab === "voiceover" && "AI Voiceover"}
+                  {activeRightTab === "elevenlabs" && "ElevenLabs Premium"}
+                  {activeRightTab === "captions" && "Captions Settings"}
+                  {activeRightTab === "transitions" && "Transitions"}
+                  {activeRightTab === "introoutro" && "Intro & Outro"}
+                  {activeRightTab === "aiguide" && "AI Guide"}
+                  {activeRightTab === "safety" && "Safety & Copyright"}
+                  {activeRightTab === "help" && "Help Guide"}
+                  {activeRightTab === "media" && "Pexels Media"}
+                </h3>
+                <button
+                  onClick={() => setIsMobileSidebarOpen(false)}
+                  className="text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg-muted)] text-xs font-bold cursor-pointer"
+                >
+                  Close ×
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+                {activeRightTab === "properties" && renderPropertiesContent()}
+                {activeRightTab === "script" && renderScriptContent()}
+                {activeRightTab === "voiceover" && renderVoiceoverContent()}
+                {activeRightTab === "elevenlabs" && renderElevenLabsContent()}
+                {activeRightTab === "captions" && renderCaptionsContent()}
+                {activeRightTab === "transitions" && renderTransitionsContent()}
+                {activeRightTab === "introoutro" && renderIntroOutroContent()}
+                {activeRightTab === "aiguide" && renderAIGuideContent()}
+                {activeRightTab === "safety" && renderSafetyContent()}
+                {activeRightTab === "help" && renderHelpContent()}
+                {activeRightTab === "media" && renderMediaContent()}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Hidden file input for timeline uploads */}
       <input
