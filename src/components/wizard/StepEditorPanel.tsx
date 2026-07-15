@@ -7171,6 +7171,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                     <button
                       onClick={async () => {
                         await handleSaveAllSteps();
+                        utils.render.status.setData({ projectId: projectIdNum }, undefined);
                         setRenderStarted(false);
                         setTimeout(() => setRenderStarted(true), 100);
                       }}

@@ -262,37 +262,55 @@ async function generateEdgeAudio(
   rate: string | undefined,
   outDir: string
 ): Promise<{ filePath: string; duration: number }> {
-  const outputPath = path.join(outDir, `tts_${nanoid(12)}.mp3`);
+  let lastError: any = null;
 
-  // Combine the user's chosen speed with a small per-step human variation
-  const baseRatePct = rate ? parseInt(rate.replace(/[+%]/g, ""), 10) || 0 : 0;
-  const variation = humanVariation(text);
-  const finalRatePct = Math.max(-40, Math.min(60, baseRatePct + variation.ratePct));
-  const rateStr = finalRatePct >= 0 ? `+${finalRatePct}%` : `${finalRatePct}%`;
-  const pitchStr = variation.pitchHz >= 0 ? `+${variation.pitchHz}Hz` : `${variation.pitchHz}Hz`;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const outputPath = path.join(outDir, `tts_${nanoid(12)}.mp3`);
+    const baseRatePct = rate ? parseInt(rate.replace(/[+%]/g, ""), 10) || 0 : 0;
+    const variation = humanVariation(text);
+    const finalRatePct = Math.max(-40, Math.min(60, baseRatePct + variation.ratePct));
+    const rateStr = finalRatePct >= 0 ? `+${finalRatePct}%` : `${finalRatePct}%`;
+    const pitchStr = variation.pitchHz >= 0 ? `+${variation.pitchHz}Hz` : `${variation.pitchHz}Hz`;
 
-  try {
-    const tts = new EdgeTTS({
-      voice,
-      rate: rateStr,
-      pitch: pitchStr,
-    });
-    await tts.ttsPromise(text, outputPath);
-  } catch {
-    // Retry once without pitch (older node-edge-tts versions may reject it)
     try {
-      const tts = new EdgeTTS({ voice, rate: rateStr });
-      await tts.ttsPromise(text, outputPath);
-    } catch (err2: any) {
-      throw new Error(`TTS generation failed: ${err2.message || err2}`);
+      try {
+        const tts = new EdgeTTS({
+          voice,
+          rate: rateStr,
+          pitch: pitchStr,
+        });
+        await tts.ttsPromise(text, outputPath);
+      } catch {
+        // Retry once without pitch (older node-edge-tts versions may reject it)
+        const tts = new EdgeTTS({ voice, rate: rateStr });
+        await tts.ttsPromise(text, outputPath);
+      }
+
+      let stat = await fs.stat(outputPath);
+      if (stat.size === 0) {
+        // Wait and check again to handle OS/disk lag or slow file flush
+        for (let check = 1; check <= 3; check++) {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          stat = await fs.stat(outputPath);
+          if (stat.size > 0) break;
+        }
+      }
+
+      if (stat.size > 0) {
+        const duration = await probeAudioDuration(outputPath);
+        return { filePath: outputPath, duration };
+      }
+      throw new Error("TTS generated an empty audio file");
+    } catch (err: any) {
+      lastError = err;
+      log.warn(`Edge TTS attempt ${attempt} failed: ${err.message || err}. Retrying...`);
+      if (attempt < 3) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
     }
   }
 
-  const stat = await fs.stat(outputPath);
-  if (stat.size === 0) throw new Error("TTS generated an empty audio file");
-
-  const duration = await probeAudioDuration(outputPath);
-  return { filePath: outputPath, duration };
+  throw new Error(`Edge TTS generation failed after 3 attempts. Last error: ${lastError?.message || lastError}`);
 }
 
 /**
@@ -304,24 +322,48 @@ async function generateKokoroAudio(
   rate: string | undefined,
   outDir: string
 ): Promise<{ filePath: string; duration: number }> {
-  const tts = await getKokoro();
-  const outputPath = path.join(outDir, `tts_${nanoid(12)}.wav`);
+  let lastError: any = null;
 
-  // Map "+10%" style rate to Kokoro's speed multiplier
-  const ratePct = rate ? parseInt(rate.replace(/[+%]/g, ""), 10) || 0 : 0;
-  const speed = Math.max(0.7, Math.min(1.4, 1 + ratePct / 100));
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const tts = await getKokoro();
+    const outputPath = path.join(outDir, `tts_${nanoid(12)}.wav`);
 
-  const audio = await tts.generate(text, {
-    voice: kokoroVoice as any,
-    speed,
-  });
-  await audio.save(outputPath);
+    // Map "+10%" style rate to Kokoro's speed multiplier
+    const ratePct = rate ? parseInt(rate.replace(/[+%]/g, ""), 10) || 0 : 0;
+    const speed = Math.max(0.7, Math.min(1.4, 1 + ratePct / 100));
 
-  const stat = await fs.stat(outputPath);
-  if (stat.size === 0) throw new Error("Kokoro generated an empty audio file");
+    try {
+      const audio = await tts.generate(text, {
+        voice: kokoroVoice as any,
+        speed,
+      });
+      await audio.save(outputPath);
 
-  const duration = await probeAudioDuration(outputPath);
-  return { filePath: outputPath, duration };
+      let stat = await fs.stat(outputPath);
+      if (stat.size === 0) {
+        // Wait and check again to handle OS/disk lag or slow file flush
+        for (let check = 1; check <= 3; check++) {
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          stat = await fs.stat(outputPath);
+          if (stat.size > 0) break;
+        }
+      }
+
+      if (stat.size > 0) {
+        const duration = await probeAudioDuration(outputPath);
+        return { filePath: outputPath, duration };
+      }
+      throw new Error("Kokoro generated an empty audio file");
+    } catch (err: any) {
+      lastError = err;
+      log.warn(`Kokoro TTS attempt ${attempt} failed: ${err.message || err}. Retrying...`);
+      if (attempt < 3) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+      }
+    }
+  }
+
+  throw new Error(`Kokoro TTS generation failed after 3 attempts. Last error: ${lastError?.message || lastError}`);
 }
 
 import ffprobeStatic from "ffprobe-static";

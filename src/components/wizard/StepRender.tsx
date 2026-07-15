@@ -30,6 +30,7 @@ export default function StepRender() {
   const startedRef = useRef(false);
 
   const startRender = trpc.render.start.useMutation();
+  const utils = trpc.useUtils();
 
   // Poll render status every 3 seconds
   const { data: status } = trpc.render.status.useQuery(
@@ -176,6 +177,7 @@ export default function StepRender() {
                   <Button
                     className="sketch-btn-primary"
                     onClick={() => {
+                      utils.render.status.setData({ projectId: projectIdNum }, undefined);
                       startedRef.current = false;
                       setHasStarted(false);
                       setStartError(null);

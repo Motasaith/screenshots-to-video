@@ -340,7 +340,7 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
         screenshotLocalPath = path.join(
           os.tmpdir(),
           "aivideo-render",
-          `screenshot_${step.id}${path.extname(step.screenshotPath) || ".png"}`
+          `job_${jobId}_screenshot_${step.id}${path.extname(step.screenshotPath) || ".png"}`
         );
         await fs.mkdir(path.dirname(screenshotLocalPath), { recursive: true });
         await fs.writeFile(screenshotLocalPath, screenshotBuffer);
