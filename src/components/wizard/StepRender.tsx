@@ -114,7 +114,7 @@ export default function StepRender() {
             <Button
               variant="ghost"
               className="sketch-btn-ghost mt-3"
-              onClick={() => navigate(`/create/${projectIdNum}/voice`)}
+              onClick={() => navigate(`/create/${projectIdNum}/preview`)}
             >
               Go Back
             </Button>
@@ -170,7 +170,7 @@ export default function StepRender() {
                   <Button
                     variant="ghost"
                     className="sketch-btn-ghost"
-                    onClick={() => navigate(`/create/${projectIdNum}/voice`)}
+                    onClick={() => navigate(`/create/${projectIdNum}/preview`)}
                   >
                     Go Back
                   </Button>

@@ -336,11 +336,15 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
       // Download screenshot from R2 if it's a storage key or URL
       let screenshotLocalPath: string;
       if (step.screenshotPath && !step.screenshotPath.startsWith("blob:")) {
-        const screenshotBuffer = await downloadFromR2(step.screenshotPath);
+        // Strip frontend markers like "#video" and query strings
+        const storageKey = step.screenshotPath.split("#")[0].split("?")[0];
+        const screenshotBuffer = await downloadFromR2(storageKey);
+        // Extract extension from the clean path (no query string or fragments)
+        const cleanPath = step.screenshotPath.split("#")[0].split("?")[0];
         screenshotLocalPath = path.join(
           os.tmpdir(),
           "aivideo-render",
-          `job_${jobId}_screenshot_${step.id}${path.extname(step.screenshotPath) || ".png"}`
+          `job_${jobId}_screenshot_${step.id}${path.extname(cleanPath) || ".png"}`
         );
         await fs.mkdir(path.dirname(screenshotLocalPath), { recursive: true });
         await fs.writeFile(screenshotLocalPath, screenshotBuffer);

@@ -5,16 +5,55 @@ import { projects, steps, renderJobs, users } from "@db/schema";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { detectGibberish } from "./lib/gibberish";
+import { getSignedDownloadUrl } from "./lib/r2";
+
+/**
+ * Convert storage keys in step data to signed URLs for frontend display.
+ * Strips "#video" markers and generates fresh signed URLs from keys.
+ */
+async function signStepUrls(projectSteps: typeof steps.$inferSelect[]) {
+  return Promise.all(
+    projectSteps.map(async (s) => {
+      let signedScreenshot = s.screenshotPath;
+      if (s.screenshotPath && !s.screenshotPath.startsWith("blob:")) {
+        const isVideo = s.screenshotPath.includes("#video");
+        const cleanKey = s.screenshotPath.split("#")[0];
+        try {
+          signedScreenshot = await getSignedDownloadUrl(cleanKey, 7200);
+          if (isVideo) signedScreenshot += "#video";
+        } catch {
+          // Keep original if signing fails
+        }
+      }
+      return { ...s, screenshotPath: signedScreenshot };
+    })
+  );
+}
 
 export const projectRouter = createRouter({
   list: authedQuery
     .use(rateLimitByUser(60_000, 60))
     .query(async ({ ctx }) => {
-      return getDb()
+      const userProjects = await getDb()
         .select()
         .from(projects)
         .where(eq(projects.userId, ctx.user!.id))
         .orderBy(desc(projects.createdAt));
+
+      // Sign final video URLs for completed projects
+      return Promise.all(
+        userProjects.map(async (p) => {
+          let signedVideoPath = p.finalVideoPath;
+          if (p.finalVideoPath) {
+            try {
+              signedVideoPath = await getSignedDownloadUrl(p.finalVideoPath, 7200);
+            } catch {
+              // Keep original if signing fails
+            }
+          }
+          return { ...p, finalVideoPath: signedVideoPath };
+        })
+      );
     }),
 
   getById: authedQuery
@@ -40,7 +79,19 @@ export const projectRouter = createRouter({
         .where(eq(steps.projectId, input.id))
         .orderBy(steps.order);
 
-      return { ...project, steps: projectSteps };
+      const signedSteps = await signStepUrls(projectSteps);
+
+      // Sign final video URL if present
+      let signedVideoPath = project.finalVideoPath;
+      if (project.finalVideoPath) {
+        try {
+          signedVideoPath = await getSignedDownloadUrl(project.finalVideoPath, 7200);
+        } catch {
+          // Keep original if signing fails
+        }
+      }
+
+      return { ...project, finalVideoPath: signedVideoPath, steps: signedSteps };
     }),
 
   create: authedQuery

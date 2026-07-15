@@ -193,6 +193,141 @@ export function buildZoomFilter(
 }
 
 /**
+ * Build a SINGLE zoompan filter that visits multiple waypoints sequentially.
+ *
+ * Camera motion:
+ *   1. Hold wide briefly, then zoom IN to waypoint 0
+ *   2. Stay zoomed — smoothly PAN to waypoint 1, 2, … N-1
+ *   3. Zoom OUT at the end of the last waypoint
+ *
+ * All math is baked into FFmpeg expressions using frame-number conditionals.
+ */
+export function buildMultiWaypointZoomFilter(
+  waypoints: Array<{ xPx: number; yPx: number; durationFrames: number; zoomScale: number }>,
+  totalFrames: number,
+  outputRes: string
+): string {
+  if (waypoints.length === 0) return "";
+
+  // Use the max zoomScale across all waypoints as the peak zoom level
+  const maxZoom = Math.max(...waypoints.map((w) => w.zoomScale));
+  const zoomDelta = (maxZoom - 1).toFixed(6);
+
+  // ── Compute frame boundaries for each waypoint ──
+  // Each waypoint occupies a slice of totalFrames proportional to its duration
+  const totalDurFrames = waypoints.reduce((s, w) => s + w.durationFrames, 0);
+  const scale = totalFrames / Math.max(totalDurFrames, 1);
+  const boundaries: number[] = [0]; // frame where each waypoint starts
+  for (let i = 0; i < waypoints.length; i++) {
+    boundaries.push(boundaries[i] + Math.round(waypoints[i].durationFrames * scale));
+  }
+  // Clamp last boundary to totalFrames
+  boundaries[boundaries.length - 1] = totalFrames;
+
+  // ── Zoom expression: in → hold → out ──
+  // Zoom in during the first ~1.1s of waypoint 0
+  const zoomInHold = Math.round(0.7 * RENDER_FPS);  // brief wide hold
+  const zoomInDur = Math.round(1.1 * RENDER_FPS);   // ease-in duration
+  const pIn = smoothstepExpr("on", zoomInHold, zoomInDur);
+
+  // Zoom out during the last ~0.9s of the last waypoint (if there's room)
+  const zoomOutDurSec = 0.9;
+  const zoomOutDurFrames = Math.round(zoomOutDurSec * RENDER_FPS);
+  const zoomOutStartFrame = totalFrames - zoomOutDurFrames - Math.round(0.15 * RENDER_FPS);
+  // Only zoom out if there's enough room (at least 1s of hold after zoom-in finishes)
+  const minHoldEnd = zoomInHold + zoomInDur + RENDER_FPS;
+  let zoomExpr: string;
+  if (zoomOutStartFrame > minHoldEnd) {
+    const pOut = smoothstepExpr("on", zoomOutStartFrame, zoomOutDurFrames);
+    zoomExpr = `1+${zoomDelta}*(${pIn}-${pOut})`;
+  } else {
+    // Too short for zoom-out — just zoom in and hold
+    zoomExpr = `1+${zoomDelta}*${pIn}`;
+  }
+
+  // ── Position expressions: interpolate between waypoints ──
+  // For each waypoint transition, smoothstep-ease x and y over a ~0.8s window.
+  // IMPORTANT: The camera HOLDS at each waypoint for a brief delay (~0.5s)
+  // before starting to pan to the next one. This prevents the camera from
+  // immediately sliding away after arriving, giving the viewer time to
+  // focus on each point of interest.
+  const panDurFrames = Math.round(0.8 * RENDER_FPS); // frames for each pan transition
+  const holdAtWaypointFrames = Math.round(0.5 * RENDER_FPS); // ~0.5s hold before panning
+
+  // Build x and y as nested conditionals:
+  // Start at waypoint 0's position, then blend to waypoint 1 at boundary 1, etc.
+  let rawXExpr = waypoints[0].xPx.toFixed(1);
+  let rawYExpr = waypoints[0].yPx.toFixed(1);
+
+  for (let i = 1; i < waypoints.length; i++) {
+    const boundaryFrame = boundaries[i];
+    // Transition starts AFTER a hold delay at the previous waypoint.
+    // The pan begins at: boundaryFrame + holdAtWaypointFrames
+    // (camera arrives at waypoint i-1's position, holds briefly, then pans)
+    const transStart = Math.max(0, boundaryFrame + holdAtWaypointFrames);
+    const t = smoothstepExpr("on", transStart, panDurFrames);
+
+    const prevX = waypoints[i - 1].xPx.toFixed(1);
+    const prevY = waypoints[i - 1].yPx.toFixed(1);
+    const nextX = waypoints[i].xPx.toFixed(1);
+    const nextY = waypoints[i].yPx.toFixed(1);
+
+    // lerp: prev + (next - prev) * t
+    rawXExpr = `(${prevX}+(${nextX}-${prevX})*${t})`;
+    rawYExpr = `(${prevY}+(${nextY}-${prevY})*${t})`;
+  }
+
+  // For >2 waypoints we need a piecewise expression using frame ranges.
+  // Rebuild as a proper piecewise chain if there are 3+ waypoints.
+  if (waypoints.length > 2) {
+    // Build piecewise: for each segment, determine which waypoint-pair we're in
+    // and interpolate accordingly.
+    // We construct: if(lt(on,B1), interp01, if(lt(on,B2), interp12, interp23))
+    rawXExpr = waypoints[waypoints.length - 1].xPx.toFixed(1); // default: last
+    rawYExpr = waypoints[waypoints.length - 1].yPx.toFixed(1);
+
+    // Build from last to first (innermost is last transition)
+    for (let i = waypoints.length - 1; i >= 1; i--) {
+      const boundaryFrame = boundaries[i];
+      // Hold at the previous waypoint before panning to this one
+      const transStart = Math.max(0, boundaryFrame + holdAtWaypointFrames);
+      const t = smoothstepExpr("on", transStart, panDurFrames);
+
+      const prevX = waypoints[i - 1].xPx.toFixed(1);
+      const prevY = waypoints[i - 1].yPx.toFixed(1);
+      const nextX = waypoints[i].xPx.toFixed(1);
+      const nextY = waypoints[i].yPx.toFixed(1);
+
+      const lerpX = `(${prevX}+(${nextX}-${prevX})*${t})`;
+      const lerpY = `(${prevY}+(${nextY}-${prevY})*${t})`;
+
+      if (i === waypoints.length - 1) {
+        // Last segment: just use this lerp when on >= transStart
+        rawXExpr = lerpX;
+        rawYExpr = lerpY;
+      } else {
+        // Wrap in conditional: if we're before the NEXT transition start, use this lerp
+        const nextBoundary = boundaries[i + 1];
+        const nextTransStart = Math.max(0, nextBoundary + holdAtWaypointFrames);
+        rawXExpr = `if(lt(on,${nextTransStart}),${lerpX},${rawXExpr})`;
+        rawYExpr = `if(lt(on,${nextTransStart}),${lerpY},${rawYExpr})`;
+      }
+    }
+  }
+
+  // Clamp to frame bounds (standard zoompan safety)
+  const xExpr = `max(0,min(iw-iw/zoom,${rawXExpr}-iw/(2*zoom)))`;
+  const yExpr = `max(0,min(ih-ih/zoom,${rawYExpr}-ih/(2*zoom)))`;
+
+  return (
+    `zoompan=z='${zoomExpr}':` +
+    `x='${xExpr}':` +
+    `y='${yExpr}':` +
+    `d=${totalFrames}:s=${outputRes}:fps=${RENDER_FPS}`
+  );
+}
+
+/**
  * Compute geometry for fitting an image into a canvas (letterbox/pillarbox).
  */
 function fitGeometry(
@@ -496,6 +631,8 @@ export async function renderStepVideo(opts: {
   }>;
   // ── Color Filter ──
   editorColorFilter?: string;
+  // ── Custom zoom filter (injected by multi-waypoint renderer) ──
+  customZoomFilter?: string;
 }): Promise<string> {
   await ensureWorkDir();
 
@@ -695,25 +832,30 @@ export async function renderStepVideo(opts: {
   // If zoomTargetX/Y is undefined/null, or editorZoomScale is 1.0 (no zoom),
   // skip the zoompan filter entirely — the video will be a static image.
   let zoomFilter = "";
-  const hasZoomTarget = opts.zoomTargetX !== undefined && opts.zoomTargetY !== undefined && opts.zoomTargetX !== null && opts.zoomTargetY !== null;
-  // Only zoom if editorZoomScale is explicitly set and > 1.0.
-  // No default — if editorZoomScale is undefined, don't zoom.
-  const maxZoom = opts.editorZoomScale ?? 1.0;
+  if (opts.customZoomFilter) {
+    // Multi-waypoint zoom: use the pre-built filter directly
+    zoomFilter = opts.customZoomFilter;
+  } else {
+    const hasZoomTarget = opts.zoomTargetX !== undefined && opts.zoomTargetY !== undefined && opts.zoomTargetX !== null && opts.zoomTargetY !== null;
+    // Only zoom if editorZoomScale is explicitly set and > 1.0.
+    // No default — if editorZoomScale is undefined, don't zoom.
+    const maxZoom = opts.editorZoomScale ?? 1.0;
 
-  if (hasZoomTarget && maxZoom > 1.0) {
-    let zoomTargetX = opts.zoomTargetX!;
-    let zoomTargetY = opts.zoomTargetY!;
-    if (cropFilter) {
-      const targetOrigX = (zoomTargetX / 100) * imgWidth;
-      const targetOrigY = (zoomTargetY / 100) * imgHeight;
-      const localX = targetOrigX - cropX;
-      const localY = targetOrigY - cropY;
-      zoomTargetX = clamp((localX / effW) * 100, 0, 100);
-      zoomTargetY = clamp((localY / effH) * 100, 0, 100);
+    if (hasZoomTarget && maxZoom > 1.0) {
+      let zoomTargetX = opts.zoomTargetX!;
+      let zoomTargetY = opts.zoomTargetY!;
+      if (cropFilter) {
+        const targetOrigX = (zoomTargetX / 100) * imgWidth;
+        const targetOrigY = (zoomTargetY / 100) * imgHeight;
+        const localX = targetOrigX - cropX;
+        const localY = targetOrigY - cropY;
+        zoomTargetX = clamp((localX / effW) * 100, 0, 100);
+        zoomTargetY = clamp((localY / effH) * 100, 0, 100);
+      }
+      const targetXPx = geo.offsetX + (zoomTargetX / 100) * geo.scaledW;
+      const targetYPx = geo.offsetY + (zoomTargetY / 100) * geo.scaledH;
+      zoomFilter = buildZoomFilter(targetXPx, targetYPx, paddedDuration, outputRes, maxZoom);
     }
-    const targetXPx = geo.offsetX + (zoomTargetX / 100) * geo.scaledW;
-    const targetYPx = geo.offsetY + (zoomTargetY / 100) * geo.scaledH;
-    zoomFilter = buildZoomFilter(targetXPx, targetYPx, paddedDuration, outputRes, maxZoom);
   }
 
   // ── Canvas editor: text overlay ──
@@ -1014,9 +1156,14 @@ async function renderStepVideoFallback(
   const geo = fitGeometry(effW, effH, outW, outH);
   const maxZoom = opts.editorZoomScale ?? 1.0;
   const hasZoomTarget = opts.zoomTargetX !== undefined && opts.zoomTargetY !== undefined && opts.zoomTargetX !== null && opts.zoomTargetY !== null;
-  const zoomFilter = (hasZoomTarget && maxZoom > 1.0)
-    ? buildZoomFilter(geo.offsetX + (zoomTargetX! / 100) * geo.scaledW, geo.offsetY + (zoomTargetY! / 100) * geo.scaledH, paddedDuration, outputRes, maxZoom)
-    : "";
+  let zoomFilter = "";
+  if (opts.customZoomFilter) {
+    zoomFilter = opts.customZoomFilter;
+  } else {
+    zoomFilter = (hasZoomTarget && maxZoom > 1.0)
+      ? buildZoomFilter(geo.offsetX + (zoomTargetX! / 100) * geo.scaledW, geo.offsetY + (zoomTargetY! / 100) * geo.scaledH, paddedDuration, outputRes, maxZoom)
+      : "";
+  }
   const delayMs = Math.round(AUDIO_LEAD_IN * 1000);
 
   // ── Canvas editor: text overlay ──
@@ -1513,95 +1660,146 @@ export async function renderMultiZoomSegments(opts: {
   editorCaptionColor?: string;
   editorCaptionSize?: string;
 }): Promise<string[]> {
-  const segments: string[] = [];
-  const totalDuration = opts.audioDuration;
-  const zooms = opts.multiZooms.length > 0 ? opts.multiZooms : [{ targetX: 50, targetY: 50, zoomScale: 1, duration: totalDuration }];
-  const totalZoomDuration = zooms.reduce((sum, z) => sum + (z.duration || 3), 0);
-  const timeScale = totalDuration / totalZoomDuration;
+  const zooms = opts.multiZooms.length > 0 ? opts.multiZooms : [{ targetX: 50, targetY: 50, zoomScale: 1, duration: opts.audioDuration }];
+  const outputRes = opts.outputRes || "1920x1080";
+  const [outW, outH] = outputRes.split("x").map(Number);
+  const paddedDuration = opts.audioDuration + AUDIO_LEAD_IN + AUDIO_TAIL;
+  const totalFrames = Math.max(Math.ceil(paddedDuration * RENDER_FPS), RENDER_FPS);
 
-  let currentTime = 0;
-  for (let i = 0; i < zooms.length; i++) {
-    const z = zooms[i];
-    const segDuration = Math.max(1, (z.duration || 3) * timeScale);
-    const segAudioPath = path.join(WORK_DIR, `mz_audio_${nanoid(8)}.wav`);
-
-    // Trim audio slice for this segment
-    await trimAudio(opts.audioPath, segAudioPath, segDuration, currentTime);
-
-    const segPath = await renderStepVideo({
-      screenshotPath: opts.screenshotPath,
-      audioPath: segAudioPath,
-      audioDuration: segDuration,
-      zoomTargetX: z.targetX,
-      zoomTargetY: z.targetY,
-      zoomRectX: z.rectX,
-      zoomRectY: z.rectY,
-      zoomRectW: z.rectW,
-      zoomRectH: z.rectH,
-      editorZoomScale: z.zoomScale,
-      outputRes: opts.outputRes,
-      captions: opts.captions,
-      editorCropX: opts.editorCropX,
-      editorCropY: opts.editorCropY,
-      editorCropW: opts.editorCropW,
-      editorCropH: opts.editorCropH,
-      editorBlurX: opts.editorBlurX,
-      editorBlurY: opts.editorBlurY,
-      editorBlurW: opts.editorBlurW,
-      editorBlurH: opts.editorBlurH,
-      editorBlurIntensity: opts.editorBlurIntensity,
-      editorBlurs: opts.editorBlurs,
-      editorRedactX: opts.editorRedactX,
-      editorRedactY: opts.editorRedactY,
-      editorRedactW: opts.editorRedactW,
-      editorRedactH: opts.editorRedactH,
-      editorRedactColor: opts.editorRedactColor,
-      editorWatermarkText: opts.editorWatermarkText,
-      editorWatermarkPosition: opts.editorWatermarkPosition,
-      editorWatermarkSize: opts.editorWatermarkSize,
-      editorWatermarkColor: opts.editorWatermarkColor,
-      editorWatermarkOpacity: opts.editorWatermarkOpacity,
-      editorPixelateX: opts.editorPixelateX,
-      editorPixelateY: opts.editorPixelateY,
-      editorPixelateW: opts.editorPixelateW,
-      editorPixelateH: opts.editorPixelateH,
-      editorPixelateBlockSize: opts.editorPixelateBlockSize,
-      editorPixelates: opts.editorPixelates,
-      editorSpotlightX: opts.editorSpotlightX,
-      editorSpotlightY: opts.editorSpotlightY,
-      editorSpotlightW: opts.editorSpotlightW,
-      editorSpotlightH: opts.editorSpotlightH,
-      editorSpotlightIntensity: opts.editorSpotlightIntensity,
-      editorSpotlights: opts.editorSpotlights,
-      editorBadgeNumber: opts.editorBadgeNumber,
-      editorBadgeX: opts.editorBadgeX,
-      editorBadgeY: opts.editorBadgeY,
-      editorBadgeColor: opts.editorBadgeColor,
-      editorMagnifyX: opts.editorMagnifyX,
-      editorMagnifyY: opts.editorMagnifyY,
-      editorMagnifyW: opts.editorMagnifyW,
-      editorMagnifyH: opts.editorMagnifyH,
-      editorMagnifyScale: opts.editorMagnifyScale,
-      editorMagnifyCorner: opts.editorMagnifyCorner,
-      editorColorFilter: opts.editorColorFilter,
-      editorHighlights: opts.editorHighlights,
-      editorOverlayText: opts.editorOverlayText,
-      editorOverlayX: opts.editorOverlayX,
-      editorOverlayY: opts.editorOverlayY,
-      editorOverlayColor: opts.editorOverlayColor,
-      editorOverlaySize: opts.editorOverlaySize,
-      editorCaptionText: opts.editorCaptionText,
-      editorCaptionPosition: opts.editorCaptionPosition,
-      editorCaptionStyle: opts.editorCaptionStyle,
-      editorCaptionColor: opts.editorCaptionColor,
-      editorCaptionSize: opts.editorCaptionSize,
-    });
-
-    segments.push(segPath);
-    currentTime += segDuration;
+  // ── Probe image dimensions for coordinate mapping ──
+  let imgWidth = 1920;
+  let imgHeight = 1080;
+  try {
+    const dims = await probeImageDimensions(opts.screenshotPath);
+    imgWidth = dims.width;
+    imgHeight = dims.height;
+  } catch {
+    // keep fallback values
   }
 
-  return segments;
+  // ── Account for crop if present ──
+  let cropX = 0, cropY = 0, cropW = imgWidth, cropH = imgHeight;
+  if (
+    opts.editorCropX !== undefined &&
+    opts.editorCropY !== undefined &&
+    opts.editorCropW !== undefined &&
+    opts.editorCropH !== undefined &&
+    opts.editorCropW > 0 &&
+    opts.editorCropH > 0
+  ) {
+    const r = clampRegion(
+      Math.round((opts.editorCropX / 100) * imgWidth),
+      Math.round((opts.editorCropY / 100) * imgHeight),
+      Math.round((opts.editorCropW / 100) * imgWidth),
+      Math.round((opts.editorCropH / 100) * imgHeight),
+      imgWidth, imgHeight
+    );
+    cropX = r.x; cropY = r.y; cropW = r.w; cropH = r.h;
+  }
+  const effW = cropW;
+  const effH = cropH;
+
+  // ── Compute supersampled geometry for coordinate mapping ──
+  const ssFactor = Math.min(2, MAX_SS_WIDTH / outW);
+  const ssW = 2 * Math.round((outW * ssFactor) / 2);
+  const ssH = 2 * Math.round((outH * ssFactor) / 2);
+  const geo = fitGeometry(effW, effH, ssW, ssH);
+
+  // ── Map each waypoint's percentage coords to supersampled-frame pixels ──
+  const waypoints = zooms.map((z) => {
+    let tx = z.targetX;
+    let ty = z.targetY;
+    // Adjust for crop
+    if (cropX > 0 || cropY > 0 || cropW !== imgWidth || cropH !== imgHeight) {
+      const origX = (tx / 100) * imgWidth;
+      const origY = (ty / 100) * imgHeight;
+      tx = clamp(((origX - cropX) / effW) * 100, 0, 100);
+      ty = clamp(((origY - cropY) / effH) * 100, 0, 100);
+    }
+    return {
+      xPx: geo.offsetX + (tx / 100) * geo.scaledW,
+      yPx: geo.offsetY + (ty / 100) * geo.scaledH,
+      durationFrames: Math.round((z.duration || 3) * RENDER_FPS),
+      zoomScale: z.zoomScale ?? 2,
+    };
+  });
+
+  // ── Build the single multi-waypoint zoom filter ──
+  const customZoomFilter = buildMultiWaypointZoomFilter(waypoints, totalFrames, outputRes);
+
+  // ── Render one single segment with the continuous zoom+pan filter ──
+  const segPath = await renderStepVideo({
+    screenshotPath: opts.screenshotPath,
+    audioPath: opts.audioPath,
+    audioDuration: opts.audioDuration,
+    // Use first waypoint as the "target" for highlight box compatibility
+    zoomTargetX: zooms[0].targetX,
+    zoomTargetY: zooms[0].targetY,
+    zoomRectX: zooms[0].rectX,
+    zoomRectY: zooms[0].rectY,
+    zoomRectW: zooms[0].rectW,
+    zoomRectH: zooms[0].rectH,
+    editorZoomScale: Math.max(...zooms.map((z) => z.zoomScale ?? 2)),
+    outputRes: opts.outputRes,
+    captions: opts.captions,
+    customZoomFilter,
+    editorCropX: opts.editorCropX,
+    editorCropY: opts.editorCropY,
+    editorCropW: opts.editorCropW,
+    editorCropH: opts.editorCropH,
+    editorBlurX: opts.editorBlurX,
+    editorBlurY: opts.editorBlurY,
+    editorBlurW: opts.editorBlurW,
+    editorBlurH: opts.editorBlurH,
+    editorBlurIntensity: opts.editorBlurIntensity,
+    editorBlurs: opts.editorBlurs,
+    editorRedactX: opts.editorRedactX,
+    editorRedactY: opts.editorRedactY,
+    editorRedactW: opts.editorRedactW,
+    editorRedactH: opts.editorRedactH,
+    editorRedactColor: opts.editorRedactColor,
+    editorWatermarkText: opts.editorWatermarkText,
+    editorWatermarkPosition: opts.editorWatermarkPosition,
+    editorWatermarkSize: opts.editorWatermarkSize,
+    editorWatermarkColor: opts.editorWatermarkColor,
+    editorWatermarkOpacity: opts.editorWatermarkOpacity,
+    editorPixelateX: opts.editorPixelateX,
+    editorPixelateY: opts.editorPixelateY,
+    editorPixelateW: opts.editorPixelateW,
+    editorPixelateH: opts.editorPixelateH,
+    editorPixelateBlockSize: opts.editorPixelateBlockSize,
+    editorPixelates: opts.editorPixelates,
+    editorSpotlightX: opts.editorSpotlightX,
+    editorSpotlightY: opts.editorSpotlightY,
+    editorSpotlightW: opts.editorSpotlightW,
+    editorSpotlightH: opts.editorSpotlightH,
+    editorSpotlightIntensity: opts.editorSpotlightIntensity,
+    editorSpotlights: opts.editorSpotlights,
+    editorBadgeNumber: opts.editorBadgeNumber,
+    editorBadgeX: opts.editorBadgeX,
+    editorBadgeY: opts.editorBadgeY,
+    editorBadgeColor: opts.editorBadgeColor,
+    editorMagnifyX: opts.editorMagnifyX,
+    editorMagnifyY: opts.editorMagnifyY,
+    editorMagnifyW: opts.editorMagnifyW,
+    editorMagnifyH: opts.editorMagnifyH,
+    editorMagnifyScale: opts.editorMagnifyScale,
+    editorMagnifyCorner: opts.editorMagnifyCorner,
+    editorColorFilter: opts.editorColorFilter,
+    editorHighlights: opts.editorHighlights,
+    editorOverlayText: opts.editorOverlayText,
+    editorOverlayX: opts.editorOverlayX,
+    editorOverlayY: opts.editorOverlayY,
+    editorOverlayColor: opts.editorOverlayColor,
+    editorOverlaySize: opts.editorOverlaySize,
+    editorCaptionText: opts.editorCaptionText,
+    editorCaptionPosition: opts.editorCaptionPosition,
+    editorCaptionStyle: opts.editorCaptionStyle,
+    editorCaptionColor: opts.editorCaptionColor,
+    editorCaptionSize: opts.editorCaptionSize,
+  });
+
+  return [segPath];
 }
 
 /**

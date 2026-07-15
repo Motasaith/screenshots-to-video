@@ -884,11 +884,11 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         try {
           const result = await uploadFile(file, `projects/${projectIdNum}/screenshots`);
 
-          // Update the step with the real URL
+          // Update the step with the storage key (not the signed URL, which expires)
           if (createdStepId) {
             await updateStep.mutateAsync({
               id: createdStepId,
-              screenshotPath: result.url + (isVideoFile ? "#video" : ""),
+              screenshotPath: result.key + (isVideoFile ? "#video" : ""),
             });
           }
 
