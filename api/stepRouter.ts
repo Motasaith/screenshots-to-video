@@ -8,7 +8,7 @@ import { checkMediaSafety } from "./lib/llm";
 
 export const stepRouter = createRouter({
   create: authedQuery
-    .use(rateLimitByUser(60_000, 20))
+    .use(rateLimitByUser(60_000, 60))
     .input(
       z.object({
         projectId: z.number(),

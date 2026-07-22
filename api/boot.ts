@@ -39,7 +39,7 @@ app.post("/api/upload", async (c) => {
   const log = createLogger({ ip, path: "/api/upload" });
 
   // Rate limit by IP
-  const ipLimit = checkRateLimit(`ip:${ip}:upload`, 60_000, 10);
+  const ipLimit = checkRateLimit(`ip:${ip}:upload`, 60_000, 60);
   if (!ipLimit.allowed) {
     return c.json(
       {
@@ -59,7 +59,7 @@ app.post("/api/upload", async (c) => {
   }
 
   // Rate limit by user
-  const userLimit = checkRateLimit(`user:${user.id}:upload`, 60_000, 10);
+  const userLimit = checkRateLimit(`user:${user.id}:upload`, 60_000, 60);
   if (!userLimit.allowed) {
     return c.json(
       {

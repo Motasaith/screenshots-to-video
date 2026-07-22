@@ -17,6 +17,7 @@ import {
   X,
   Sun,
   Moon,
+  Coins,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { detectGibberish } from "@/lib/gibberish";
@@ -262,7 +263,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-6 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 mb-8">
             <div className="glass-panel p-5 bg-[var(--space-card)]/80 border border-[var(--space-border)] rounded-2xl">
               <p className="text-sm text-[var(--space-text-subtle)] font-mono uppercase tracking-wider">Total Videos</p>
               <p className="font-bold text-3xl mt-1 text-[var(--space-text)]">
@@ -286,6 +287,24 @@ export default function Dashboard() {
                     d.getFullYear() === now.getFullYear()
                   );
                 }).length || 0}
+              </p>
+            </div>
+            <div className={`glass-panel p-5 rounded-2xl border ${
+              user.credits <= 2
+                ? "bg-amber-500/5 border-amber-500/30"
+                : "bg-[var(--space-card)]/80 border-[var(--space-border)]"
+            }`}>
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-[var(--space-text-subtle)] font-mono uppercase tracking-wider">Credits</p>
+                <Coins className={`w-4 h-4 ${user.credits <= 2 ? "text-amber-500" : "text-teal-500"}`} />
+              </div>
+              <p className={`font-bold text-3xl mt-1 ${
+                user.credits <= 2 ? "text-amber-500" : "text-[var(--space-text)]"
+              }`}>
+                {user.credits}
+              </p>
+              <p className="text-[10px] text-[var(--space-text-subtle)] font-mono mt-1 capitalize">
+                {user.plan} plan
               </p>
             </div>
           </div>
