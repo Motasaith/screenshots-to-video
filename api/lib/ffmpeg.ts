@@ -33,6 +33,17 @@ const MAX_SS_WIDTH = 4200;
 export const AUDIO_LEAD_IN = 0.4; // seconds of silence before narration
 export const AUDIO_TAIL = 0.6; // seconds of silence after narration
 
+// ── Multi-waypoint camera motion timing (seconds) ──
+// These are FIXED motion phases. They are never compressed to fit the audio, so
+// pans always read as deliberate camera moves (never teleports) and the final
+// zoom-out always completes. When the narration is shorter than the animation
+// needs, we extend the clip with trailing silence instead of squashing motion.
+export const MW_ZOOM_IN_HOLD = 0.5; // brief wide hold before the first zoom-in
+export const MW_ZOOM_IN_DUR = 1.0; // ease into the first waypoint
+export const MW_PAN_DUR = 2.5; // glide between two consecutive waypoints
+export const MW_ZOOM_OUT_DUR = 1.0; // ease back out after the last waypoint
+export const MW_MIN_HOLD = 2.0; // floor for the per-waypoint hold time
+
 /**
  * Ensure the work directory exists.
  */
@@ -192,22 +203,59 @@ export function buildZoomFilter(
   );
 }
 
+/** Fixed (non-hold) motion frames for a multi-waypoint timeline. */
+function multiWaypointFixedFrames(numWaypoints: number): number {
+  const numPans = Math.max(0, numWaypoints - 1);
+  return (
+    Math.round(MW_ZOOM_IN_HOLD * RENDER_FPS) +
+    Math.round(MW_ZOOM_IN_DUR * RENDER_FPS) +
+    numPans * Math.round(MW_PAN_DUR * RENDER_FPS) +
+    Math.round(MW_ZOOM_OUT_DUR * RENDER_FPS)
+  );
+}
+
+/**
+ * Total frames a multi-waypoint clip needs so that every hold gets at least its
+ * requested time (min MW_MIN_HOLD) AND the fixed motion phases (zoom-in, pans,
+ * zoom-out) run at full, uncompressed speed.
+ *
+ * If the narration audio is shorter than this, the caller should EXTEND the clip
+ * (padding the audio with trailing silence) rather than squashing the timeline —
+ * squashing is what used to make pans teleport and 3s holds shrink to ~1.5s.
+ */
+export function computeMultiWaypointTotalFrames(
+  waypoints: Array<{ durationFrames: number }>,
+  audioFrames: number
+): number {
+  if (waypoints.length === 0) return audioFrames;
+  const minHoldF = Math.round(MW_MIN_HOLD * RENDER_FPS);
+  const requestedHoldTotal = waypoints.reduce(
+    (s, w) => s + Math.max(w.durationFrames, minHoldF),
+    0
+  );
+  return Math.max(audioFrames, multiWaypointFixedFrames(waypoints.length) + requestedHoldTotal);
+}
+
 /**
  * Build a SINGLE zoompan filter that visits multiple waypoints sequentially.
  *
  * Camera motion timeline:
  *   1. Brief wide hold (~0.5s), then zoom IN to waypoint 0 (~1.0s)
- *   2. HOLD at waypoint 0 for user-set duration
- *   3. Smooth natural PAN to waypoint 1 over ~2.5s (stays zoomed in!)
- *   4. HOLD at waypoint 1 for user-set duration
+ *   2. HOLD at waypoint 0 (>= its requested duration, min MW_MIN_HOLD)
+ *   3. Smooth natural PAN to waypoint 1 over MW_PAN_DUR (stays zoomed in!)
+ *   4. HOLD at waypoint 1 …
  *   5. Smooth PAN to waypoint 2 …
  *   6. After holding at the last waypoint, zoom OUT (~1.0s, mirrors zoom-in)
  *
- * The per-waypoint `durationFrames` is the HOLD time at that point.
- * Pan transitions (~2.5s each) are extra time inserted BETWEEN holds.
- * Zoom-out always happens after the last hold, mirroring the zoom-in.
+ * The motion phases (zoom-in, pans, zoom-out) are FIXED and never compressed —
+ * `totalFrames` should be >= computeMultiWaypointTotalFrames(...) so they fit.
+ * Any slack beyond the fixed phases is absorbed into the holds (so long
+ * narration is never cut off), keeping every pan at a natural, readable speed.
  *
- * All math is baked into FFmpeg expressions using frame-number conditionals.
+ * Positions use an ADDITIVE smoothstep form: start at waypoint 0 and add each
+ * pan's displacement as its own 0→1 ramp. This glides between points instead of
+ * teleporting (the old nested-`if` form evaluated every lerp at t=0 during its
+ * own pan window, so the camera jumped straight to the destination).
  */
 export function buildMultiWaypointZoomFilter(
   waypoints: Array<{ xPx: number; yPx: number; durationFrames: number; zoomScale: number }>,
@@ -220,94 +268,65 @@ export function buildMultiWaypointZoomFilter(
   const maxZoom = Math.max(...waypoints.map((w) => w.zoomScale));
   const zoomDelta = (maxZoom - 1).toFixed(6);
 
-  // ── Timeline constants (in frames) ──
-  const zoomInHoldFrames = Math.round(0.5 * RENDER_FPS);   // ~0.5s wide hold before zoom-in
-  const zoomInDurFrames = Math.round(1.0 * RENDER_FPS);    // ~1.0s zoom-in ease
-  const panTransitionFrames = Math.round(2.5 * RENDER_FPS); // ~2.5s smooth natural pan
-  const zoomOutDurFrames = Math.round(1.0 * RENDER_FPS);   // ~1.0s zoom-out (mirrors zoom-in)
+  // ── Fixed motion phases (in frames, never compressed) ──
+  const zoomInHoldF = Math.round(MW_ZOOM_IN_HOLD * RENDER_FPS);
+  const zoomInDurF = Math.round(MW_ZOOM_IN_DUR * RENDER_FPS);
+  const panF = Math.round(MW_PAN_DUR * RENDER_FPS);
+  const zoomOutF = Math.round(MW_ZOOM_OUT_DUR * RENDER_FPS);
+  const minHoldF = Math.round(MW_MIN_HOLD * RENDER_FPS);
 
-  // ── Build the ideal timeline ──
-  const zoomInPhase = zoomInHoldFrames + zoomInDurFrames;
-  const numPans = Math.max(0, waypoints.length - 1);
-  const totalHoldFrames = waypoints.reduce((s, w) => s + w.durationFrames, 0);
-  const totalPanFrames = numPans * panTransitionFrames;
-  const idealTotal = zoomInPhase + totalHoldFrames + totalPanFrames + zoomOutDurFrames;
+  const fixedFrames = multiWaypointFixedFrames(waypoints.length);
 
-  // Scale factor to fit everything into the actual totalFrames
-  const tScale = totalFrames / Math.max(idealTotal, 1);
+  // ── Hold durations ──
+  // Each waypoint holds at least its requested time (floored at MW_MIN_HOLD).
+  // Any time left over after the fixed phases (e.g. long narration) is absorbed
+  // into the holds proportionally, so the audio is never cut and the motion
+  // phases keep their natural pacing.
+  const requestedHolds = waypoints.map((w) => Math.max(w.durationFrames, minHoldF));
+  const requestedHoldTotal = requestedHolds.reduce((a, b) => a + b, 0);
+  const holdBudget = Math.max(totalFrames - fixedFrames, requestedHoldTotal);
+  const holdScale = holdBudget / requestedHoldTotal;
+  const holds = requestedHolds.map((h) => Math.round(h * holdScale));
 
-  // Scaled durations
-  const sZoomInHold = Math.round(zoomInHoldFrames * tScale);
-  const sZoomInDur = Math.round(zoomInDurFrames * tScale);
-  const sZoomOutDur = Math.round(zoomOutDurFrames * tScale);
-  const sPanDur = Math.round(panTransitionFrames * tScale);
-
-  // ── Build frame markers for each phase ──
+  // ── Frame markers for each hold ──
   const holdStarts: number[] = [];
   const holdEnds: number[] = [];
-  let cursor = sZoomInHold + sZoomInDur; // after zoom-in completes
-
+  let cursor = zoomInHoldF + zoomInDurF; // after the initial zoom-in completes
   for (let i = 0; i < waypoints.length; i++) {
     holdStarts.push(cursor);
-    const scaledHold = Math.round(waypoints[i].durationFrames * tScale);
-    cursor += scaledHold;
+    cursor += holds[i];
     holdEnds.push(cursor);
-    // Add pan transition (except after the last waypoint)
-    if (i < waypoints.length - 1) {
-      cursor += sPanDur;
-    }
+    if (i < waypoints.length - 1) cursor += panF; // pan to the next waypoint
   }
 
-  // ── Zoom expression: in → hold → out ──
-  // Zoom IN: smoothstep from frame sZoomInHold over sZoomInDur frames
-  const pIn = smoothstepExpr("on", sZoomInHold, sZoomInDur);
-
-  // Zoom OUT: always zoom out after the last hold, mirroring the zoom-in
+  // ── Zoom expression: ease in at the start, ease out after the last hold ──
+  const pIn = smoothstepExpr("on", zoomInHoldF, zoomInDurF);
   const zoomOutStart = holdEnds[holdEnds.length - 1];
-  const pOut = smoothstepExpr("on", zoomOutStart, sZoomOutDur);
+  const pOut = smoothstepExpr("on", zoomOutStart, zoomOutF);
   const zoomExpr = `1+${zoomDelta}*(${pIn}-${pOut})`;
 
-  // ── Position expressions ──
-  // The camera holds steady at each waypoint during its hold phase,
-  // then glides naturally to the next waypoint over 2.5s with smooth easing.
-  //
-  // The smoothstep (3t²-2t³) easing makes the camera:
-  //   - Accelerate gently out of the current point (ease-out)
-  //   - Glide smoothly across the screenshot
-  //   - Decelerate gently into the next point (ease-in)
-  // This mimics a real user dragging their cursor between UI elements.
-
-  // Start with last waypoint as default
-  let rawXExpr = waypoints[waypoints.length - 1].xPx.toFixed(1);
-  let rawYExpr = waypoints[waypoints.length - 1].yPx.toFixed(1);
-
-  // Build from last transition backward (innermost = last transition)
-  for (let i = waypoints.length - 1; i >= 1; i--) {
-    // Pan from waypoint (i-1) to waypoint (i) starts at holdEnds[i-1]
-    const panStart = holdEnds[i - 1];
-
-    const t = smoothstepExpr("on", panStart, sPanDur);
-
-    const prevX = waypoints[i - 1].xPx.toFixed(1);
-    const prevY = waypoints[i - 1].yPx.toFixed(1);
-    const nextX = waypoints[i].xPx.toFixed(1);
-    const nextY = waypoints[i].yPx.toFixed(1);
-
-    // lerp: prev + (next - prev) * t
-    // Before panStart: t=0 → camera locked at prev waypoint
-    // During pan: smoothstep glides naturally from prev to next
-    // After panStart+panDur: t=1 → camera locked at next waypoint
-    const lerpX = `(${prevX}+(${nextX}-${prevX})*${t})`;
-    const lerpY = `(${prevY}+(${nextY}-${prevY})*${t})`;
-
-    // Wrap: before this pan starts, use the current lerp expression
-    rawXExpr = `if(lt(on,${panStart}),${lerpX},${rawXExpr})`;
-    rawYExpr = `if(lt(on,${panStart}),${lerpY},${rawYExpr})`;
-  }
+  // ── Position expressions: additive smoothstep displacement ──
+  // Start at waypoint 0, then ADD each pan's displacement as its own ramp that
+  // is 0 before the pan, animates 0→1 across the pan (holdEnds[i-1] → +panF),
+  // and stays 1 afterward. The camera therefore holds at each waypoint and then
+  // glides smoothly to the next — mimicking a real user moving their cursor
+  // between UI elements — with no teleporting.
+  const buildAxis = (key: "xPx" | "yPx"): string => {
+    const terms: string[] = [waypoints[0][key].toFixed(1)];
+    for (let i = 1; i < waypoints.length; i++) {
+      const panStart = holdEnds[i - 1];
+      const ramp = smoothstepExpr("on", panStart, panF);
+      const delta = (waypoints[i][key] - waypoints[i - 1][key]).toFixed(1);
+      terms.push(`(${delta})*${ramp}`);
+    }
+    return terms.join("+");
+  };
+  const rawXExpr = buildAxis("xPx");
+  const rawYExpr = buildAxis("yPx");
 
   // Clamp to frame bounds (standard zoompan safety)
-  const xExpr = `max(0,min(iw-iw/zoom,${rawXExpr}-iw/(2*zoom)))`;
-  const yExpr = `max(0,min(ih-ih/zoom,${rawYExpr}-ih/(2*zoom)))`;
+  const xExpr = `max(0,min(iw-iw/zoom,(${rawXExpr})-iw/(2*zoom)))`;
+  const yExpr = `max(0,min(ih-ih/zoom,(${rawYExpr})-ih/(2*zoom)))`;
 
   return (
     `zoompan=z='${zoomExpr}':` +
@@ -344,13 +363,15 @@ function fitGeometry(
  *  - tail silence (breathing room before the cut)
  *  - loudness normalization so every step sounds consistent
  */
-function buildAudioFilter(): string {
+function buildAudioFilter(fillToDurationSec?: number): string {
   const delayMs = Math.round(AUDIO_LEAD_IN * 1000);
-  return (
-    `adelay=${delayMs}:all=1,` +
-    `apad=pad_dur=${AUDIO_TAIL},` +
-    `loudnorm=I=-16:TP=-1.5:LRA=11`
-  );
+  // When the clip is extended past the narration (multi-waypoint holds), pad the
+  // audio with silence up to the whole clip length so it never ends early.
+  const pad =
+    fillToDurationSec && fillToDurationSec > 0
+      ? `apad=whole_dur=${fillToDurationSec.toFixed(3)}`
+      : `apad=pad_dur=${AUDIO_TAIL}`;
+  return `adelay=${delayMs}:all=1,${pad},loudnorm=I=-16:TP=-1.5:LRA=11`;
 }
 
 /* ------------------------------------------------------------------ */
@@ -623,6 +644,10 @@ export async function renderStepVideo(opts: {
   editorColorFilter?: string;
   // ── Custom zoom filter (injected by multi-waypoint renderer) ──
   customZoomFilter?: string;
+  // Force the clip to a specific length (seconds), padding audio with silence.
+  // Used by the multi-waypoint renderer to keep holds/pans/zoom-out uncompressed
+  // when the narration is shorter than the camera animation needs.
+  clipDurationOverride?: number;
 }): Promise<string> {
   await ensureWorkDir();
 
@@ -630,8 +655,12 @@ export async function renderStepVideo(opts: {
   const outputRes = opts.outputRes || "1920x1080";
   const [outW, outH] = outputRes.split("x").map(Number);
 
-  // Total clip duration includes silence padding around the narration
-  const paddedDuration = opts.audioDuration + AUDIO_LEAD_IN + AUDIO_TAIL;
+  // Total clip duration includes silence padding around the narration, unless
+  // the caller forces a longer clip to fit an extended camera animation.
+  const paddedDuration =
+    opts.clipDurationOverride && opts.clipDurationOverride > 0
+      ? opts.clipDurationOverride
+      : opts.audioDuration + AUDIO_LEAD_IN + AUDIO_TAIL;
 
   // Supersampled canvas (even dimensions required by most filters)
   const ssFactor = Math.min(2, MAX_SS_WIDTH / outW);
@@ -902,7 +931,7 @@ export async function renderStepVideo(opts: {
     `[bg]scale=${ssW}:${ssH}:force_original_aspect_ratio=increase:flags=lanczos,crop=${ssW}:${ssH},boxblur=40:40[bg_blurred];` +
     `[fg]scale=${ssW}:${ssH}:force_original_aspect_ratio=decrease:flags=lanczos[fg_scaled];` +
     `[bg_blurred][fg_scaled]${overlayChain}${postZoomChain ? "," + postZoomChain : ""},format=yuv420p[v];` +
-    `[1:a]${buildAudioFilter()}[a]`;
+    `[1:a]${buildAudioFilter(opts.clipDurationOverride && opts.clipDurationOverride > 0 ? paddedDuration : undefined)}[a]`;
 
   const args = [
     "-y",
@@ -1208,7 +1237,7 @@ async function renderStepVideoFallback(
     "-filter_complex",
     `[0:v]${drawboxFilter}${blurFilter}${redactFilter}${pixelateFilter}${spotlightFilter}${colorFilter}${cropFilter}scale=${outW}:${outH}:force_original_aspect_ratio=decrease,` +
       `pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2${mzPostZoomChain ? "," + mzPostZoomChain : ""},format=yuv420p[v];` +
-      `[1:a]adelay=${delayMs}:all=1,apad=pad_dur=${AUDIO_TAIL}[a]`,
+      `[1:a]adelay=${delayMs}:all=1,${opts.clipDurationOverride && opts.clipDurationOverride > 0 ? `apad=whole_dur=${paddedDuration.toFixed(3)}` : `apad=pad_dur=${AUDIO_TAIL}`}[a]`,
     "-map", "[v]",
     "-map", "[a]",
     "-c:v", "libx264",
@@ -1654,7 +1683,7 @@ export async function renderMultiZoomSegments(opts: {
   const outputRes = opts.outputRes || "1920x1080";
   const [outW, outH] = outputRes.split("x").map(Number);
   const paddedDuration = opts.audioDuration + AUDIO_LEAD_IN + AUDIO_TAIL;
-  const totalFrames = Math.max(Math.ceil(paddedDuration * RENDER_FPS), RENDER_FPS);
+  const audioFrames = Math.max(Math.ceil(paddedDuration * RENDER_FPS), RENDER_FPS);
 
   // ── Probe image dimensions for coordinate mapping ──
   let imgWidth = 1920;
@@ -1714,6 +1743,13 @@ export async function renderMultiZoomSegments(opts: {
     };
   });
 
+  // ── Extend the clip so holds stay 2-3s and the pans/zoom-out never compress ──
+  // When the narration is shorter than the camera animation needs, the segment
+  // is lengthened (audio padded with trailing silence) instead of squashing the
+  // motion — that squashing is what made pans teleport and holds shrink.
+  const totalFrames = computeMultiWaypointTotalFrames(waypoints, audioFrames);
+  const effectiveDuration = totalFrames / RENDER_FPS;
+
   // ── Build the single multi-waypoint zoom filter ──
   const customZoomFilter = buildMultiWaypointZoomFilter(waypoints, totalFrames, outputRes);
 
@@ -1722,6 +1758,7 @@ export async function renderMultiZoomSegments(opts: {
     screenshotPath: opts.screenshotPath,
     audioPath: opts.audioPath,
     audioDuration: opts.audioDuration,
+    clipDurationOverride: effectiveDuration,
     // Use first waypoint as the "target" for highlight box compatibility
     zoomTargetX: zooms[0].targetX,
     zoomTargetY: zooms[0].targetY,
