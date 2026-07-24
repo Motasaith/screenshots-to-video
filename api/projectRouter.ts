@@ -121,22 +121,31 @@ export const projectRouter = createRouter({
         });
       }
 
-      // Free tier enforcement
+      // Free tier enforcement: 14 videos per week
       if (ctx.user!.plan === "free") {
         const [userRow] = await getDb()
-          .select({ videosCreatedThisMonth: users.videosCreatedThisMonth })
+          .select({ videosCreatedThisMonth: users.videosCreatedThisMonth, monthlyResetAt: users.monthlyResetAt })
           .from(users)
           .where(eq(users.id, ctx.user!.id))
           .limit(1);
-        if (userRow && userRow.videosCreatedThisMonth >= 5) {
+
+        // Check if the weekly reset period has passed — if so, reset counter
+        const resetDays = 7; // free users: weekly reset
+        const shouldReset = userRow && new Date(userRow.monthlyResetAt) < new Date(Date.now() - resetDays * 24 * 60 * 60 * 1000);
+        const currentCount = shouldReset ? 0 : (userRow?.videosCreatedThisMonth ?? 0);
+
+        if (currentCount >= 14) {
           throw new TRPCError({
             code: "FORBIDDEN",
-            message: "Free tier limit: 5 videos per month. Upgrade to create more.",
+            message: "Free tier limit: 14 videos per week. Upgrade to create more.",
           });
         }
         await getDb()
           .update(users)
-          .set({ videosCreatedThisMonth: (userRow?.videosCreatedThisMonth ?? 0) + 1 })
+          .set({
+            videosCreatedThisMonth: currentCount + 1,
+            ...(shouldReset ? { monthlyResetAt: new Date() } : {}),
+          })
           .where(eq(users.id, ctx.user!.id));
       }
 

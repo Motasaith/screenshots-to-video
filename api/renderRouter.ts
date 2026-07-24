@@ -11,6 +11,11 @@ import {
   CREDIT_COST,
   MIN_CREDITS_TO_RENDER,
 } from "./lib/render-config";
+import {
+  getMissingScriptOrders,
+  hasSelectedVoice,
+  isExplicitSilentVoice,
+} from "./lib/narration";
 
 const log = createLogger({ path: "renderRouter" });
 
@@ -72,7 +77,10 @@ export const renderRouter = createRouter({
 
   start: authedQuery
     .use(rateLimitByUser(600_000, 10))
-    .input(z.object({ projectId: z.number() }))
+    .input(z.object({
+      projectId: z.number(),
+      allowSilent: z.boolean().optional().default(false),
+    }))
     .mutation(async ({ ctx, input }) => {
       const [project] = await getDb()
         .select()
@@ -104,6 +112,29 @@ export const renderRouter = createRouter({
         throw new Error(
           `Steps ${missingScreenshots.map((s) => s.order).join(", ")} are missing uploaded screenshots.`
         );
+      }
+
+      const explicitlySilent = isExplicitSilentVoice(project.voice);
+      const renderSilently = input.allowSilent || explicitlySilent;
+
+      if (!renderSilently) {
+        const narrationIssues: string[] = [];
+        if (!hasSelectedVoice(project.voice)) {
+          narrationIssues.push("Choose a voice for the voiceover.");
+        }
+
+        const missingScriptOrders = getMissingScriptOrders(projectSteps);
+        if (missingScriptOrders.length > 0) {
+          narrationIssues.push(
+            `Add or generate a script for ${missingScriptOrders.length === 1 ? "scene" : "scenes"} ${missingScriptOrders.join(", ")}.`
+          );
+        }
+
+        if (narrationIssues.length > 0) {
+          throw new Error(
+            `${narrationIssues.join(" ")} To export without voiceover or captions, choose Continue anyway.`
+          );
+        }
       }
 
       // ── SAFETY CHECK 1: Per-project duplicate render prevention ──
@@ -160,6 +191,19 @@ export const renderRouter = createRouter({
         );
       }
 
+      // Persist explicit silent intent before queueing. The special queued
+      // stage also snapshots it for this job so later project edits cannot
+      // accidentally turn narration/captions back on mid-render.
+      if (renderSilently) {
+        await getDb()
+          .update(projects)
+          .set({
+            voice: "none",
+            captionsEnabled: 0,
+          })
+          .where(eq(projects.id, input.projectId));
+      }
+
       // Deduct credits at render start (prevents credit abuse)
       await getDb()
         .update(users)
@@ -194,8 +238,10 @@ export const renderRouter = createRouter({
         status: "queued",
         currentStep: 0,
         totalSteps: projectSteps.length,
-        stage: "queued",
-        message: "Waiting in render queue...",
+        stage: renderSilently ? "queued_silent" : "queued",
+        message: renderSilently
+          ? "Waiting in render queue (voiceover and captions disabled)..."
+          : "Waiting in render queue...",
       });
 
       return { success: true, totalSteps: projectSteps.length };
@@ -275,7 +321,7 @@ export const renderRouter = createRouter({
         status: "queued",
         currentStep: 0,
         totalSteps: allSteps.length,
-        stage: "queued",
+        stage: isExplicitSilentVoice(project.voice) ? "queued_silent" : "queued",
         message: `Re-rendering step ${step.order}...`,
       });
 

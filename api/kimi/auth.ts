@@ -103,7 +103,22 @@ export function createOAuthCallbackHandler() {
     }
 
     try {
-      const redirectUri = atob(state);
+      // State can be either a plain base64-encoded redirectUri (old format)
+      // or a base64-encoded JSON object with { redirectUri, returnTo } (new format)
+      let redirectUri: string;
+      let returnTo: string | undefined;
+
+      try {
+        const decoded = atob(state);
+        // Try parsing as JSON first (new format)
+        const parsed = JSON.parse(decoded);
+        redirectUri = parsed.redirectUri || decoded;
+        returnTo = parsed.returnTo;
+      } catch {
+        // Not JSON — it's the old format (plain redirectUri string)
+        redirectUri = atob(state);
+      }
+
       const tokenResp = await exchangeAuthCode(code, redirectUri);
       
       // Verify Google ID Token
@@ -130,7 +145,12 @@ export function createOAuthCallbackHandler() {
         maxAge: Session.maxAgeMs / 1000,
       });
 
-      return c.redirect("/dashboard", 302);
+      // Redirect to returnTo if provided (e.g. homepage uploader), otherwise /dashboard
+      const safeReturn = returnTo && returnTo.startsWith("/") && !returnTo.startsWith("//")
+        ? returnTo
+        : "/dashboard";
+
+      return c.redirect(safeReturn, 302);
     } catch (error) {
       log.error("OAuth callback failed", error);
       const message = error instanceof Error ? error.message : "Unknown error";

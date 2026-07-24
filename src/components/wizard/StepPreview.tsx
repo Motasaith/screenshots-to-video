@@ -2,7 +2,11 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router";
 import { useWizardStore, type TransitionType } from "@/hooks/useWizardStore";
 import { trpc } from "@/providers/trpc";
-import { StepEditorPanel } from "./StepEditorPanel";
+import {
+  StepEditorPanel,
+  type EditorExportOptions,
+} from "./StepEditorPanel";
+import OnboardingTour from "./OnboardingTour";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,6 +21,14 @@ export default function StepPreview() {
 
   const [searchParams, setSearchParams] = useSearchParams();
   const imported = searchParams.get("imported") === "true";
+  const focusPanel =
+    searchParams.get("focus") === "voiceover"
+      ? "voiceover"
+      : searchParams.get("focus") === "script"
+        ? "script"
+        : undefined;
+  const focusScriptMode =
+    searchParams.get("scriptMode") === "manual" ? "manual" : "ai";
   const [showImportModal, setShowImportModal] = useState(imported);
 
   const [projectName, setProjectName] = useState("");
@@ -142,7 +154,10 @@ export default function StepPreview() {
     setStepTransitions((prev) => ({ ...prev, [stepId]: transition }));
   };
 
-  const handleContinue = () => {
+  const handleContinue = (options: EditorExportOptions = {}) => {
+    const exportCaptionsEnabled =
+      options.captionsEnabled ?? captionsEnabled;
+
     // Save current preview state to wizard store for consistency
     setStepData("preview", {
       stepTransitions,
@@ -155,14 +170,16 @@ export default function StepPreview() {
       outroText: project?.outroText || "",
       outroVideoPath: project?.outroVideoPath || "",
       outroDuration: project?.outroDuration || 3.0,
-      captionsEnabled,
+      captionsEnabled: exportCaptionsEnabled,
       captionStyle,
       captionSize,
       captionPosition,
       captionColor,
     });
 
-    navigate(`/create/${projectIdNum}/render`);
+    navigate(
+      `/create/${projectIdNum}/render${options.allowSilent ? "?allowSilent=true" : ""}`,
+    );
   };
 
   return (
@@ -195,8 +212,13 @@ export default function StepPreview() {
           onBack={() => navigate("/dashboard")}
           onContinue={handleContinue}
           isSaving={updateProject.isPending || updateStep.isPending}
+          focusPanel={focusPanel}
+          focusScriptMode={focusScriptMode}
         />
       </div>
+
+      {/* First-time user onboarding tour */}
+      <OnboardingTour />
 
       {/* Mandatory Project Details Popup */}
       <Dialog open={showImportModal} onOpenChange={() => {}}>
@@ -222,7 +244,7 @@ export default function StepPreview() {
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
                 placeholder="e.g. Clean partition tutorial"
-                className="bg-slate-950/40 border-[var(--space-border)] focus:border-teal-500/50 rounded-xl"
+                className="bg-slate-100/80 dark:bg-slate-950/40 border-[var(--space-border)] focus:border-teal-500/50 rounded-xl text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)]"
                 required
                 disabled={isSavingSettings}
               />
@@ -237,7 +259,7 @@ export default function StepPreview() {
                 value={projectDesc}
                 onChange={(e) => setProjectDesc(e.target.value)}
                 placeholder="Describe what this video shows..."
-                className="bg-slate-950/40 border-[var(--space-border)] focus:border-teal-500/50 rounded-xl min-h-[90px] resize-none"
+                className="bg-slate-100/80 dark:bg-slate-950/40 border-[var(--space-border)] focus:border-teal-500/50 rounded-xl min-h-[90px] resize-none text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)]"
                 required
                 disabled={isSavingSettings}
               />
@@ -261,8 +283,8 @@ export default function StepPreview() {
                       disabled={isSavingSettings}
                       className={`py-2 px-1 rounded-xl border text-[10px] font-semibold flex flex-col items-center justify-center transition-all cursor-pointer ${
                         aspectRatio === ratio
-                          ? "bg-teal-600/20 border-teal-500 text-teal-300 shadow-sm"
-                          : "bg-slate-950/20 border-[var(--space-border)] text-[var(--space-text-subtle)] hover:border-teal-500/30 hover:text-[var(--space-text)]"
+                          ? "bg-teal-500/15 border-teal-500 text-teal-700 dark:text-teal-300 shadow-sm font-bold"
+                          : "bg-slate-100/80 dark:bg-slate-950/20 border-[var(--space-border)] text-[var(--space-text-subtle)] hover:border-teal-500/30 hover:text-[var(--space-text)]"
                       }`}
                     >
                       <span className="text-sm font-bold">{ratio}</span>

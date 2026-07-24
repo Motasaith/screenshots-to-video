@@ -10,8 +10,10 @@ import {
   LayoutDashboard,
   Moon,
   Sun,
+  ShieldAlert,
 } from "lucide-react";
 import { useTheme } from "next-themes";
+import { trpc } from "@/providers/trpc";
 
 export default function Navbar() {
   const { user, logout } = useAuth();
@@ -21,6 +23,18 @@ export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+
+  // Check if admin is impersonating a user (restore cookie exists)
+  const [isImpersonating, setIsImpersonating] = useState(false);
+  useEffect(() => {
+    setIsImpersonating(document.cookie.includes("aivideo_admin_restore="));
+  }, [location.pathname]);
+
+  const restoreAdminMutation = trpc.admin.restoreAdminSession.useMutation({
+    onSuccess: () => {
+      window.location.href = "/admin";
+    },
+  });
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -135,6 +149,17 @@ export default function Navbar() {
           <div className="hidden md:flex items-center gap-3">
             {user ? (
               <>
+                {isImpersonating && (
+                  <button
+                    onClick={() => restoreAdminMutation.mutate()}
+                    disabled={restoreAdminMutation.isPending}
+                    className="glass-btn text-xs py-2 px-4 border-amber-500/30 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
+                    title="Return to your admin account"
+                  >
+                    <ShieldAlert className="w-3.5 h-3.5" />
+                    {restoreAdminMutation.isPending ? "Restoring..." : "Return to Admin"}
+                  </button>
+                )}
                 <Link
                   to="/dashboard"
                   className="glass-btn glass-btn-secondary text-xs py-2 px-4"

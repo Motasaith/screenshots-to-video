@@ -56,15 +56,43 @@ export const DELETE_GRACE_PERIOD_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 // ── Credits ──
 
-/** Credit cost per render based on resolution. */
+/**
+ * Credit cost per render.
+ * Since we currently only export in one quality (1080p), each render costs 1 credit.
+ * If multiple resolutions are added later, update this map.
+ */
 export const CREDIT_COST: Record<"720p" | "1080p" | "4k", number> = {
   "720p": 1,
-  "1080p": 2,
-  "4k": 4,
+  "1080p": 1,
+  "4k": 1,
 };
 
 /** Minimum credits required to start a render (checked before queueing). */
 export const MIN_CREDITS_TO_RENDER = 1;
+
+// ── Plan Limits ──
+
+/**
+ * Video creation limits per plan.
+ * Free: 14 videos per week
+ * Pro: Unlimited
+ * Team: Unlimited
+ */
+export const VIDEO_LIMITS: Record<"free" | "pro" | "team", { perWeek: number | null; perMonth: number | null }> = {
+  free: { perWeek: 14, perMonth: null },
+  pro: { perWeek: null, perMonth: null },
+  team: { perWeek: null, perMonth: null },
+};
+
+/** Default credits given to new free users. */
+export const DEFAULT_CREDITS = 14;
+
+/** Credits reset period in days (free users get credits reset weekly). */
+export const CREDITS_RESET_DAYS: Record<"free" | "pro" | "team", number> = {
+  free: 7,    // weekly reset
+  pro: 30,    // monthly reset
+  team: 30,   // monthly reset
+};
 
 // ── Storage Alerts ──
 

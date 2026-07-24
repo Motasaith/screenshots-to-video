@@ -36,7 +36,7 @@ app.get(Paths.oauthCallback, async (c, next) => {
 // ── File Upload Endpoint ──
 app.post("/api/upload", async (c) => {
   const ip = getClientIP(c.req.raw.headers);
-  const log = createLogger({ ip, path: "/api/upload" });
+  let log = createLogger({ ip, path: "/api/upload" });
 
   // Rate limit by IP
   const ipLimit = checkRateLimit(`ip:${ip}:upload`, 60_000, 60);
@@ -57,6 +57,9 @@ app.post("/api/upload", async (c) => {
     log.warn("Upload rejected: unauthenticated", { error: err instanceof Error ? err.message : String(err) });
     return c.json({ error: "Authentication required." }, 401);
   }
+
+  // Update logger context with userId for admin log filtering
+  log = createLogger({ ip, path: "/api/upload", userId: user.id });
 
   // Rate limit by user
   const userLimit = checkRateLimit(`user:${user.id}:upload`, 60_000, 60);

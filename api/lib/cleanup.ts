@@ -1,6 +1,6 @@
 import { getDb } from "../queries/connection";
 import { projects, steps, users } from "@db/schema";
-import { eq, and, isNotNull, lt, gt, count } from "drizzle-orm";
+import { eq, and, isNotNull, lt, gt, count, inArray } from "drizzle-orm";
 import { deleteFromR2 } from "./r2";
 import { createLogger } from "./logger";
 
@@ -101,18 +101,42 @@ export async function purgeProjectData(projectId: number) {
 }
 
 /**
- * Reset monthly video counters for users whose reset date is > 30 days ago.
+ * Reset video counters for users whose reset period has passed.
+ * Free users: weekly reset (7 days). Pro/Team: monthly reset (30 days).
  */
 export async function resetMonthlyCounters() {
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const now = new Date();
 
+  // Free users: reset if last reset was > 7 days ago
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   await getDb()
     .update(users)
     .set({
       videosCreatedThisMonth: 0,
-      monthlyResetAt: new Date(),
+      credits: 14, // refill free user credits weekly
+      monthlyResetAt: now,
     })
-    .where(lt(users.monthlyResetAt, thirtyDaysAgo));
+    .where(
+      and(
+        eq(users.plan, "free"),
+        lt(users.monthlyResetAt, weekAgo)
+      )
+    );
+
+  // Pro/Team users: reset if last reset was > 30 days ago
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  await getDb()
+    .update(users)
+    .set({
+      videosCreatedThisMonth: 0,
+      monthlyResetAt: now,
+    })
+    .where(
+      and(
+        inArray(users.plan, ["pro", "team"]),
+        lt(users.monthlyResetAt, thirtyDaysAgo)
+      )
+    );
 }
 
 /**

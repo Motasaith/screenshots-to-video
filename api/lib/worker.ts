@@ -16,15 +16,28 @@ import {
 import { cleanupExpiredProjects } from "./cleanup";
 import { logger } from "./logger";
 import { RETENTION_DAYS, RENDER_TIMEOUT_MS, STUCK_JOB_CHECK_INTERVAL_POLLS, CREDIT_COST } from "./render-config";
+import {
+  getNarrationScript,
+  hasSelectedVoice,
+  isExplicitSilentVoice,
+} from "./narration";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
 import { nanoid } from "nanoid";
 
 const POLL_INTERVAL_MS = 5000;
+const JOB_HEARTBEAT_INTERVAL_MS = 30_000;
 let pollCount = 0;
 
 let lastErrorMsg = "";
+
+class RenderJobInactiveError extends Error {
+  constructor(jobId: number) {
+    super(`Render job #${jobId} is no longer active`);
+    this.name = "RenderJobInactiveError";
+  }
+}
 
 /**
  * Start the background render worker.
@@ -167,11 +180,43 @@ async function processNextJob(): Promise<void> {
 
   if (!job) return; // No work to do
 
+  // Claim the job atomically. During dev hot reloads or multi-instance
+  // deployments, more than one worker can observe the same queued row.
+  // Only the worker whose conditional update affects the row may render it.
+  const claimResult = await getDb()
+    .update(renderJobs)
+    .set({
+      status: "processing",
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(renderJobs.id, job.id),
+        eq(renderJobs.status, "queued")
+      )
+    );
+  const claimHeader = Array.isArray(claimResult) ? claimResult[0] : claimResult;
+  const affectedRows = Number((claimHeader as any)?.affectedRows ?? 0);
+  if (affectedRows !== 1) {
+    logger.info(`Job #${job.id} was claimed by another render worker`);
+    return;
+  }
+
   logger.info(`Processing job #${job.id} for project #${job.projectId}`);
 
+  const stopHeartbeat = startJobHeartbeat(job.id);
   try {
-    await processRenderJob(job.id, job.projectId);
+    await processRenderJob(
+      job.id,
+      job.projectId,
+      job.stage === "queued_silent"
+    );
   } catch (err: any) {
+    if (err instanceof RenderJobInactiveError) {
+      logger.warn(err.message);
+      return;
+    }
+
     logger.error(`Job #${job.id} failed`, err);
 
     // Mark job as failed
@@ -222,7 +267,31 @@ async function processNextJob(): Promise<void> {
     } catch (refundErr) {
       logger.error(`Failed to refund credits for job #${job.id}`, refundErr);
     }
+  } finally {
+    stopHeartbeat();
   }
+}
+
+function startJobHeartbeat(jobId: number): () => void {
+  const heartbeat = setInterval(() => {
+    void getDb()
+      .update(renderJobs)
+      .set({ updatedAt: new Date() })
+      .where(
+        and(
+          eq(renderJobs.id, jobId),
+          eq(renderJobs.status, "processing")
+        )
+      )
+      .catch((err) => {
+        logger.warn(`Failed to heartbeat render job #${jobId}`, {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+  }, JOB_HEARTBEAT_INTERVAL_MS);
+  heartbeat.unref();
+
+  return () => clearInterval(heartbeat);
 }
 
 /**
@@ -232,7 +301,11 @@ async function processNextJob(): Promise<void> {
  * 3. Concatenate into final video
  * 4. Upload to R2
  */
-async function processRenderJob(jobId: number, projectId: number): Promise<void> {
+async function processRenderJob(
+  jobId: number,
+  projectId: number,
+  queuedAsSilent: boolean
+): Promise<void> {
   const tempFiles: string[] = []; // Track temp files for cleanup
 
   try {
@@ -244,6 +317,13 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
       .limit(1);
 
     if (!project) throw new Error("Project not found");
+
+    const renderSilently = queuedAsSilent || isExplicitSilentVoice(project.voice);
+    if (!renderSilently && !hasSelectedVoice(project.voice)) {
+      throw new Error(
+        "No voice is selected. Choose a voice or explicitly continue without voiceover and captions."
+      );
+    }
 
     // Load steps
     const projectSteps = await getDb()
@@ -263,37 +343,60 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
       stage: "generating_audio",
       currentStep: 0,
       totalSteps,
-      message: "Starting audio generation...",
+      message: renderSilently
+        ? "Preparing silent audio tracks..."
+        : "Starting audio generation...",
     });
 
     // ── STAGE 1: Generate TTS audio for each step ──
     for (let i = 0; i < projectSteps.length; i++) {
       const step = projectSteps[i];
-      const script = step.userEditedScript || step.aiScript || step.description;
+      const script = getNarrationScript(step);
+      if (!renderSilently && !script) {
+        throw new Error(
+          `Scene ${step.order} has no script. Generate or paste a script before rendering.`
+        );
+      }
+      (projectSteps[i] as any)._narrationScript = script;
 
       await updateJob(jobId, {
         stage: "generating_audio",
         currentStep: i + 1,
-        message: `Generating audio for step ${i + 1} of ${totalSteps}...`,
+        message: renderSilently
+          ? `Preparing silent audio for step ${i + 1} of ${totalSteps}...`
+          : `Generating audio for step ${i + 1} of ${totalSteps}...`,
       });
 
       await updateStepStatus(step.id, "generating");
 
       // Generate TTS audio
       const { filePath: audioLocalPath, duration: audioDuration } =
-        await generateTTSAudio(script, {
-          voice: project.voice || "en-US-AriaNeural",
+        await generateTTSAudio(renderSilently ? "" : script, {
+          voice: renderSilently ? "none" : project.voice!,
           rate: speedToRate(project.speed || 1.0),
+          silenceDuration:
+            typeof step.editorDuration === "number" && step.editorDuration > 0
+              ? step.editorDuration
+              : 3,
         });
 
       tempFiles.push(audioLocalPath);
 
       // Upload audio to R2
       const audioBuffer = await fs.readFile(audioLocalPath);
+      if (audioBuffer.byteLength < 256) {
+        throw new Error(
+          `Generated audio for scene ${step.order} is empty or incomplete`
+        );
+      }
+      const audioExtension = path.extname(audioLocalPath).toLowerCase();
+      const audioContentType = audioExtension === ".wav"
+        ? "audio/wav"
+        : "audio/mpeg";
       const audioKey = await uploadToR2(audioBuffer, {
         folder: `projects/${projectId}/audio`,
-        filename: `step_${step.id}.mp3`,
-        contentType: "audio/mpeg",
+        filename: `step_${step.id}${audioExtension === ".wav" ? ".wav" : ".mp3"}`,
+        contentType: audioContentType,
       });
 
       // Update step with audio info
@@ -310,7 +413,7 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
       (projectSteps[i] as any)._audioDuration = audioDuration;
 
       logger.info(
-        `Step ${i + 1}/${totalSteps}: audio generated (${audioDuration.toFixed(1)}s)`
+        `Step ${i + 1}/${totalSteps}: ${renderSilently ? "silent audio prepared" : "audio generated"} (${audioDuration.toFixed(1)}s)`
       );
     }
 
@@ -389,6 +492,7 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
           screenshotPath: screenshotLocalPath,
           audioPath: audioLocalPath,
           audioDuration: audioDuration,
+          normalizeAudio: !renderSilently,
           multiZooms: multiZooms.map((mz: any) => ({
             targetX: mz.targetX ?? 50,
             targetY: mz.targetY ?? 50,
@@ -401,12 +505,14 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
           })),
           outputRes: outputRes,
           captions: {
-            enabled: project.captionsEnabled === 1,
+            enabled: !renderSilently && project.captionsEnabled === 1,
             style: project.captionStyle || "standard",
             size: project.captionSize || "medium",
             position: project.captionPosition || "bottom",
             color: project.captionColor || "#FFFFFF",
-            text: step.userEditedScript || step.aiScript || step.description || "",
+            text: renderSilently
+              ? ""
+              : (step as any)._narrationScript || "",
           },
           editorCropX: step.editorCropX ?? undefined,
           editorCropY: step.editorCropY ?? undefined,
@@ -469,6 +575,7 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
           screenshotPath: screenshotLocalPath,
           audioPath: audioLocalPath,
           audioDuration: audioDuration,
+          normalizeAudio: !renderSilently,
           zoomTargetX: zoomX,
           zoomTargetY: zoomY,
           zoomRectX: step.zoomRectX ?? undefined,
@@ -478,12 +585,14 @@ async function processRenderJob(jobId: number, projectId: number): Promise<void>
           editorHighlights: (step as any).editorHighlights ?? undefined,
           outputRes: outputRes,
           captions: {
-            enabled: project.captionsEnabled === 1,
+            enabled: !renderSilently && project.captionsEnabled === 1,
             style: project.captionStyle || "standard",
             size: project.captionSize || "medium",
             position: project.captionPosition || "bottom",
             color: project.captionColor || "#FFFFFF",
-            text: step.userEditedScript || step.aiScript || step.description || "",
+            text: renderSilently
+              ? ""
+              : (step as any)._narrationScript || "",
           },
           // ── Canvas editor fields ──
           editorCropX: step.editorCropX ?? undefined,

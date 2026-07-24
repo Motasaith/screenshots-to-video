@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createRouter, adminQuery, isMaintenanceMode, setMaintenanceMode, rateLimitByUser } from "./middleware";
+import { createRouter, adminQuery, authedQuery, isMaintenanceMode, setMaintenanceMode, rateLimitByUser } from "./middleware";
 import { getDb } from "./queries/connection";
 import { users, projects, renderJobs } from "@db/schema";
 import { desc, count, eq, and, gte, sql, like, or } from "drizzle-orm";
@@ -209,6 +209,65 @@ export const adminRouter = createRouter({
           sameSite: opts.sameSite?.toLowerCase() as "lax" | "none",
           secure: opts.secure,
           maxAge: Session.maxAgeMs / 1000,
+        })
+      );
+
+      // Store the admin's original session token in a short-lived cookie
+      // so it can be restored when the admin wants to return to their account.
+      // This cookie is NOT httpOnly so the frontend can detect it via document.cookie
+      // and show the "Return to Admin" button.
+      const adminToken = ctx.req.headers.get("cookie")?.match(/aivideo_session=([^;]+)/)?.[1];
+      if (adminToken) {
+        ctx.resHeaders.append(
+          "set-cookie",
+          cookie.serialize("aivideo_admin_restore", adminToken, {
+            httpOnly: false,
+            path: opts.path,
+            sameSite: opts.sameSite?.toLowerCase() as "lax" | "none",
+            secure: opts.secure,
+            maxAge: 3600, // 1 hour to restore
+          })
+        );
+      }
+
+      return { success: true };
+    }),
+
+  // ── Restore admin session after impersonation ──
+  // Uses authedQuery (not adminQuery) because the admin is currently logged in
+  // as the impersonated user, so they don't have admin role in their session.
+  restoreAdminSession: authedQuery
+    .use(rateLimitByUser(60_000, 5))
+    .mutation(async ({ ctx }) => {
+      // This endpoint is called by the impersonated user's session,
+      // so ctx.user is the target user, not the admin.
+      // We need to read the admin restore cookie and set it back as the main session.
+      const restoreToken = ctx.req.headers.get("cookie")?.match(/aivideo_admin_restore=([^;]+)/)?.[1];
+      if (!restoreToken) {
+        throw new Error("No admin session to restore. The restore cookie may have expired.");
+      }
+
+      const opts = getSessionCookieOptions(ctx.req.headers);
+      // Set the admin's original token back as the main session
+      ctx.resHeaders.append(
+        "set-cookie",
+        cookie.serialize(Session.cookieName, restoreToken, {
+          httpOnly: opts.httpOnly,
+          path: opts.path,
+          sameSite: opts.sameSite?.toLowerCase() as "lax" | "none",
+          secure: opts.secure,
+          maxAge: Session.maxAgeMs / 1000,
+        })
+      );
+      // Clear the restore cookie
+      ctx.resHeaders.append(
+        "set-cookie",
+        cookie.serialize("aivideo_admin_restore", "", {
+          httpOnly: opts.httpOnly,
+          path: opts.path,
+          sameSite: opts.sameSite?.toLowerCase() as "lax" | "none",
+          secure: opts.secure,
+          maxAge: 0,
         })
       );
 

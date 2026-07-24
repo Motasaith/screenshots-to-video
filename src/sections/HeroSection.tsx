@@ -13,6 +13,82 @@ import JSZip from "jszip";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
 import { toast } from "sonner";
+import { compressImages } from "@/lib/imageCompress";
+
+// ── IndexedDB helpers for persisting pending files across OAuth redirect ──
+const PENDING_DB_NAME = "aivideo_pending";
+const PENDING_STORE = "files";
+
+function openPendingDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(PENDING_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(PENDING_STORE)) {
+        db.createObjectStore(PENDING_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function savePendingFiles(files: File[]): Promise<void> {
+  try {
+    // Convert File objects to { name, type, blob } for reliable IndexedDB storage
+    // File objects from drag-and-drop may not serialize properly
+    const serializable = await Promise.all(
+      files.map(async (f) => ({
+        name: f.name,
+        type: f.type,
+        data: await f.arrayBuffer(),
+      }))
+    );
+    const db = await openPendingDB();
+    const tx = db.transaction(PENDING_STORE, "readwrite");
+    tx.objectStore(PENDING_STORE).put(serializable, "pending");
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch {
+    // IndexedDB might not be available — files will be lost
+  }
+}
+
+async function loadPendingFiles(): Promise<File[] | null> {
+  try {
+    const db = await openPendingDB();
+    const tx = db.transaction(PENDING_STORE, "readonly");
+    const result = await new Promise<Array<{ name: string; type: string; data: ArrayBuffer }> | null>((resolve, reject) => {
+      const req = tx.objectStore(PENDING_STORE).get("pending");
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => reject(req.error);
+    });
+    db.close();
+    if (!result) return null;
+    // Reconstruct File objects from stored data
+    return result.map((item) => new File([item.data], item.name, { type: item.type }));
+  } catch {
+    return null;
+  }
+}
+
+async function clearPendingFiles(): Promise<void> {
+  try {
+    const db = await openPendingDB();
+    const tx = db.transaction(PENDING_STORE, "readwrite");
+    tx.objectStore(PENDING_STORE).delete("pending");
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+  } catch {
+    // ignore
+  }
+}
 
 // SimulatorStep type removed
 
@@ -191,24 +267,28 @@ async function processFiles(files: File[]): Promise<File[]> {
   return images;
 }
 
-function getOAuthUrl() {
+function getOAuthUrl(returnTo?: string) {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
   const redirectUri = `${window.location.origin}/api/oauth/callback`;
-  const state = btoa(redirectUri);
+  // Encode both the redirectUri and optional returnTo in the state parameter.
+  // Google passes state back to our callback unchanged.
+  const stateData = returnTo
+    ? btoa(JSON.stringify({ redirectUri, returnTo }))
+    : btoa(redirectUri);
 
   const url = new URL("https://accounts.google.com/o/oauth2/v2/auth");
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("scope", "openid email profile");
-  url.searchParams.set("state", state);
+  url.searchParams.set("state", stateData);
 
   return url.toString();
 }
 
 export default function HeroSection() {
 
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
   const createProject = trpc.project.create.useMutation();
   const createStep = trpc.step.create.useMutation();
@@ -269,10 +349,108 @@ export default function HeroSection() {
     return () => clearInterval(timer);
   }, [retryCountdown]);
 
+  // ── Check for pending files after OAuth redirect ──
+  // When a user returns from Google signup, check if they had selected files
+  // before being asked to sign in. If so, resume the upload automatically.
+  const hasCheckedPending = useRef(false);
+  useEffect(() => {
+    // Wait for auth to finish loading before checking for pending files
+    if (authLoading) return;
+    if (hasCheckedPending.current) return;
+    if (!isAuthenticated) return;
+    hasCheckedPending.current = true;
+
+    (async () => {
+      const pending = await loadPendingFiles();
+      if (pending && pending.length > 0) {
+        await clearPendingFiles();
+        // Resume the upload flow with the persisted files
+        setUploadState("parsing");
+        setUploadMessage("Restoring your screenshots...");
+        try {
+          const processed = await processFiles(pending);
+          if (processed.length === 0) {
+            setUploadState("error");
+            setErrorMsg("No valid screenshots found in selection.");
+            toast.error("No valid screenshots (PNG, JPEG, WebP, GIF) found.");
+            return;
+          }
+
+          // Compress images to WebP (lossless quality, smaller file size)
+          setUploadMessage("Optimizing screenshots...");
+          const compressed = await compressImages(processed);
+
+          setUploadState("uploading");
+          setUploadProgress(0);
+          setUploadMessage("Creating vision project...");
+
+          const projectResult = await createProject.mutateAsync({
+            title: "Imported Video",
+            description: "Screenshots imported from folder uploader.",
+            platform: "youtube",
+            aspectRatio: "16:9",
+          });
+
+          const total = compressed.length;
+          for (let i = 0; i < total; i++) {
+            const file = compressed[i];
+            setUploadMessage(`Uploading screenshot ${i + 1} of ${total}: ${file.name}`);
+            setUploadProgress(Math.round((i / total) * 100));
+
+            const formData = new FormData();
+            formData.append("file", file);
+            formData.append("folder", "screenshots");
+
+            const uploadResponse = await fetch("/api/upload", {
+              method: "POST",
+              body: formData,
+              credentials: "include",
+            });
+
+            if (!uploadResponse.ok) {
+              const errText = await uploadResponse.text();
+              throw new Error(`Upload failed: ${errText || uploadResponse.statusText}`);
+            }
+
+            const uploadResult = await uploadResponse.json();
+
+            await createStep.mutateAsync({
+              projectId: projectResult.id,
+              order: i + 1,
+              description: "",
+              screenshotPath: uploadResult.key,
+            });
+
+            if (i < total - 1) {
+              await new Promise((r) => setTimeout(r, 200));
+            }
+          }
+
+          setUploadProgress(100);
+          setUploadState("success");
+          setUploadMessage("Redirecting to editor...");
+          toast.success("Successfully imported screenshots!");
+
+          navigate(`/create/${projectResult.id}/preview?imported=true`);
+        } catch (err: any) {
+          const rawMsg = err?.message || "An error occurred during upload.";
+          const { message, retryAfter } = parseErrorMessage(rawMsg);
+          setUploadState("error");
+          setErrorMsg(message);
+          if (retryAfter > 0) {
+            setRetryCountdown(retryAfter);
+          }
+        }
+      }
+    })();
+  }, [isAuthenticated, authLoading, navigate]);
+
   const handleFilesSelected = async (files: FileList | File[] | null) => {
     if (!files || files.length === 0) return;
 
     if (!isAuthenticated) {
+      // Persist files in IndexedDB so they survive the OAuth redirect
+      await savePendingFiles(Array.from(files));
       setShowAuthDialog(true);
       return;
     }
@@ -291,6 +469,10 @@ export default function HeroSection() {
         return;
       }
 
+      // Compress images to WebP (lossless quality, smaller file size)
+      setUploadMessage("Optimizing screenshots...");
+      const compressed = await compressImages(processed);
+
       setUploadState("uploading");
       setUploadProgress(0);
       setUploadMessage("Creating vision project...");
@@ -302,9 +484,9 @@ export default function HeroSection() {
         aspectRatio: "16:9",
       });
 
-      const total = processed.length;
+      const total = compressed.length;
       for (let i = 0; i < total; i++) {
-        const file = processed[i];
+        const file = compressed[i];
         setUploadMessage(`Uploading screenshot ${i + 1} of ${total}: ${file.name}`);
         setUploadProgress(Math.round((i / total) * 100));
 
@@ -360,6 +542,11 @@ export default function HeroSection() {
     setIsDragging(false);
 
     if (!isAuthenticated) {
+      // Persist dropped files in IndexedDB before showing auth dialog
+      const droppedFiles = Array.from(e.dataTransfer.files || []);
+      if (droppedFiles.length > 0) {
+        await savePendingFiles(droppedFiles);
+      }
       setShowAuthDialog(true);
       return;
     }
@@ -468,7 +655,7 @@ export default function HeroSection() {
               transition={{ delay: 2, duration: 0.5 }}
               className="mt-8 flex flex-wrap items-center gap-6 text-sm text-[var(--space-text-muted)]"
             >
-              {["No credit card required", "5 free videos / month", "ElevenLabs Voices"].map((item, i) => (
+              {["No credit card required", "14 free videos / week", "AI voiceover included"].map((item, i) => (
                 <motion.div
                   key={i}
                   initial={{ opacity: 0, x: -10 }}
@@ -527,7 +714,7 @@ export default function HeroSection() {
 
                 {/* AUTH REQUIRED DIALOG */}
                 {showAuthDialog && (
-                  <div className="text-center p-8 flex flex-col items-center justify-center h-full w-full bg-[var(--space-card)]/95 backdrop-blur-md absolute inset-0 z-40 rounded-2xl font-sans border border-[var(--space-border)] shadow-lg">
+                  <div className="text-center p-8 flex flex-col items-center justify-center h-full w-full bg-[var(--space-bg)] absolute inset-0 z-40 rounded-2xl font-sans border border-[var(--space-border)] shadow-lg">
                     <div className="w-14 h-14 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mb-4 animate-pulse">
                       <AlertCircle className="w-7 h-7 text-amber-500" />
                     </div>
@@ -539,7 +726,8 @@ export default function HeroSection() {
                       <button
                         type="button"
                         onClick={() => {
-                          window.location.href = getOAuthUrl();
+                          // Pass return_to=/ so user lands back on the homepage after signup
+                          window.location.href = getOAuthUrl("/");
                         }}
                         className="glass-btn glass-btn-primary cursor-pointer text-sm font-semibold rounded-xl"
                       >

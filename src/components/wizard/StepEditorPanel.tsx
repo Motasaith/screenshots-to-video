@@ -89,10 +89,17 @@ import {
   DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import type { TransitionType } from "@/hooks/useWizardStore";
 import AIGuide from "@/components/wizard/AIGuide";
 import Timeline, { type TimelineClip } from "@/components/wizard/Timeline";
 import { INTRO_TEMPLATES, OUTRO_TEMPLATES, getTemplate } from "@/components/wizard/introOutroTemplates";
+import { RenderPreflightDialog } from "@/components/wizard/RenderPreflightDialog";
+import {
+  getRenderPreflight,
+  isSilentVoice,
+  type RenderPreflightResult,
+} from "@/components/wizard/renderPreflight";
 import { detectGibberish } from "@/lib/gibberish";
 
 /* ------------------------------------------------------------------ */
@@ -300,8 +307,15 @@ export interface StepEditorPanelProps {
   parentSteps?: Array<{ id: number; screenshotPath?: string | null; description?: string | null; transition?: string | null }>;
   /** Navigation handlers and states */
   onBack?: () => void;
-  onContinue?: () => void;
+  onContinue?: (options?: EditorExportOptions) => void;
   isSaving?: boolean;
+  focusPanel?: "script" | "voiceover";
+  focusScriptMode?: "ai" | "manual";
+}
+
+export interface EditorExportOptions {
+  allowSilent?: boolean;
+  captionsEnabled?: boolean;
 }
 
 const transitionTypes: { value: TransitionType; label: string }[] = [
@@ -488,6 +502,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
   // Voice selection states
   const [selectedVoice, setSelectedVoice] = useState("en-US-AndrewMultilingualNeural");
+  const [savedVoice, setSavedVoice] = useState<string | null>(null);
   const [voiceSpeed, setVoiceSpeed] = useState(1.0);
   const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
@@ -541,8 +556,12 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   };
 
   useEffect(() => {
-    if (project?.voice) {
-      setSelectedVoice(project.voice);
+    if (project) {
+      const nextVoice = project.voice?.trim() || null;
+      setSavedVoice(nextVoice);
+      if (nextVoice) {
+        setSelectedVoice(nextVoice);
+      }
     }
     if (project?.speed) {
       setVoiceSpeed(project.speed);
@@ -588,6 +607,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const [deleteSceneIdx, setDeleteSceneIdx] = useState<number | null>(null);
   const [renderStarted, setRenderStarted] = useState(false);
   const [startRenderError, setStartRenderError] = useState<string | null>(null);
+  const [showRenderPreflight, setShowRenderPreflight] = useState(false);
+  const [isPreparingExport, setIsPreparingExport] = useState(false);
+  const [renderPreflight, setRenderPreflight] =
+    useState<RenderPreflightResult>(() => getRenderPreflight([], null));
 
   const startRender = trpc.render.start.useMutation();
 
@@ -952,7 +975,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
   const [tempDesc, setTempDesc] = useState("");
   const [tempScript, setTempScript] = useState("");
-  const [scriptViewMode, setScriptViewMode] = useState<"current" | "all">("current");
+  const [scriptViewMode] = useState<"current" | "all">("all");
   const [allSceneTexts, setAllSceneTexts] = useState<Record<number, { desc: string; script: string }>>({});
 
   useEffect(() => {
@@ -961,7 +984,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       project.steps.forEach((s) => {
         texts[s.id] = {
           desc: s.description || "",
-          script: s.userEditedScript || s.aiScript || "",
+          script: s.userEditedScript ?? s.aiScript ?? "",
         };
       });
       setAllSceneTexts((prev) => {
@@ -979,7 +1002,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   useEffect(() => {
     if (currentStep) {
       setTempDesc(currentStep.description || "");
-      setTempScript(currentStep.userEditedScript || currentStep.aiScript || "");
+      setTempScript(currentStep.userEditedScript ?? currentStep.aiScript ?? "");
     }
   }, [
     currentStepIndex, 
@@ -1858,10 +1881,25 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     if (project?.steps) {
       for (const step of project.steps) {
         const ann = annotations[step.id];
+        const sceneText = allSceneTexts[step.id];
         const transition = props.stepTransitions?.[step.id] || props.globalTransition || "fade";
         const payload: Record<string, unknown> = {
           transition,
         };
+        if (sceneText) {
+          const persistedScript = step.userEditedScript ?? step.aiScript ?? "";
+          if (sceneText.script !== persistedScript) {
+            // Flush focused textarea edits before preflight/render. Relying on
+            // blur here races the Export click and can leave TTS with stale text.
+            payload.userEditedScript = sceneText.script;
+          }
+          if (
+            sceneText.desc.trim() &&
+            sceneText.desc !== (step.description || "")
+          ) {
+            payload.description = sceneText.desc;
+          }
+        }
         if (ann) {
           fieldsList.forEach((f) => {
             const v = ann[f as keyof StepAnnotation];
@@ -3306,7 +3344,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 </button>
               </div>
 
-              <div className="space-y-2 max-h-[300px] overflow-y-auto">
+              <div className="space-y-2">
                 {currentAnn?.editorMultiZooms?.map((mz, idx) => (
                   <div key={mz.id} className="p-2 border border-[var(--sketch-fg-subtle)]/20 rounded bg-[var(--sketch-fg-subtle)]/5">
                     <div className="flex items-center justify-between mb-1">
@@ -3381,6 +3419,9 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                         />
                         <span className="text-[10px] font-mono w-8">{(mz.zoomScale || 2).toFixed(1)}x</span>
                       </div>
+                      <p className="text-[9px] text-[var(--sketch-fg-muted)] mt-0.5">
+                        1.5x = mild, 2.0x = standard, 3.0x = close-up, 4.0x = extreme
+                      </p>
                     </div>
                     <div className="mt-1">
                       <Label className="text-[10px] font-mono">Duration (sec)</Label>
@@ -3454,126 +3495,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
             </div>
           )}
 
-          {/* Zoom Properties */}
-          {activeTab === "multizoom" && (
-            <div className="space-y-3">
-              <div>
-                <Label className="text-xs font-mono">Zoom Scale</Label>
-                <div className="flex items-center gap-3 mt-1">
-                  <Slider
-                    value={[currentAnn?.editorZoomScale ?? 1.0]}
-                    min={1}
-                    max={3}
-                    step={0.1}
-                    onValueChange={([v]) =>
-                      setAnnotations((prev) => ({
-                        ...prev,
-                        [currentStep!.id]: {
-                          ...prev[currentStep!.id],
-                          editorZoomScale: v,
-                        },
-                      }))
-                    }
-                    onValueCommit={([v]) => {
-                      pushHistory({
-                        ...annotations,
-                        [currentStep!.id]: {
-                          ...(annotations[currentStep!.id] || {}),
-                          editorZoomScale: v,
-                        },
-                      });
-                    }}
-                    className="flex-1"
-                  />
-                  <span className="text-xs font-mono w-10 text-right">
-                    {currentAnn?.editorZoomScale?.toFixed(1) || "1.0"}x
-                  </span>
-                </div>
-                <p className="text-[10px] text-[var(--sketch-fg-muted)] mt-1">
-                  Set to 1.0x to disable zoom (static image)
-                </p>
-              </div>
-
-              <div>
-                <Label className="text-xs font-mono">Duration Override (sec)</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={60}
-                  step={0.5}
-                  value={currentAnn?.editorDuration ?? ""}
-                  onChange={(e) =>
-                    setAnnotations((prev) => ({
-                      ...prev,
-                      [currentStep!.id]: {
-                        ...prev[currentStep!.id],
-                        editorDuration: Number(e.target.value),
-                      },
-                    }))
-                  }
-                  onBlur={() => pushHistory(annotations)}
-                  placeholder="Auto"
-                  className="mt-1 text-xs"
-                />
-                <p className="text-[10px] text-[var(--sketch-fg-muted)] mt-1">
-                  Leave empty to use audio duration
-                </p>
-              </div>
-
-              <div className="pt-2 border-t border-[var(--sketch-fg-subtle)]/20">
-                <p className="text-[10px] text-[var(--sketch-fg-muted)] mb-2">
-                  Zoom points ({(currentAnn?.editorMultiZooms || []).length}):
-                </p>
-                {(currentAnn?.editorMultiZooms || []).length > 0 ? (
-                  <div className="space-y-1">
-                    {(currentAnn?.editorMultiZooms || []).map((mz, idx) => (
-                      <div key={mz.id} className="flex items-center justify-between text-xs font-mono text-[var(--sketch-fg-muted)] bg-[var(--sketch-fg-subtle)]/10 rounded px-2 py-1">
-                        <span>Point {idx + 1}: {mz.targetX.toFixed(1)}%, {mz.targetY.toFixed(1)}%</span>
-                        <button
-                          onClick={() => {
-                            const next = {
-                              ...annotations,
-                              [currentStep!.id]: {
-                                ...(annotations[currentStep!.id] || {}),
-                                editorMultiZooms: (currentAnn?.editorMultiZooms || []).filter((r) => r.id !== mz.id),
-                              },
-                            };
-                            pushHistory(next);
-                          }}
-                          className="text-red-500 hover:text-red-600"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-[var(--sketch-fg-subtle)]">No zoom points. Click on canvas with Zoom tool.</p>
-                )}
-              </div>
-
-              <button
-                onClick={() => {
-                  handleClear("zoomTargetX");
-                  handleClear("zoomTargetY");
-                  const next = {
-                    ...annotations,
-                    [currentStep!.id]: {
-                      ...(annotations[currentStep!.id] || {}),
-                      editorMultiZooms: [],
-                      editorZoomScale: null,
-                    },
-                  };
-                  pushHistory(next);
-                }}
-                className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
-              >
-                <Trash2 className="w-3 h-3" />
-                Clear all zoom points
-              </button>
-            </div>
-          )}
-
           {/* No Tool Selected / select / pan placeholder */}
           {(activeTab === "select" || activeTab === "pan") && (
             <div className="flex flex-col items-center justify-center py-8 text-center border-2 border-dashed border-[var(--sketch-fg-subtle)]/20 rounded-lg">
@@ -3603,10 +3524,169 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const [manualScriptText, setManualScriptText] = useState("");
   const regenerateStep = trpc.ai.regenerateStepScript.useMutation();
 
+  useEffect(() => {
+    if (!props.focusPanel) return;
+
+    setActiveRightTab(props.focusPanel);
+    if (props.focusPanel === "script") {
+      setScriptMode(props.focusScriptMode || "ai");
+    }
+    if (window.innerWidth < 768) {
+      setIsMobileSidebarOpen(true);
+    }
+  }, [props.focusPanel, props.focusScriptMode]);
+
+  const openNarrationPanel = (panel: "script" | "voiceover", mode?: "ai" | "manual") => {
+    setShowRenderPreflight(false);
+    setActiveRightTab(panel);
+    if (panel === "script" && mode) {
+      setScriptMode(mode);
+    }
+    if (window.innerWidth < 768) {
+      setIsMobileSidebarOpen(true);
+    }
+  };
+
+  const continueToRender = (allowSilent: boolean) => {
+    const options: EditorExportOptions = {
+      allowSilent,
+      captionsEnabled: allowSilent ? false : props.captionsEnabled,
+    };
+
+    if (props.onContinue) {
+      props.onContinue(options);
+      return;
+    }
+
+    window.location.href = `/create/${projectIdNum}/render${allowSilent ? "?allowSilent=true" : ""}`;
+  };
+
+  const persistSilentExport = async () => {
+    await updateProject.mutateAsync({
+      id: projectIdNum,
+      voice: "none",
+      captionsEnabled: false,
+    });
+    setSavedVoice("none");
+    setSelectedVoice("none");
+    props.onCaptionsEnabledChange?.(false);
+    await utils.project.getById.invalidate({ id: projectIdNum });
+  };
+
+  const handleExportRequest = async () => {
+    if (isPreparingExport) return;
+
+    setIsPreparingExport(true);
+    try {
+      // This flushes annotation and focused script edits before readiness is
+      // evaluated, so the preflight reflects exactly what is on screen.
+      await handleSaveAllSteps();
+
+      const result = getRenderPreflight(
+        steps,
+        savedVoice ?? project?.voice,
+        allSceneTexts,
+      );
+      setRenderPreflight(result);
+
+      if (result.requiresConfirmation) {
+        setShowRenderPreflight(true);
+        return;
+      }
+
+      if (result.isExplicitlySilent) {
+        await persistSilentExport();
+        continueToRender(true);
+        return;
+      }
+
+      continueToRender(false);
+    } catch (err: any) {
+      toast.error(err.message || "Could not prepare this video for export.");
+    } finally {
+      setIsPreparingExport(false);
+    }
+  };
+
+  const handleContinueSilently = async () => {
+    if (isPreparingExport) return;
+
+    setIsPreparingExport(true);
+    try {
+      await persistSilentExport();
+      setShowRenderPreflight(false);
+      continueToRender(true);
+    } catch (err: any) {
+      toast.error(err.message || "Could not switch this project to silent export.");
+    } finally {
+      setIsPreparingExport(false);
+    }
+  };
+
+  const handleGenerateScriptsFromPreflight = async () => {
+    openNarrationPanel("script", "ai");
+
+    const blankSteps = steps.filter((step) => {
+      const description =
+        allSceneTexts[step.id]?.desc ?? step.description ?? "";
+      return !description.trim() || /^scene\s+\d+$/i.test(description.trim());
+    });
+
+    if (blankSteps.length > 0) {
+      toast.error(
+        `Scene ${blankSteps[0].order} needs a description before AI can generate its script.`,
+      );
+      return;
+    }
+
+    try {
+      await generateScript.mutateAsync({ projectId: projectIdNum });
+      await Promise.all([
+        utils.step.listByProject.invalidate({ projectId: projectIdNum }),
+        utils.project.getById.invalidate({ id: projectIdNum }),
+      ]);
+      setAllSceneTexts({});
+      toast.success("Scripts generated successfully!");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to generate scripts.");
+    }
+  };
+
+  const saveVoiceSelection = async (premium = false) => {
+    try {
+      const silent = isSilentVoice(selectedVoice);
+      await updateProject.mutateAsync({
+        id: projectIdNum,
+        voice: selectedVoice,
+        speed: voiceSpeed,
+        ...(silent ? { captionsEnabled: false } : {}),
+      });
+      setSavedVoice(selectedVoice);
+      if (silent) {
+        props.onCaptionsEnabledChange?.(false);
+      }
+      await utils.project.getById.invalidate({ id: projectIdNum });
+      toast.success(
+        silent
+          ? "Voiceover set to None. Captions were turned off."
+          : premium
+            ? "ElevenLabs premium voice updated successfully!"
+            : "Voiceover settings updated successfully!",
+      );
+    } catch (err: any) {
+      toast.error(
+        err.message ||
+          (premium
+            ? "Failed to update ElevenLabs voice."
+            : "Failed to update voiceover settings."),
+      );
+    }
+  };
+
   const renderScriptContent = () => {
     if (!currentStep) return null;
     return (
-      <div className="space-y-4 flex flex-col h-[calc(100vh-140px)] relative">
+      <div className="flex-1 flex flex-col h-full min-h-0 space-y-3 relative">
         {/* Mode Toggle: AI vs Manual */}
         <div className="flex items-center gap-1 p-0.5 bg-[var(--sketch-bg)] rounded-lg border border-[var(--sketch-border-color)]/20 flex-shrink-0">
           <button
@@ -3631,152 +3711,132 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           </button>
         </div>
 
-        {/* View Toggle: Current Scene vs All Scenes */}
-        <div className="flex items-center gap-1 p-0.5 bg-[var(--sketch-bg)] rounded-full border border-[var(--sketch-border-color)]/20 flex-shrink-0">
-          <button
-            onClick={() => setScriptViewMode("current")}
-            className={`flex-1 py-2 px-4 text-xs font-bold rounded-full transition-all cursor-pointer ${scriptViewMode === "current"
-                ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-fg)]"
-                : "text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg-subtle)]"
-              }`}
-          >
-            Current Scene
-          </button>
-          <button
-            onClick={() => setScriptViewMode("all")}
-            className={`flex-1 py-2 px-4 text-xs font-bold rounded-full transition-all cursor-pointer ${scriptViewMode === "all"
-                ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-fg)]"
-                : "text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg-subtle)]"
-              }`}
-          >
-            All Scenes
-          </button>
-        </div>
-
         {/* AI Generate Mode */}
         {scriptMode === "ai" ? (
           <>
             {scriptViewMode === "all" ? (
-              <div className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-0">
-                {steps.map((s, idx) => {
-                  const textState = allSceneTexts[s.id] || { desc: s.description || "", script: s.userEditedScript || s.aiScript || "" };
-                  const gibberish = detectGibberish(textState.desc);
-                  const scriptGibberish = detectGibberish(textState.script);
+              <div className="flex-1 flex flex-col min-h-0">
+                <div className="flex-1 overflow-y-auto space-y-4 pr-1 min-h-0">
+                  {steps.map((s, idx) => {
+                    const textState = allSceneTexts[s.id] || { desc: s.description || "", script: s.userEditedScript ?? s.aiScript ?? "" };
+                    const gibberish = detectGibberish(textState.desc);
+                    const scriptGibberish = detectGibberish(textState.script);
 
-                  return (
-                    <div key={s.id} className="p-3 border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)]/30 rounded-xl space-y-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-10 h-10 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/25 rounded-md overflow-hidden flex-shrink-0 flex items-center justify-center">
-                          {s.screenshotPath ? (
-                            <img src={s.screenshotPath} alt="" className="w-full h-full object-cover" />
-                          ) : (
-                            <span className="font-mono text-xs text-[var(--sketch-fg-subtle)]">{idx + 1}</span>
+                    return (
+                      <div key={s.id} className="p-3 border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)]/30 rounded-xl space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-10 h-10 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/25 rounded-md overflow-hidden flex-shrink-0 flex items-center justify-center">
+                            {s.screenshotPath ? (
+                              <img src={s.screenshotPath} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="font-mono text-xs text-[var(--sketch-fg-subtle)]">{idx + 1}</span>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="text-sm font-bold text-[var(--sketch-fg)] block">Scene {idx + 1}</span>
+                            <span className="text-xs text-[var(--sketch-fg-subtle)] truncate block">
+                              {textState.script ? `${textState.script.split(/\s+/).length} words` : "No script"}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Scene Description input */}
+                        <div>
+                          <Label className="text-xs font-bold text-[var(--sketch-fg-muted)] block mb-1">Scene Description</Label>
+                          <Textarea
+                            value={textState.desc}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setAllSceneTexts(prev => ({ ...prev, [s.id]: { ...prev[s.id], desc: val } }));
+                            }}
+                            onBlur={async () => {
+                              await updateStep.mutateAsync({ id: s.id, description: textState.desc });
+                              utils.project.getById.invalidate({ id: projectIdNum });
+                            }}
+                            placeholder="Describe what happens in this scene... Required."
+                            className={`text-sm min-h-[60px] bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/25 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)] ${
+                              (!textState.desc.trim() || /^scene\s+\d+$/i.test(textState.desc.trim()) || gibberish.isGibberish) ? "border-amber-500/50" : ""
+                            }`}
+                          />
+                          {(!textState.desc.trim() || /^scene\s+\d+$/i.test(textState.desc.trim())) && (
+                            <p className="text-xs font-medium text-amber-600 mt-1 flex items-center gap-1">
+                              <AlertTriangle className="w-3.5 h-3.5" /> Description is required for script generation.
+                            </p>
+                          )}
+                          {textState.desc.trim() && gibberish.isGibberish && (
+                            <p className="text-xs font-medium text-amber-600 mt-1 flex items-center gap-1">
+                              <AlertTriangle className="w-3.5 h-3.5" /> {gibberish.reason}
+                            </p>
                           )}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <span className="text-sm font-bold text-[var(--sketch-fg)] block">Scene {idx + 1}</span>
-                          <span className="text-xs text-[var(--sketch-fg-subtle)] truncate block">
-                            {textState.script ? `${textState.script.split(/\s+/).length} words` : "No script"}
-                          </span>
+
+                        {/* Narration Script input */}
+                        <div>
+                          <Label className="text-xs font-bold text-[var(--sketch-fg-muted)] block mb-1">Narration Script (TTS)</Label>
+                          <Textarea
+                            value={textState.script}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setAllSceneTexts(prev => ({ ...prev, [s.id]: { ...prev[s.id], script: val } }));
+                            }}
+                            onBlur={async () => {
+                              await updateStep.mutateAsync({ id: s.id, userEditedScript: textState.script });
+                              utils.project.getById.invalidate({ id: projectIdNum });
+                            }}
+                            placeholder="Narration text goes here..."
+                            className={`text-sm min-h-[70px] bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/25 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)] ${
+                              (textState.script.trim() && scriptGibberish.isGibberish) ? "border-red-500/50" : ""
+                            }`}
+                          />
+                          {textState.script.trim() && scriptGibberish.isGibberish && (
+                            <p className="text-xs font-medium text-red-500 mt-1 flex items-center gap-1">
+                              <AlertTriangle className="w-3.5 h-3.5" /> {scriptGibberish.reason}
+                            </p>
+                          )}
                         </div>
-                      </div>
 
-                      {/* Scene Description input */}
-                      <div>
-                        <Label className="text-xs font-bold text-[var(--sketch-fg-muted)] block mb-1">Scene Description</Label>
-                        <Textarea
-                          value={textState.desc}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setAllSceneTexts(prev => ({ ...prev, [s.id]: { ...prev[s.id], desc: val } }));
-                          }}
-                          onBlur={async () => {
-                            await updateStep.mutateAsync({ id: s.id, description: textState.desc });
-                            utils.project.getById.invalidate({ id: projectIdNum });
-                          }}
-                          placeholder="Describe what happens in this scene... Required."
-                          className={`text-sm min-h-[60px] bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/25 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)] ${
-                            (!textState.desc.trim() || /^scene\s+\d+$/i.test(textState.desc.trim()) || gibberish.isGibberish) ? "border-amber-500/50" : ""
-                          }`}
-                        />
-                        {(!textState.desc.trim() || /^scene\s+\d+$/i.test(textState.desc.trim())) && (
-                          <p className="text-xs font-medium text-amber-600 mt-1 flex items-center gap-1">
-                            <AlertTriangle className="w-3.5 h-3.5" /> Description is required for script generation.
-                          </p>
-                        )}
-                        {textState.desc.trim() && gibberish.isGibberish && (
-                          <p className="text-xs font-medium text-amber-600 mt-1 flex items-center gap-1">
-                            <AlertTriangle className="w-3.5 h-3.5" /> {gibberish.reason}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Narration Script input */}
-                      <div>
-                        <Label className="text-xs font-bold text-[var(--sketch-fg-muted)] block mb-1">Narration Script (TTS)</Label>
-                        <Textarea
-                          value={textState.script}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setAllSceneTexts(prev => ({ ...prev, [s.id]: { ...prev[s.id], script: val } }));
-                          }}
-                          onBlur={async () => {
-                            await updateStep.mutateAsync({ id: s.id, userEditedScript: textState.script });
-                            utils.project.getById.invalidate({ id: projectIdNum });
-                          }}
-                          placeholder="Narration text goes here..."
-                          className={`text-sm min-h-[70px] bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/25 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)] ${
-                            (textState.script.trim() && scriptGibberish.isGibberish) ? "border-red-500/50" : ""
-                          }`}
-                        />
-                        {textState.script.trim() && scriptGibberish.isGibberish && (
-                          <p className="text-xs font-medium text-red-500 mt-1 flex items-center gap-1">
-                            <AlertTriangle className="w-3.5 h-3.5" /> {scriptGibberish.reason}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* Action buttons for this specific scene */}
-                      <div className="flex justify-end pt-1">
-                        <button
-                          onClick={async () => {
-                            if (!textState.desc.trim() || /^scene\s+\d+$/i.test(textState.desc.trim())) {
-                              toast.error(`Please write a description for Scene ${idx + 1} first.`);
-                              return;
-                            }
-                            try {
-                              const result = await regenerateStep.mutateAsync({ stepId: s.id });
-                              if (result?.script) {
-                                setAllSceneTexts(prev => ({
-                                  ...prev,
-                                  [s.id]: { ...prev[s.id], script: result.script }
-                                }));
-                                utils.project.getById.invalidate({ id: projectIdNum });
-                                toast.success(`Script regenerated for Scene ${idx + 1}!`);
+                        {/* Action buttons for this specific scene */}
+                        <div className="flex justify-end pt-1">
+                          <button
+                            onClick={async () => {
+                              if (!textState.desc.trim() || /^scene\s+\d+$/i.test(textState.desc.trim())) {
+                                toast.error(`Please write a description for Scene ${idx + 1} first.`);
+                                return;
                               }
-                            } catch (err: any) {
-                              toast.error(err.message || "Failed to regenerate script.");
-                            }
-                          }}
-                          disabled={regenerateStep.isPending}
-                          className="flex items-center gap-1.5 py-1.5 px-3 bg-[var(--sketch-accent)]/10 hover:bg-[var(--sketch-accent)]/20 disabled:opacity-50 text-[var(--sketch-fg)] text-xs font-bold rounded-md transition-all cursor-pointer border border-[var(--sketch-accent)]/20"
-                        >
-                          {regenerateStep.isPending ? (
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                          ) : (
-                            <>
-                              <RotateCw className="w-3 h-3" />
-                              <span>Regenerate Scene {idx + 1}</span>
-                            </>
-                          )}
-                        </button>
+                              try {
+                                const result = await regenerateStep.mutateAsync({ stepId: s.id });
+                                if (result?.script) {
+                                  setAllSceneTexts(prev => ({
+                                    ...prev,
+                                    [s.id]: { ...prev[s.id], script: result.script }
+                                  }));
+                                  utils.project.getById.invalidate({ id: projectIdNum });
+                                  toast.success(`Script regenerated for Scene ${idx + 1}!`);
+                                }
+                              } catch (err: any) {
+                                toast.error(err.message || "Failed to regenerate script.");
+                              }
+                            }}
+                            disabled={regenerateStep.isPending}
+                            className="flex items-center gap-1.5 py-1.5 px-3 bg-[var(--sketch-accent)]/10 hover:bg-[var(--sketch-accent)]/20 disabled:opacity-50 text-[var(--sketch-fg)] text-xs font-bold rounded-md transition-all cursor-pointer border border-[var(--sketch-accent)]/20"
+                          >
+                            {regenerateStep.isPending ? (
+                              <Loader2 className="w-3 h-3 animate-spin" />
+                            ) : (
+                              <>
+                                <RotateCw className="w-3 h-3" />
+                                <span>Regenerate Scene {idx + 1}</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
 
-                {/* Generate all scripts button at the bottom */}
-                <div className="pt-3 border-t border-[var(--sketch-border-color)]/20 mt-3 space-y-2 flex-shrink-0">
+                {/* Sticky Generate All Scripts button at the bottom */}
+                <div className="pt-3 pb-1 border-t border-[var(--sketch-border-color)]/20 mt-2 space-y-2 flex-shrink-0 bg-[var(--sketch-panel-bg)]">
                   <button
                     onClick={async () => {
                       const blankSteps = steps.filter(s => {
@@ -4042,7 +4102,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
                   {/* List of all steps with individual text boxes */}
                   {steps.map((s, idx) => {
-                    const textState = allSceneTexts[s.id] || { desc: s.description || "", script: s.userEditedScript || s.aiScript || "" };
+                    const textState = allSceneTexts[s.id] || { desc: s.description || "", script: s.userEditedScript ?? s.aiScript ?? "" };
                     const scriptGibberish = detectGibberish(textState.script);
 
                     return (
@@ -4165,13 +4225,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               <Textarea
                 value={testVoiceText}
                 onChange={(e) => setTestVoiceText(e.target.value)}
-                placeholder={currentStep?.userEditedScript || currentStep?.aiScript || "Type something to test..."}
+                placeholder={(currentStep?.userEditedScript ?? currentStep?.aiScript) || "Type something to test..."}
                 className="flex-1 text-xs min-h-[40px] resize-none"
               />
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  const textToTest = testVoiceText.trim() || currentStep?.userEditedScript || currentStep?.aiScript || "Hi I am your AI guide.";
+                  const textToTest = testVoiceText.trim() || (currentStep?.userEditedScript ?? currentStep?.aiScript) || "Hi I am your AI guide.";
                   previewVoice.mutate({ voice: selectedVoice, speed: voiceSpeed, text: textToTest }, {
                     onSuccess: (data) => {
                       if (playingId === selectedVoice) {
@@ -4267,18 +4327,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         {/* Set Voice action */}
         <div className="p-4 border-t border-[var(--sketch-border-color)]/20 bg-[var(--sketch-panel-bg)] flex-shrink-0">
           <button
-            onClick={async () => {
-              try {
-                await updateProject.mutateAsync({
-                  id: projectIdNum,
-                  voice: selectedVoice,
-                  speed: voiceSpeed,
-                });
-                toast.success("Voiceover settings updated successfully!");
-              } catch (err: any) {
-                toast.error(err.message || "Failed to update voiceover settings.");
-              }
-            }}
+            onClick={() => saveVoiceSelection(false)}
             disabled={updateProject.isPending}
             className="w-full py-2 bg-[#FBBF24] hover:bg-[#FBBF24]/90 text-black disabled:opacity-50 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 border border-black/10 cursor-pointer"
           >
@@ -4327,13 +4376,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               <Textarea
                 value={testVoiceText}
                 onChange={(e) => setTestVoiceText(e.target.value)}
-                placeholder={currentStep?.userEditedScript || currentStep?.aiScript || "Type something to test..."}
+                placeholder={(currentStep?.userEditedScript ?? currentStep?.aiScript) || "Type something to test..."}
                 className="flex-1 text-xs min-h-[40px] resize-none"
               />
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  const textToTest = testVoiceText.trim() || currentStep?.userEditedScript || currentStep?.aiScript || "Hi I am your AI guide.";
+                  const textToTest = testVoiceText.trim() || (currentStep?.userEditedScript ?? currentStep?.aiScript) || "Hi I am your AI guide.";
                   previewVoice.mutate({ voice: selectedVoice, speed: voiceSpeed, text: textToTest }, {
                     onSuccess: (data) => {
                       if (playingId === selectedVoice) {
@@ -4419,18 +4468,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         {/* Save ElevenLabs Selection */}
         <div className="pt-2">
           <button
-            onClick={async () => {
-              try {
-                await updateProject.mutateAsync({
-                  id: projectIdNum,
-                  voice: selectedVoice,
-                  speed: voiceSpeed,
-                });
-                toast.success("ElevenLabs premium voice updated successfully!");
-              } catch (err: any) {
-                toast.error(err.message || "Failed to update ElevenLabs voice.");
-              }
-            }}
+            onClick={() => saveVoiceSelection(true)}
             disabled={updateProject.isPending}
             className="w-full py-2 bg-[#FBBF24] hover:bg-[#F59E0B] text-black disabled:opacity-50 text-xs font-bold rounded-md shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-black/10"
           >
@@ -5246,19 +5284,16 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           <div className="flex items-center gap-3">
             {/* Render & Export Trigger Button */}
             <button
-              onClick={async () => {
-                // Force-save ALL step annotations before rendering
-                await handleSaveAllSteps();
-                if (props.onContinue) {
-                  props.onContinue();
-                } else {
-                  window.location.href = `/create/${projectIdNum}/render`;
-                }
-              }}
+              onClick={handleExportRequest}
+              disabled={isPreparingExport}
               className="py-1 px-3 bg-[#FBBF24] hover:bg-[#FBBF24]/90 dark:bg-[#FBBF24]/20 dark:hover:bg-[#FBBF24]/30 text-black dark:text-[#FBBF24] text-xs font-bold rounded shadow-sm hover:shadow transition-all flex items-center gap-1.5 cursor-pointer border border-[#FBBF24]/30"
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Export</span>
+              {isPreparingExport ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Sparkles className="w-3.5 h-3.5" />
+              )}
+              <span>{isPreparingExport ? "Checking..." : "Export"}</span>
             </button>
 
             {/* Light/Dark Mode toggle button */}
@@ -5296,14 +5331,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               <DropdownMenuItem onClick={handleSaveStep}>
                 <Save className="w-3.5 h-3.5 mr-2" /> Save Step
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={async () => {
-                await handleSaveAllSteps();
-                if (props.onContinue) {
-                  props.onContinue();
-                } else {
-                  window.location.href = `/create/${projectIdNum}/render`;
-                }
-              }}>
+              <DropdownMenuItem
+                onClick={handleExportRequest}
+                disabled={isPreparingExport}
+              >
                 <Sparkles className="w-3.5 h-3.5 mr-2" /> Export Video…
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -5702,10 +5733,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 <Crop className="w-3.5 h-3.5 mr-2" /> Crop
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={async () => {
-                await handleSaveAllSteps();
-                if (props.onContinue) { props.onContinue(); } else { window.location.href = `/create/${projectIdNum}/render`; }
-              }}>
+              <DropdownMenuItem
+                onClick={handleExportRequest}
+                disabled={isPreparingExport}
+              >
                 <Sparkles className="w-3.5 h-3.5 mr-2" /> Export Video…
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -5825,8 +5856,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
               {/* Tools row */}
               <div className="flex items-center gap-1 px-1 overflow-x-auto scrollbar-none py-0.5 flex-1 min-w-0">
-                <ToolbarToolButton active={mode === "select"} onClick={() => setMode("select")} icon={<MousePointer className="w-3.5 h-3.5" />} label="Select" shortcut="V" />
-                <ToolbarToolButton active={mode === "pan"} onClick={() => setMode("pan")} icon={<Move className="w-3.5 h-3.5" />} label="Pan" shortcut="Space" />
+                <ToolbarToolButton active={mode === "select"} onClick={() => setMode("select")} icon={<MousePointer className="w-3.5 h-3.5" />} label="Select" shortcut="V" description="Click to select and move annotations on the canvas." />
+                <ToolbarToolButton active={mode === "pan"} onClick={() => setMode("pan")} icon={<Move className="w-3.5 h-3.5" />} label="Pan" shortcut="Space" description="Drag to scroll around the canvas when zoomed in." />
                 <ToolbarToolButton
                   active={mode === "crop"}
                   onClick={() => {
@@ -5851,20 +5882,21 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   icon={<Crop className="w-3.5 h-3.5" />}
                   label="Crop"
                   shortcut="C"
+                  description="Drag to crop the screenshot. Removes areas outside the selection."
                 />
                 <div className="h-4 w-[1px] bg-[#D3D3D3]/50 mx-1 flex-shrink-0" />
-                <ToolbarToolButton active={mode === "highlight"} onClick={() => setMode("highlight")} icon={<Square className="w-3.5 h-3.5" />} label="Highlight" shortcut="H" />
-                <ToolbarToolButton active={mode === "zoom"} onClick={() => setMode("zoom")} icon={<Target className="w-3.5 h-3.5" />} label="Zoom" shortcut="Z" />
+                <ToolbarToolButton active={mode === "highlight"} onClick={() => setMode("highlight")} icon={<Square className="w-3.5 h-3.5" />} label="Highlight" shortcut="H" description="Drag to draw a colored highlight box around important UI elements." />
+                <ToolbarToolButton active={mode === "zoom"} onClick={() => setMode("zoom")} icon={<Target className="w-3.5 h-3.5" />} label="Zoom" shortcut="Z" description="Click to set a zoom target point. The camera will zoom into this area during the video. Add multiple points for a pan effect." />
                 <div className="h-4 w-[1px] bg-[#D3D3D3]/50 mx-1 flex-shrink-0" />
-                <ToolbarToolButton active={mode === "overlay"} onClick={() => setMode("overlay")} icon={<Type className="w-3.5 h-3.5" />} label="Text Overlay" shortcut="T" />
-                <ToolbarToolButton active={mode === "badge"} onClick={() => setMode("badge")} icon={<BadgeCheck className="w-3.5 h-3.5" />} label="Badge" shortcut="B" />
-                <ToolbarToolButton active={mode === "watermark"} onClick={() => setMode("watermark")} icon={<Stamp className="w-3.5 h-3.5" />} label="Watermark" shortcut="W" />
+                <ToolbarToolButton active={mode === "overlay"} onClick={() => setMode("overlay")} icon={<Type className="w-3.5 h-3.5" />} label="Text Overlay" shortcut="T" description="Click to place custom text on the screenshot. Useful for labels and callouts." />
+                <ToolbarToolButton active={mode === "badge"} onClick={() => setMode("badge")} icon={<BadgeCheck className="w-3.5 h-3.5" />} label="Badge" shortcut="B" description="Click to add a numbered step badge. Automatically numbers your steps." />
+                <ToolbarToolButton active={mode === "watermark"} onClick={() => setMode("watermark")} icon={<Stamp className="w-3.5 h-3.5" />} label="Watermark" shortcut="W" description="Add a text watermark to protect your video. Choose position and opacity." />
                 <div className="h-4 w-[1px] bg-[#D3D3D3]/50 mx-1 flex-shrink-0" />
-                <ToolbarToolButton active={mode === "blur"} onClick={() => setMode("blur")} icon={<Aperture className="w-3.5 h-3.5" />} label="Blur" shortcut="U" />
-                <ToolbarToolButton active={mode === "redact"} onClick={() => setMode("redact")} icon={<Shield className="w-3.5 h-3.5" />} label="Redact" shortcut="R" />
-                <ToolbarToolButton active={mode === "pixelate"} onClick={() => setMode("pixelate")} icon={<Grid3x3 className="w-3.5 h-3.5" />} label="Pixelate" shortcut="P" />
-                <ToolbarToolButton active={mode === "spotlight"} onClick={() => setMode("spotlight")} icon={<Sun className="w-3.5 h-3.5" />} label="Spotlight" shortcut="L" />
-                <ToolbarToolButton active={mode === "filter"} onClick={() => setMode("filter")} icon={<Palette className="w-3.5 h-3.5" />} label="Filter" shortcut="F" />
+                <ToolbarToolButton active={mode === "blur"} onClick={() => setMode("blur")} icon={<Aperture className="w-3.5 h-3.5" />} label="Blur" shortcut="U" description="Drag to blur sensitive information like passwords, emails, or API keys." />
+                <ToolbarToolButton active={mode === "redact"} onClick={() => setMode("redact")} icon={<Shield className="w-3.5 h-3.5" />} label="Redact" shortcut="R" description="Drag to black out sensitive areas completely. Use for PII or confidential data." />
+                <ToolbarToolButton active={mode === "pixelate"} onClick={() => setMode("pixelate")} icon={<Grid3x3 className="w-3.5 h-3.5" />} label="Pixelate" shortcut="P" description="Drag to pixelate an area. Less aggressive than blur, good for faces." />
+                <ToolbarToolButton active={mode === "spotlight"} onClick={() => setMode("spotlight")} icon={<Sun className="w-3.5 h-3.5" />} label="Spotlight" shortcut="L" description="Drag to highlight an area with a bright spotlight effect. Dims the rest." />
+                <ToolbarToolButton active={mode === "filter"} onClick={() => setMode("filter")} icon={<Palette className="w-3.5 h-3.5" />} label="Filter" shortcut="F" description="Apply color filters like grayscale, sepia, or invert to the screenshot." />
               </div>
             </div>
 
@@ -6039,10 +6071,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                   top: `${hl.y}%`,
                                   width: `${hl.w}%`,
                                   height: `${hl.h}%`,
-                                  border: `4px solid ${hl.color || "#FF0099"}`,
+                                  border: `2px solid ${hl.color || "#FF0099"}`,
                                   pointerEvents: overlayPointer("highlight"),
-                                  backgroundColor: "rgba(255,0,153,0.08)",
-                                  boxShadow: "0 0 0 2px rgba(255,255,255,0.9), 0 0 12px rgba(255,0,153,0.5), 0 4px 12px rgba(0,0,0,0.4)",
+                                  backgroundColor: "rgba(255,0,153,0.03)",
+                                  boxShadow: "0 0 0 1px rgba(255,255,255,0.8), 0 2px 8px rgba(0,0,0,0.25)",
                                 }}
                                 onMouseDown={(e) => {
                                   if ((e.target as HTMLElement).dataset.handle) return;
@@ -6063,11 +6095,12 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                   });
                                 }}
                               >
-                                <div className="absolute top-1 left-1 bg-[#FF0099] text-white text-[10px] font-mono px-1 rounded font-bold">
+                                <div className="absolute -top-5 left-0 bg-[#FF0099] text-white text-[9px] font-mono px-1.5 py-0.5 rounded-t font-bold opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap shadow-sm z-20">
                                   Highlight {idx + 1}
                                 </div>
                                 <button
-                                  className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                                  className="absolute -top-3 -right-3 w-4.5 h-4.5 bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto shadow-md hover:scale-110 z-30"
+                                  style={{ zIndex: 30 }}
                                   onMouseDown={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -6087,7 +6120,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                   <div
                                     key={h.name}
                                     data-handle={h.name}
-                                    className="absolute w-3 h-3 bg-white border-2 border-[#FF0099] rounded-sm pointer-events-auto"
+                                    className="absolute w-2 h-2 bg-white border border-[#FF0099] rounded-full pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity"
                                     style={{ ...h.style, zIndex: 10 }}
                                     onMouseDown={(e) => {
                                       e.preventDefault();
@@ -6121,8 +6154,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                   top: `${tempRect.y}%`,
                                   width: `${tempRect.w}%`,
                                   height: `${tempRect.h}%`,
-                                  border: "3px dashed #00E5FF",
-                                  backgroundColor: "rgba(0,229,255,0.10)",
+                                  border: "2px dashed #00E5FF",
+                                  backgroundColor: "rgba(0,229,255,0.08)",
                                   boxShadow: "0 0 0 1px rgba(255,255,255,0.7)",
                                 }}
                               />
@@ -6844,7 +6877,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                               padding: props.captionStyle === "highlight" ? "4px 12px" : "0",
                             }}
                           >
-                            {currentStep.userEditedScript || currentStep.aiScript || currentStep.description || "Caption preview will appear here"}
+                            {(currentStep.userEditedScript ?? currentStep.aiScript) || currentStep.description || "Caption preview will appear here"}
                           </div>
                         )}
                       </div>
@@ -6936,7 +6969,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 </button>
               </div>
 
-              <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+              <div className={`flex-1 min-h-0 ${activeRightTab === "script" ? "flex flex-col overflow-hidden" : "overflow-y-auto"} pr-1`}>
                 {activeRightTab === "properties" && renderPropertiesContent()}
                 {activeRightTab === "script" && renderScriptContent()}
                 {activeRightTab === "voiceover" && renderVoiceoverContent()}
@@ -6997,7 +7030,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   Close ×
                 </button>
               </div>
-              <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+              <div className={`flex-1 min-h-0 ${activeRightTab === "script" ? "flex flex-col overflow-hidden" : "overflow-y-auto"} pr-1`}>
                 {activeRightTab === "properties" && renderPropertiesContent()}
                 {activeRightTab === "script" && renderScriptContent()}
                 {activeRightTab === "voiceover" && renderVoiceoverContent()}
@@ -7023,6 +7056,18 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         accept="image/*,video/*"
         className="hidden"
         onChange={(e) => { if (e.target.files) handleUploadFiles(e.target.files); }}
+      />
+
+      <RenderPreflightDialog
+        open={showRenderPreflight}
+        result={renderPreflight}
+        busy={isPreparingExport}
+        onOpenChange={setShowRenderPreflight}
+        onGenerateScripts={handleGenerateScriptsFromPreflight}
+        onWriteScripts={() => openNarrationPanel("script", "manual")}
+        onSetVoice={() => openNarrationPanel("voiceover")}
+        onContinueSilently={handleContinueSilently}
+        onCancel={() => setShowRenderPreflight(false)}
       />
 
       {/* Delete Scene Confirmation Dialog */}
@@ -7420,14 +7465,16 @@ function ToolbarToolButton({
   icon,
   label,
   shortcut,
+  description,
 }: {
   active: boolean;
   onClick: () => void;
   icon: React.ReactNode;
   label: string;
   shortcut?: string;
+  description?: string;
 }) {
-  return (
+  const btn = (
     <button
       onClick={onClick}
       title={shortcut ? `${label} (${shortcut})` : label}
@@ -7437,6 +7484,20 @@ function ToolbarToolButton({
       {icon}
       <span className="hidden lg:inline">{label}</span>
     </button>
+  );
+
+  if (!description) return btn;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{btn}</TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-[220px] text-left">
+        <div className="space-y-1">
+          <p className="font-semibold">{label}{shortcut ? ` (${shortcut})` : ""}</p>
+          <p className="text-[11px] opacity-90">{description}</p>
+        </div>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -7473,8 +7534,12 @@ async function uploadFile(
   file: File,
   folder = "screenshots"
 ): Promise<{ key: string; url: string }> {
+  // Compress image before upload (converts to WebP, reduces file size)
+  const { compressImage } = await import("@/lib/imageCompress");
+  const compressedFile = await compressImage(file);
+
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("file", compressedFile);
   formData.append("folder", folder);
 
   const response = await fetch("/api/upload", {

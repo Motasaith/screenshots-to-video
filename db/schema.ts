@@ -19,7 +19,7 @@ export const users = mysqlTable("users", {
   avatar: text("avatar"),
   role: mysqlEnum("role", ["user", "admin"]).default("user").notNull(),
   plan: mysqlEnum("plan", ["free", "pro", "team"]).default("free").notNull(),
-  credits: int("credits").default(5).notNull(),
+  credits: int("credits").default(14).notNull(),
   videosCreatedThisMonth: int("videosCreatedThisMonth").default(0).notNull(),
   monthlyResetAt: timestamp("monthlyResetAt").defaultNow().notNull(),
   createdAt: timestamp("createdAt").defaultNow().notNull(),

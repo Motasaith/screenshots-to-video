@@ -18,6 +18,7 @@ import {
   Sun,
   Moon,
   Coins,
+  ShieldAlert,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import { detectGibberish } from "@/lib/gibberish";
@@ -37,6 +38,18 @@ export default function Dashboard() {
   const { setTheme, resolvedTheme } = useTheme();
   const [deleteProjectInfo, setDeleteProjectInfo] = useState<{ id: number } | null>(null);
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
+
+  // Check if admin is impersonating this user
+  const [isImpersonating, setIsImpersonating] = useState(false);
+  useEffect(() => {
+    setIsImpersonating(document.cookie.includes("aivideo_admin_restore="));
+  }, []);
+
+  const restoreAdminMutation = trpc.admin.restoreAdminSession.useMutation({
+    onSuccess: () => {
+      window.location.href = "/admin";
+    },
+  });
 
   const { data: standardProjects, isLoading: standardLoading } = trpc.project.list.useQuery(undefined, {
     enabled: !!user,
@@ -206,6 +219,19 @@ export default function Dashboard() {
                     <Moon className="w-4 h-4 text-[var(--space-text-muted)]" />
                   )}
                 </Button>
+                {isImpersonating && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => restoreAdminMutation.mutate()}
+                    disabled={restoreAdminMutation.isPending}
+                    className="glass-btn text-xs py-2 px-3 rounded-lg border-amber-500/30 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
+                    title="Return to your admin account"
+                  >
+                    <ShieldAlert className="w-4 h-4" />
+                    {restoreAdminMutation.isPending ? "..." : "Admin"}
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"

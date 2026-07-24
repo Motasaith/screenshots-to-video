@@ -13,6 +13,11 @@ const execFileAsync = promisify(execFile);
 import { EdgeTTS } from "node-edge-tts";
 import { env } from "./env";
 import ffmpegPath from "ffmpeg-static";
+import ffprobeStatic from "ffprobe-static";
+
+const MIN_GENERATED_AUDIO_BYTES = 256;
+const AUDIO_FILE_READY_TIMEOUT_MS = 2_000;
+const AUDIO_FILE_READY_POLL_MS = 100;
 
 /**
  * ──────────────────────────────────────────────────────────────────
@@ -136,10 +141,7 @@ async function generateElevenLabsAudio(
   const arrayBuffer = await response.arrayBuffer();
   await fs.writeFile(outputPath, Buffer.from(arrayBuffer));
 
-  const stat = await fs.stat(outputPath);
-  if (stat.size === 0) throw new Error("ElevenLabs generated an empty audio file");
-
-  const duration = await probeAudioDuration(outputPath);
+  const { duration } = await validateAudioFile(outputPath);
   return { filePath: outputPath, duration };
 }
 
@@ -187,13 +189,18 @@ async function generateSilenceAudio(
   duration: number,
   outDir: string
 ): Promise<{ filePath: string; duration: number }> {
+  const safeDuration = Number.isFinite(duration)
+    ? Math.max(0.5, Math.min(duration, 60 * 60))
+    : 3;
   const outputPath = path.join(outDir, `silence_${nanoid(12)}.mp3`);
   const args = [
     "-f", "lavfi",
-    "-i", "anullsrc=r=24000:cl=mono",
-    "-t", duration.toString(),
-    "-q:a", "9",
+    "-i", "anullsrc=r=44100:cl=mono",
+    "-t", safeDuration.toString(),
     "-acodec", "libmp3lame",
+    "-b:a", "64k",
+    "-ar", "44100",
+    "-ac", "1",
     "-y",
     outputPath
   ];
@@ -202,8 +209,9 @@ async function generateSilenceAudio(
     throw new Error("ffmpeg-static path is undefined");
   }
 
-  await execFileAsync(ffmpegPath, args);
-  return { filePath: outputPath, duration };
+  await execFileAsync(ffmpegPath, args, { timeout: 30_000 });
+  const validated = await validateAudioFile(outputPath);
+  return { filePath: outputPath, duration: validated.duration };
 }
 
 /**
@@ -220,16 +228,17 @@ export async function generateTTSAudio(
     voice?: string;
     rate?: string; // e.g. "+10%", "-20%", "+0%"
     outputDir?: string;
+    silenceDuration?: number;
   }
 ): Promise<{ filePath: string; duration: number }> {
-  const voice = opts?.voice || DEFAULT_EDGE_VOICE;
+  const voice = opts?.voice?.trim() || DEFAULT_EDGE_VOICE;
   const outDir = opts?.outputDir || path.join(os.tmpdir(), "aivideo-tts");
   await fs.mkdir(outDir, { recursive: true });
 
   const cleanText = prepareTextForTTS(text);
 
-  if (voice === "none" || !cleanText) {
-    return generateSilenceAudio(3.0, outDir);
+  if (voice.toLowerCase() === "none" || !cleanText) {
+    return generateSilenceAudio(opts?.silenceDuration ?? 3.0, outDir);
   }
 
   if (voice.startsWith("elevenlabs:")) {
@@ -273,44 +282,29 @@ async function generateEdgeAudio(
     const pitchStr = variation.pitchHz >= 0 ? `+${variation.pitchHz}Hz` : `${variation.pitchHz}Hz`;
 
     try {
-      try {
-        const tts = new EdgeTTS({
-          voice,
-          rate: rateStr,
-          pitch: pitchStr,
-        });
-        await tts.ttsPromise(text, outputPath);
-      } catch {
-        // Retry once without pitch (older node-edge-tts versions may reject it)
-        const tts = new EdgeTTS({ voice, rate: rateStr });
-        await tts.ttsPromise(text, outputPath);
-      }
+      // A node-edge-tts timeout can leave its file stream alive. Never retry
+      // into the same path: two writers can otherwise truncate/corrupt the MP3.
+      // The final attempt omits pitch for compatibility with older services.
+      const tts = attempt === 3
+        ? new EdgeTTS({ voice, rate: rateStr })
+        : new EdgeTTS({ voice, rate: rateStr, pitch: pitchStr });
+      await tts.ttsPromise(text, outputPath);
 
-      let stat = await fs.stat(outputPath);
-      if (stat.size === 0) {
-        // Wait and check again to handle OS/disk lag or slow file flush
-        for (let check = 1; check <= 3; check++) {
-          await new Promise((resolve) => setTimeout(resolve, 200));
-          stat = await fs.stat(outputPath);
-          if (stat.size > 0) break;
-        }
-      }
-
-      if (stat.size > 0) {
-        const duration = await probeAudioDuration(outputPath);
-        return { filePath: outputPath, duration };
-      }
-      throw new Error("TTS generated an empty audio file");
+      const { duration } = await validateAudioFile(outputPath);
+      return { filePath: outputPath, duration };
     } catch (err: any) {
       lastError = err;
-      log.warn(`Edge TTS attempt ${attempt} failed: ${err.message || err}. Retrying...`);
+      await fs.unlink(outputPath).catch(() => {});
+      const message = err instanceof Error ? err.message : String(err);
+      log.warn(`Edge TTS attempt ${attempt} failed: ${message}. Retrying...`);
       if (attempt < 3) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, attempt * 500));
       }
     }
   }
 
-  throw new Error(`Edge TTS generation failed after 3 attempts. Last error: ${lastError?.message || lastError}`);
+  const lastMessage = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`Edge TTS generation failed after 3 attempts. Last error: ${lastMessage}`);
 }
 
 /**
@@ -339,34 +333,106 @@ async function generateKokoroAudio(
       });
       await audio.save(outputPath);
 
-      let stat = await fs.stat(outputPath);
-      if (stat.size === 0) {
-        // Wait and check again to handle OS/disk lag or slow file flush
-        for (let check = 1; check <= 3; check++) {
-          await new Promise((resolve) => setTimeout(resolve, 200));
-          stat = await fs.stat(outputPath);
-          if (stat.size > 0) break;
-        }
-      }
-
-      if (stat.size > 0) {
-        const duration = await probeAudioDuration(outputPath);
-        return { filePath: outputPath, duration };
-      }
-      throw new Error("Kokoro generated an empty audio file");
+      const { duration } = await validateAudioFile(outputPath);
+      return { filePath: outputPath, duration };
     } catch (err: any) {
       lastError = err;
-      log.warn(`Kokoro TTS attempt ${attempt} failed: ${err.message || err}. Retrying...`);
+      await fs.unlink(outputPath).catch(() => {});
+      const message = err instanceof Error ? err.message : String(err);
+      log.warn(`Kokoro TTS attempt ${attempt} failed: ${message}. Retrying...`);
       if (attempt < 3) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, attempt * 500));
       }
     }
   }
 
-  throw new Error(`Kokoro TTS generation failed after 3 attempts. Last error: ${lastError?.message || lastError}`);
+  const lastMessage = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new Error(`Kokoro TTS generation failed after 3 attempts. Last error: ${lastMessage}`);
 }
 
-import ffprobeStatic from "ffprobe-static";
+async function waitForAudioFile(filePath: string): Promise<number> {
+  const deadline = Date.now() + AUDIO_FILE_READY_TIMEOUT_MS;
+  let lastSize = -1;
+  let stableChecks = 0;
+
+  while (Date.now() <= deadline) {
+    try {
+      const stat = await fs.stat(filePath);
+      if (!stat.isFile()) {
+        throw new Error("Generated audio path is not a file");
+      }
+      if (stat.size >= MIN_GENERATED_AUDIO_BYTES) {
+        stableChecks = stat.size === lastSize ? stableChecks + 1 : 0;
+        lastSize = stat.size;
+        if (stableChecks >= 1) return stat.size;
+      } else {
+        lastSize = stat.size;
+      }
+    } catch (err: any) {
+      if (err?.code !== "ENOENT") throw err;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, AUDIO_FILE_READY_POLL_MS));
+  }
+
+  if (lastSize === 0) {
+    throw new Error("Generated audio file is empty (0 bytes)");
+  }
+  if (lastSize > 0) {
+    throw new Error(`Generated audio file is incomplete (${lastSize} bytes)`);
+  }
+  throw new Error("Generated audio file was not created");
+}
+
+/**
+ * Verify that a generated file is non-empty, stable on disk, contains an
+ * audio stream, and has a real positive duration. This is intentionally
+ * stricter than probeAudioDuration's best-effort fallback because corrupt
+ * TTS must never be passed into the render pipeline.
+ */
+export async function validateAudioFile(
+  filePath: string
+): Promise<{ duration: number; size: number }> {
+  const size = await waitForAudioFile(filePath);
+  if (!ffprobeStatic.path) {
+    throw new Error("ffprobe-static path is undefined");
+  }
+
+  let stdout: string;
+  try {
+    ({ stdout } = await execFileAsync(ffprobeStatic.path, [
+      "-v", "error",
+      "-select_streams", "a:0",
+      "-show_entries", "stream=codec_type:format=duration",
+      "-of", "json",
+      filePath,
+    ], {
+      timeout: 10_000,
+    }));
+  } catch (err: any) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Generated audio file is unreadable: ${message}`);
+  }
+
+  let metadata: any;
+  try {
+    metadata = JSON.parse(stdout);
+  } catch {
+    throw new Error("ffprobe returned invalid metadata for generated audio");
+  }
+
+  const hasAudioStream = Array.isArray(metadata?.streams)
+    && metadata.streams.some((stream: any) => stream?.codec_type === "audio");
+  const duration = Number.parseFloat(metadata?.format?.duration);
+  if (!hasAudioStream) {
+    throw new Error("Generated audio file contains no audio stream");
+  }
+  if (!Number.isFinite(duration) || duration <= 0) {
+    throw new Error("Generated audio file has no valid duration");
+  }
+
+  return { duration, size };
+}
 
 /**
  * Get the duration of an audio file in seconds using ffprobe.

@@ -195,10 +195,17 @@ export function buildZoomFilter(
 /**
  * Build a SINGLE zoompan filter that visits multiple waypoints sequentially.
  *
- * Camera motion:
- *   1. Hold wide briefly, then zoom IN to waypoint 0
- *   2. Stay zoomed — smoothly PAN to waypoint 1, 2, … N-1
- *   3. Zoom OUT at the end of the last waypoint
+ * Camera motion timeline:
+ *   1. Brief wide hold (~0.5s), then zoom IN to waypoint 0 (~1.0s)
+ *   2. HOLD at waypoint 0 for user-set duration
+ *   3. Smooth natural PAN to waypoint 1 over ~2.5s (stays zoomed in!)
+ *   4. HOLD at waypoint 1 for user-set duration
+ *   5. Smooth PAN to waypoint 2 …
+ *   6. After holding at the last waypoint, zoom OUT (~1.0s, mirrors zoom-in)
+ *
+ * The per-waypoint `durationFrames` is the HOLD time at that point.
+ * Pan transitions (~2.5s each) are extra time inserted BETWEEN holds.
+ * Zoom-out always happens after the last hold, mirroring the zoom-in.
  *
  * All math is baked into FFmpeg expressions using frame-number conditionals.
  */
@@ -213,59 +220,73 @@ export function buildMultiWaypointZoomFilter(
   const maxZoom = Math.max(...waypoints.map((w) => w.zoomScale));
   const zoomDelta = (maxZoom - 1).toFixed(6);
 
-  // ── Compute frame boundaries for each waypoint ──
-  // Each waypoint occupies a slice of totalFrames proportional to its duration
-  const totalDurFrames = waypoints.reduce((s, w) => s + w.durationFrames, 0);
-  const scale = totalFrames / Math.max(totalDurFrames, 1);
-  const boundaries: number[] = [0]; // frame where each waypoint starts
+  // ── Timeline constants (in frames) ──
+  const zoomInHoldFrames = Math.round(0.5 * RENDER_FPS);   // ~0.5s wide hold before zoom-in
+  const zoomInDurFrames = Math.round(1.0 * RENDER_FPS);    // ~1.0s zoom-in ease
+  const panTransitionFrames = Math.round(2.5 * RENDER_FPS); // ~2.5s smooth natural pan
+  const zoomOutDurFrames = Math.round(1.0 * RENDER_FPS);   // ~1.0s zoom-out (mirrors zoom-in)
+
+  // ── Build the ideal timeline ──
+  const zoomInPhase = zoomInHoldFrames + zoomInDurFrames;
+  const numPans = Math.max(0, waypoints.length - 1);
+  const totalHoldFrames = waypoints.reduce((s, w) => s + w.durationFrames, 0);
+  const totalPanFrames = numPans * panTransitionFrames;
+  const idealTotal = zoomInPhase + totalHoldFrames + totalPanFrames + zoomOutDurFrames;
+
+  // Scale factor to fit everything into the actual totalFrames
+  const tScale = totalFrames / Math.max(idealTotal, 1);
+
+  // Scaled durations
+  const sZoomInHold = Math.round(zoomInHoldFrames * tScale);
+  const sZoomInDur = Math.round(zoomInDurFrames * tScale);
+  const sZoomOutDur = Math.round(zoomOutDurFrames * tScale);
+  const sPanDur = Math.round(panTransitionFrames * tScale);
+
+  // ── Build frame markers for each phase ──
+  const holdStarts: number[] = [];
+  const holdEnds: number[] = [];
+  let cursor = sZoomInHold + sZoomInDur; // after zoom-in completes
+
   for (let i = 0; i < waypoints.length; i++) {
-    boundaries.push(boundaries[i] + Math.round(waypoints[i].durationFrames * scale));
+    holdStarts.push(cursor);
+    const scaledHold = Math.round(waypoints[i].durationFrames * tScale);
+    cursor += scaledHold;
+    holdEnds.push(cursor);
+    // Add pan transition (except after the last waypoint)
+    if (i < waypoints.length - 1) {
+      cursor += sPanDur;
+    }
   }
-  // Clamp last boundary to totalFrames
-  boundaries[boundaries.length - 1] = totalFrames;
 
   // ── Zoom expression: in → hold → out ──
-  // Zoom in during the first ~1.1s of waypoint 0
-  const zoomInHold = Math.round(0.7 * RENDER_FPS);  // brief wide hold
-  const zoomInDur = Math.round(1.1 * RENDER_FPS);   // ease-in duration
-  const pIn = smoothstepExpr("on", zoomInHold, zoomInDur);
+  // Zoom IN: smoothstep from frame sZoomInHold over sZoomInDur frames
+  const pIn = smoothstepExpr("on", sZoomInHold, sZoomInDur);
 
-  // Zoom out during the last ~0.9s of the last waypoint (if there's room)
-  const zoomOutDurSec = 0.9;
-  const zoomOutDurFrames = Math.round(zoomOutDurSec * RENDER_FPS);
-  const zoomOutStartFrame = totalFrames - zoomOutDurFrames - Math.round(0.15 * RENDER_FPS);
-  // Only zoom out if there's enough room (at least 1s of hold after zoom-in finishes)
-  const minHoldEnd = zoomInHold + zoomInDur + RENDER_FPS;
-  let zoomExpr: string;
-  if (zoomOutStartFrame > minHoldEnd) {
-    const pOut = smoothstepExpr("on", zoomOutStartFrame, zoomOutDurFrames);
-    zoomExpr = `1+${zoomDelta}*(${pIn}-${pOut})`;
-  } else {
-    // Too short for zoom-out — just zoom in and hold
-    zoomExpr = `1+${zoomDelta}*${pIn}`;
-  }
+  // Zoom OUT: always zoom out after the last hold, mirroring the zoom-in
+  const zoomOutStart = holdEnds[holdEnds.length - 1];
+  const pOut = smoothstepExpr("on", zoomOutStart, sZoomOutDur);
+  const zoomExpr = `1+${zoomDelta}*(${pIn}-${pOut})`;
 
-  // ── Position expressions: interpolate between waypoints ──
-  // For each waypoint transition, smoothstep-ease x and y over a ~0.8s window.
-  // IMPORTANT: The camera HOLDS at each waypoint for a brief delay (~0.5s)
-  // before starting to pan to the next one. This prevents the camera from
-  // immediately sliding away after arriving, giving the viewer time to
-  // focus on each point of interest.
-  const panDurFrames = Math.round(0.8 * RENDER_FPS); // frames for each pan transition
-  const holdAtWaypointFrames = Math.round(0.5 * RENDER_FPS); // ~0.5s hold before panning
+  // ── Position expressions ──
+  // The camera holds steady at each waypoint during its hold phase,
+  // then glides naturally to the next waypoint over 2.5s with smooth easing.
+  //
+  // The smoothstep (3t²-2t³) easing makes the camera:
+  //   - Accelerate gently out of the current point (ease-out)
+  //   - Glide smoothly across the screenshot
+  //   - Decelerate gently into the next point (ease-in)
+  // This mimics a real user dragging their cursor between UI elements.
 
-  // Build x and y as nested conditionals:
-  // Start at waypoint 0's position, then blend to waypoint 1 at boundary 1, etc.
-  let rawXExpr = waypoints[0].xPx.toFixed(1);
-  let rawYExpr = waypoints[0].yPx.toFixed(1);
+  // Start with last waypoint as default
+  let rawXExpr = waypoints[waypoints.length - 1].xPx.toFixed(1);
+  let rawYExpr = waypoints[waypoints.length - 1].yPx.toFixed(1);
 
-  for (let i = 1; i < waypoints.length; i++) {
-    const boundaryFrame = boundaries[i];
-    // Transition starts AFTER a hold delay at the previous waypoint.
-    // The pan begins at: boundaryFrame + holdAtWaypointFrames
-    // (camera arrives at waypoint i-1's position, holds briefly, then pans)
-    const transStart = Math.max(0, boundaryFrame + holdAtWaypointFrames);
-    const t = smoothstepExpr("on", transStart, panDurFrames);
+  // Build from last transition backward (innermost = last transition)
+  for (let i = waypoints.length - 1; i >= 1; i--) {
+    // Pan from waypoint (i-1) to waypoint (i) starts at holdEnds[i-1]
+    const panStart = holdEnds[i - 1];
+
+    const t = smoothstepExpr("on", panStart, sPanDur);
 
     const prevX = waypoints[i - 1].xPx.toFixed(1);
     const prevY = waypoints[i - 1].yPx.toFixed(1);
@@ -273,46 +294,15 @@ export function buildMultiWaypointZoomFilter(
     const nextY = waypoints[i].yPx.toFixed(1);
 
     // lerp: prev + (next - prev) * t
-    rawXExpr = `(${prevX}+(${nextX}-${prevX})*${t})`;
-    rawYExpr = `(${prevY}+(${nextY}-${prevY})*${t})`;
-  }
+    // Before panStart: t=0 → camera locked at prev waypoint
+    // During pan: smoothstep glides naturally from prev to next
+    // After panStart+panDur: t=1 → camera locked at next waypoint
+    const lerpX = `(${prevX}+(${nextX}-${prevX})*${t})`;
+    const lerpY = `(${prevY}+(${nextY}-${prevY})*${t})`;
 
-  // For >2 waypoints we need a piecewise expression using frame ranges.
-  // Rebuild as a proper piecewise chain if there are 3+ waypoints.
-  if (waypoints.length > 2) {
-    // Build piecewise: for each segment, determine which waypoint-pair we're in
-    // and interpolate accordingly.
-    // We construct: if(lt(on,B1), interp01, if(lt(on,B2), interp12, interp23))
-    rawXExpr = waypoints[waypoints.length - 1].xPx.toFixed(1); // default: last
-    rawYExpr = waypoints[waypoints.length - 1].yPx.toFixed(1);
-
-    // Build from last to first (innermost is last transition)
-    for (let i = waypoints.length - 1; i >= 1; i--) {
-      const boundaryFrame = boundaries[i];
-      // Hold at the previous waypoint before panning to this one
-      const transStart = Math.max(0, boundaryFrame + holdAtWaypointFrames);
-      const t = smoothstepExpr("on", transStart, panDurFrames);
-
-      const prevX = waypoints[i - 1].xPx.toFixed(1);
-      const prevY = waypoints[i - 1].yPx.toFixed(1);
-      const nextX = waypoints[i].xPx.toFixed(1);
-      const nextY = waypoints[i].yPx.toFixed(1);
-
-      const lerpX = `(${prevX}+(${nextX}-${prevX})*${t})`;
-      const lerpY = `(${prevY}+(${nextY}-${prevY})*${t})`;
-
-      if (i === waypoints.length - 1) {
-        // Last segment: just use this lerp when on >= transStart
-        rawXExpr = lerpX;
-        rawYExpr = lerpY;
-      } else {
-        // Wrap in conditional: if we're before the NEXT transition start, use this lerp
-        const nextBoundary = boundaries[i + 1];
-        const nextTransStart = Math.max(0, nextBoundary + holdAtWaypointFrames);
-        rawXExpr = `if(lt(on,${nextTransStart}),${lerpX},${rawXExpr})`;
-        rawYExpr = `if(lt(on,${nextTransStart}),${lerpY},${rawYExpr})`;
-      }
-    }
+    // Wrap: before this pan starts, use the current lerp expression
+    rawXExpr = `if(lt(on,${panStart}),${lerpX},${rawXExpr})`;
+    rawYExpr = `if(lt(on,${panStart}),${lerpY},${rawYExpr})`;
   }
 
   // Clamp to frame bounds (standard zoompan safety)
@@ -669,7 +659,7 @@ export async function renderStepVideo(opts: {
       const rw = Math.round((hl.w / 100) * imgWidth);
       const rh = Math.round((hl.h / 100) * imgHeight);
       const color = (hl.color || "#FF0099").replace("#", "0x");
-      const thickness = Math.max(6, Math.round(Math.min(imgWidth, imgHeight) * 0.008));
+      const thickness = Math.max(2, Math.round(Math.min(imgWidth, imgHeight) * 0.003));
       return `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=${color}@0.9:t=box:thickness=${thickness}`;
     });
     drawboxFilter = boxes.join(",") + ",";
@@ -983,7 +973,7 @@ async function renderStepVideoFallback(
       const rw = Math.round((hl.w / 100) * imgWidth);
       const rh = Math.round((hl.h / 100) * imgHeight);
       const color = (hl.color || "#FF0099").replace("#", "0x");
-      const thickness = Math.max(6, Math.round(Math.min(imgWidth, imgHeight) * 0.008));
+      const thickness = Math.max(2, Math.round(Math.min(imgWidth, imgHeight) * 0.003));
       return `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=${color}@0.9:t=box:thickness=${thickness}`;
     });
     drawboxFilter = boxes.join(",") + ",";

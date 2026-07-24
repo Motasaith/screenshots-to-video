@@ -1,8 +1,11 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Film, Sparkles, ArrowLeft } from "lucide-react";
 import { Link } from "react-router";
+import { useState } from "react";
 import { SpaceBackground } from "@/components/shared/SpaceBackground";
+import { toast } from "sonner";
 
 function getOAuthUrl() {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -20,6 +23,16 @@ function getOAuthUrl() {
 }
 
 export default function Login() {
+  const [agreed, setAgreed] = useState(false);
+
+  const handleSignIn = () => {
+    if (!agreed) {
+      toast.error("Please agree to the Terms & Conditions to continue.");
+      return;
+    }
+    window.location.href = getOAuthUrl();
+  };
+
   return (
     <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans flex items-center justify-center px-4">
       <SpaceBackground />
@@ -41,12 +54,34 @@ export default function Login() {
             </p>
           </CardHeader>
           <CardContent className="space-y-4 pt-4">
+            {/* Terms agreement */}
+            <div className="p-4 rounded-xl border border-[var(--space-border)] bg-[var(--space-card)]/50 space-y-3">
+              <div className="flex items-start gap-3">
+                <Checkbox
+                  id="terms"
+                  checked={agreed}
+                  onCheckedChange={(v) => setAgreed(v === true)}
+                  className="mt-0.5"
+                />
+                <label
+                  htmlFor="terms"
+                  className="text-xs text-[var(--space-text-muted)] leading-relaxed cursor-pointer select-none"
+                >
+                  I agree to the{" "}
+                  <Link to="/terms" className="text-teal-500 hover:underline">Terms of Service</Link>{" "}
+                  and{" "}
+                  <Link to="/privacy" className="text-teal-500 hover:underline">Privacy Policy</Link>.
+                  I will not use this service for illegal activities, fraud,
+                  creating misleading or harmful tutorials, or any purpose that
+                  violates applicable laws.
+                </label>
+              </div>
+            </div>
+
             <Button
               className="w-full glass-btn glass-btn-primary py-6 text-sm font-semibold rounded-xl"
               size="lg"
-              onClick={() => {
-                window.location.href = getOAuthUrl();
-              }}
+              onClick={handleSignIn}
             >
               <Sparkles className="w-4 h-4" />
               Sign in with Google
