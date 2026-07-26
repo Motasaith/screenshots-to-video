@@ -1,12 +1,12 @@
 import { useRef, useState, useEffect } from "react";
 import { motion, useInView, AnimatePresence } from "framer-motion";
-import { ArrowRight, Sparkles, Film, Play } from "lucide-react";
+import { ArrowRight, Wand2, Film, Play } from "lucide-react";
 import { Link } from "react-router";
 
 const cycleTexts = [
   { icon: Play, text: "No credit card required" },
   { icon: Film, text: "5 free credits per month" },
-  { icon: Sparkles, text: "AI-powered video creation" },
+  { icon: Wand2, text: "AI-powered video creation" },
 ];
 
 const confettiColors = ["#0d9488", "#14b8a6", "#2dd4bf", "#0f766e", "#64748b", "#334155"];
@@ -121,22 +121,13 @@ export default function CTASection() {
             {/* Gloss reflection overlay */}
             <div className="absolute inset-0 bg-gradient-to-tr from-white/[0.01] via-transparent to-white/[0.02] pointer-events-none" />
 
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/10 border border-teal-500/20 mb-6">
-              <Sparkles className="w-3.5 h-3.5 text-teal-500" />
-              <span className="font-mono text-xs font-semibold text-teal-600 dark:text-teal-300 uppercase tracking-wider">
-                Instant Access
-              </span>
-            </div>
-
             <motion.h2
               initial={{ opacity: 0, y: 20 }}
               animate={isInView ? { opacity: 1, y: 0 } : {}}
               transition={{ duration: 0.5, delay: 0.2 }}
               className="font-extrabold text-3xl sm:text-4xl lg:text-5xl text-[var(--space-text)] tracking-tight leading-tight"
             >
-              Ready to create your
-              <br />
-              <span className="text-gradient-neon">first cinematic tutorial?</span>
+              Ready to make your first tutorial?
             </motion.h2>
 
             <motion.p
@@ -145,7 +136,7 @@ export default function CTASection() {
               transition={{ duration: 0.5, delay: 0.3 }}
               className="font-sans text-base lg:text-lg text-[var(--space-text-muted)] mt-4 max-w-xl mx-auto leading-relaxed"
             >
-              Turn your screenshots into studio-grade videos with automated camera zooms, AI scripting, and voiceovers — all in minutes.
+              Turn your screenshots into studio-grade videos with automated camera zooms, AI scripting, and voiceovers, all in minutes.
             </motion.p>
 
             {/* CTA Button with breathing glow + ripple + confetti */}

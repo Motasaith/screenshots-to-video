@@ -14,7 +14,7 @@ export default function Terms() {
     <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
       <SEO
         title="Terms of Service"
-        description="AIVideo's Terms of Service — read the rules and guidelines for using our platform."
+        description="AIVideo's Terms of Service: the rules and guidelines for using our platform."
         canonical="https://aivideo.ai/terms"
         noindex
         jsonLd={breadcrumbJsonLd}

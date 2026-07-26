@@ -19,7 +19,7 @@ export default function Contact() {
     <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
       <SEO
         title="Contact Us"
-        description="Get in touch with the AIVideo team. Questions, feedback, or enterprise inquiries — we'd love to hear from you."
+        description="Get in touch with the AIVideo team. Questions, feedback, or enterprise inquiries: we'd love to hear from you."
         canonical="https://aivideo.ai/contact"
         jsonLd={breadcrumbJsonLd}
       />

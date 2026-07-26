@@ -15,7 +15,7 @@ export default function LandingPage() {
   return (
     <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
       <SEO
-        title="AIVideo — Turn Screenshots into Cinematic Video Tutorials"
+        title="AIVideo | Turn Screenshots into Video Tutorials"
         description="AIVideo automatically transforms your screenshots and descriptions into a professional, narrated video tutorial with cinematic zoom animations."
         keywords="AI video, tutorial maker, screen recording alternative, auto video generator, documentation, SaaS"
         canonical="https://aivideo.ai/"

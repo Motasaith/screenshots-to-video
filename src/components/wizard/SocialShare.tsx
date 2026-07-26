@@ -273,7 +273,7 @@ export default function SocialShare({ videoUrl, title }: SocialShareProps) {
       {/* Helper text */}
       <div className="mt-4 p-3 bg-[#FBBF24]/5 border border-[#FBBF24]/20 rounded-lg">
         <p className="font-body text-xs text-[var(--sketch-fg-muted)] leading-relaxed">
-          💡 <strong>Tip:</strong> YouTube, TikTok, and Instagram require you to upload the video file directly.
+          <strong>Tip:</strong> YouTube, TikTok, and Instagram require you to upload the video file directly.
           Download it first, then click the platform button to open the upload page.
           X, Facebook, and LinkedIn can share a direct link.
         </p>

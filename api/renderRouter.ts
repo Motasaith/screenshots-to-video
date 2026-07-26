@@ -4,6 +4,7 @@ import { getDb } from "./queries/connection";
 import { projects, steps, renderJobs, users } from "@db/schema";
 import { eq, and, desc, inArray, count } from "drizzle-orm";
 import { getSignedDownloadUrl, isR2Configured } from "./lib/r2";
+import { notifyRenderJobQueued } from "./lib/worker";
 import { createLogger } from "./lib/logger";
 import {
   MAX_QUEUE_DEPTH,
@@ -244,6 +245,10 @@ export const renderRouter = createRouter({
           : "Waiting in render queue...",
       });
 
+      // The worker shares this process, so start it now rather than leaving
+      // the job to be discovered on the next 5s tick.
+      notifyRenderJobQueued();
+
       return { success: true, totalSteps: projectSteps.length };
     }),
 
@@ -324,6 +329,8 @@ export const renderRouter = createRouter({
         stage: isExplicitSilentVoice(project.voice) ? "queued_silent" : "queued",
         message: `Re-rendering step ${step.order}...`,
       });
+
+      notifyRenderJobQueued();
 
       return { success: true };
     }),

@@ -16,7 +16,6 @@ import {
   Edit2,
   Search,
   Trash2,
-  Sparkles,
   TrendingUp,
   AlertTriangle,
   CheckCircle2,
@@ -619,7 +618,7 @@ export default function Admin() {
                                 </span>
                               </div>
                             ) : (
-                              <span className="text-xs text-muted-foreground">—</span>
+                              <span className="text-xs text-muted-foreground">n/a</span>
                             )}
                           </td>
                           <td
@@ -787,7 +786,7 @@ export default function Admin() {
             <div className="grid md:grid-cols-2 gap-4">
               <Card className="neo-card p-6">
                 <div className="flex items-center gap-2 mb-4">
-                  <Sparkles className="w-5 h-5 text-primary" />
+                  <Trash2 className="w-5 h-5 text-primary" />
                   <h3 className="font-syne font-bold text-lg">Run Cleanup</h3>
                 </div>
                 <p className="font-dm text-sm text-muted-foreground mb-4">
@@ -1080,7 +1079,7 @@ function SystemTab() {
           <div className="flex items-center justify-between p-2 bg-muted/30 rounded">
             <span className="text-muted-foreground">Render timeout</span>
             <Badge variant="secondary">
-              {queueStats ? `${queueStats.renderTimeoutMs / 1000 / 60} min` : "—"}
+              {queueStats ? `${queueStats.renderTimeoutMs / 1000 / 60} min` : "n/a"}
             </Badge>
           </div>
           <div className="flex items-center justify-between p-2 bg-muted/30 rounded">

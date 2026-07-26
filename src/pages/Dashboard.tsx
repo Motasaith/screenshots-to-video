@@ -12,7 +12,8 @@ import {
   Trash2,
   Play,
   Settings,
-  Sparkles,
+  CircleDashed,
+  Clapperboard,
   LogOut,
   X,
   Sun,
@@ -125,7 +126,7 @@ export default function Dashboard() {
       case "error":
         return <AlertCircle className="w-4 h-4 text-red-500" />;
       default:
-        return <Sparkles className="w-4 h-4 text-[var(--space-text-subtle)]" />;
+        return <CircleDashed className="w-4 h-4 text-[var(--space-text-subtle)]" />;
     }
   };
 
@@ -249,7 +250,7 @@ export default function Dashboard() {
           {user?.plan === "free" && (
             <div className="mb-6 p-4 bg-teal-500/5 border border-teal-500/20 rounded-2xl">
               <p className="text-sm text-[var(--space-text-muted)] leading-relaxed">
-                🎓 You're on the Free plan (5 videos/month, 720p, 7-day expiry).
+                You're on the Free plan (5 videos/month, 720p, 7-day expiry).
                 <button
                   onClick={() => navigate("/pricing")}
                   className="underline ml-1 font-semibold text-teal-600 dark:text-teal-400"
@@ -377,7 +378,7 @@ export default function Dashboard() {
                         {project.title}
                       </h3>
                       <p className="text-xs text-[var(--space-text-subtle)] mt-1 capitalize font-mono">
-                        {project.platform} — {project.resolution}
+                        {project.platform} · {project.resolution}
                       </p>
                     </div>
 
@@ -430,7 +431,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between px-8 py-5 border-b border-[var(--space-border)]">
             <div className="flex items-center gap-3.5">
               <div className="w-10 h-10 rounded-xl bg-teal-500/10 border border-teal-500/20 flex items-center justify-center text-teal-400 shadow-[0_0_15px_rgba(45,212,191,0.1)]">
-                <Sparkles className="w-5 h-5 animate-pulse" />
+                <Clapperboard className="w-5 h-5" />
               </div>
               <div>
                 <h2 className="text-lg font-extrabold text-[var(--space-text)] tracking-tight">
@@ -612,7 +613,7 @@ export default function Dashboard() {
 
       {/* Delete Project Dialog */}
       <Dialog open={!!deleteProjectInfo} onOpenChange={() => setDeleteProjectInfo(null)}>
-        <DialogContent className="glass-panel border border-[var(--space-border)] bg-[var(--space-card)]/95 rounded-2xl p-6 shadow-xl max-w-md gap-6">
+        <DialogContent className="glass-panel border border-[var(--space-border)] bg-[var(--sketch-surface)] rounded-2xl p-6 shadow-xl max-w-md gap-6">
           <DialogHeader>
             <DialogTitle className="text-[var(--space-text)] font-bold text-lg">Delete Project</DialogTitle>
             <DialogDescription className="text-[var(--space-text-muted)] text-sm leading-relaxed mt-1">
@@ -646,7 +647,7 @@ export default function Dashboard() {
 
       {/* Delete All Projects Dialog */}
       <Dialog open={showDeleteAllDialog} onOpenChange={(open) => !deletingAll && setShowDeleteAllDialog(open)}>
-        <DialogContent className="glass-panel border border-[var(--space-border)] bg-[var(--space-card)]/95 rounded-2xl p-6 shadow-xl max-w-md gap-6">
+        <DialogContent className="glass-panel border border-[var(--space-border)] bg-[var(--sketch-surface)] rounded-2xl p-6 shadow-xl max-w-md gap-6">
           <DialogHeader>
             <DialogTitle className="text-[var(--space-text)] font-bold text-lg">Delete All Projects</DialogTitle>
             <DialogDescription className="text-[var(--space-text-muted)] text-sm leading-relaxed mt-1">

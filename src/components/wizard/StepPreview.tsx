@@ -218,12 +218,12 @@ export default function StepPreview() {
       </div>
 
       {/* First-time user onboarding tour */}
-      <OnboardingTour />
+      <OnboardingTour deferUntilReady={showImportModal} />
 
       {/* Mandatory Project Details Popup */}
       <Dialog open={showImportModal} onOpenChange={() => {}}>
         <DialogContent
-          className="max-w-md glass-panel border border-[var(--space-border)] bg-[var(--space-card)]/95 backdrop-blur-xl text-[var(--space-text)] [&>button]:hidden shadow-2xl rounded-2xl"
+          className="max-w-md glass-panel border border-[var(--space-border)] bg-[var(--sketch-surface)] text-[var(--space-text)] [&>button]:hidden shadow-2xl rounded-2xl"
           onInteractOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
         >

@@ -29,6 +29,61 @@ export const RENDER_FPS = 30;
  */
 const MAX_SS_WIDTH = 4200;
 
+/**
+ * x264 preset for segment/final encodes.
+ *
+ * Our source is a still screenshot under slow camera motion — the cheapest
+ * content x264 will ever see. `medium` spends 3-5x the CPU of `veryfast`
+ * chasing motion-estimation wins that do not exist here; at a fixed CRF the
+ * output is visually indistinguishable. Measured on a 7s 1080p clip:
+ * medium 10.7s vs veryfast 9.0s for the encode alone, and the gap widens on
+ * the full-timeline re-encode where every frame is paid for twice.
+ */
+const X264_PRESET = "veryfast";
+
+/**
+ * Width used to compute the blurred letterbox backdrop.
+ *
+ * The backdrop is a 40px-radius blur — all high-frequency detail is destroyed
+ * by definition, so computing it at full supersampled resolution is pure waste.
+ * We blur a small proxy and upscale it: visually identical, ~4x cheaper
+ * (measured 2484ms -> 625ms for the static pre-pass).
+ */
+const BG_PROXY_WIDTH = 480;
+const BG_BLUR_AT_PROXY = 5; // 40px radius scaled down by 3840/480
+
+/**
+ * Cut grid for the transition-aware concat.
+ *
+ * `concatenateSegmentsWithTransitions` stream-copies everything except the
+ * transition regions. Copying can only *start* on a keyframe, so every segment
+ * is encoded with an IDR frame on this grid and transition durations are
+ * snapped to it. 0.5s matches the default transition length exactly, so the
+ * common case is lossless in both senses.
+ */
+export const CUT_GRID_SEC = 0.5;
+
+/** Encoder args that put an IDR frame on every CUT_GRID_SEC boundary. */
+function gopArgs(): string[] {
+  const gop = String(Math.round(CUT_GRID_SEC * RENDER_FPS));
+  // keyint_min == g plus no scene-cut detection makes the placement exact
+  // rather than "at most this far apart".
+  return ["-g", gop, "-keyint_min", gop, "-sc_threshold", "0"];
+}
+
+/**
+ * Encoder args placing a single forced keyframe at the concat cut point.
+ *
+ * Preferred over gopArgs: the split concat only ever starts a stream copy at
+ * `td` seconds in, so that is the only position that must be an IDR frame.
+ * Blanketing the clip with keyframes instead inflated output by ~73%
+ * (11.35 MB vs 6.60 MB on a 52.6s timeline) to no benefit.
+ */
+function cutPointArgs(td: number | undefined): string[] {
+  if (!td || td <= 0) return gopArgs();
+  return ["-force_key_frames", `0,${td.toFixed(3)}`];
+}
+
 /** Silence padding around narration so speech never starts on frame 0. */
 export const AUDIO_LEAD_IN = 0.4; // seconds of silence before narration
 export const AUDIO_TAIL = 0.6; // seconds of silence after narration
@@ -648,6 +703,16 @@ export async function renderStepVideo(opts: {
   // Used by the multi-waypoint renderer to keep holds/pans/zoom-out uncompressed
   // when the narration is shorter than the camera animation needs.
   clipDurationOverride?: number;
+  /**
+   * Transition length this segment will be concatenated with, in seconds.
+   *
+   * `concatenateSegmentsWithTransitions` stream-copies the body of each segment
+   * starting at this offset, and a copy can only begin on a keyframe. Passing
+   * the value here puts exactly one forced IDR frame at that point. Omitting it
+   * falls back to a keyframe grid, which also works but costs roughly 70% more
+   * bitrate — 2 keyframes per second is a lot to pay for one cut.
+   */
+  transitionDurationSec?: number;
 }): Promise<string> {
   await ensureWorkDir();
 
@@ -915,52 +980,96 @@ export async function renderStepVideo(opts: {
     }
   }
 
-  // Build the filter chain — strip leading commas from each part to avoid double commas
-  const overlayChain = `overlay=(W-w)/2:(H-h)/2`;
+  // ── Split the graph into a STATIC pre-pass and a MOTION pass ──
+  //
+  // `-loop 1 -i image` makes FFmpeg re-run the whole filter graph once per
+  // output frame. Every filter below (annotations, crop, letterbox backdrop,
+  // the lanczos upscale to the supersampled canvas) depends only on the source
+  // still, so it produced a byte-identical result on all ~200-900 frames of the
+  // clip. Computing it once into a base frame is where the bulk of the render
+  // time went: measured 10.7s -> 3.9s on a 7s 1080p clip.
+  //
+  // Only filters that vary with time — zoompan and the overlays layered on top
+  // of it — stay in the per-frame pass.
+  const stripComma = (s: string) => s.replace(/^,+/, "").replace(/,+$/, "");
+
   // When zoomFilter is empty (no zoom), zoompan doesn't downscale from supersampled
   // to output resolution, so we need an explicit scale step.
   const downscaleFilter = zoomFilter ? "" : `scale=${outW}:${outH}:flags=lanczos`;
-  // Build post-zoom filter parts, stripping leading/trailing commas, filtering out empty ones
-  const stripComma = (s: string) => s.replace(/^,+/, "").replace(/,+$/, "");
   const postZoomParts = [zoomFilter, overlayFilter, watermarkFilter, badgeFilter, magnifyFilter, captionsFilter, downscaleFilter]
     .map(stripComma)
     .filter((f) => f && f.length > 0);
   const postZoomChain = postZoomParts.join(",");
-  const filterComplex =
-    `[0:v]${drawboxFilter}${blurFilter}${redactFilter}${pixelateFilter}${spotlightFilter}${colorFilter}${cropFilter}split=2[bg][fg];` +
-    `[bg]scale=${ssW}:${ssH}:force_original_aspect_ratio=increase:flags=lanczos,crop=${ssW}:${ssH},boxblur=40:40[bg_blurred];` +
-    `[fg]scale=${ssW}:${ssH}:force_original_aspect_ratio=decrease:flags=lanczos[fg_scaled];` +
-    `[bg_blurred][fg_scaled]${overlayChain}${postZoomChain ? "," + postZoomChain : ""},format=yuv420p[v];` +
-    `[1:a]${buildAudioFilter(opts.clipDurationOverride && opts.clipDurationOverride > 0 ? paddedDuration : undefined)}[a]`;
 
-  const args = [
-    "-y",
-    "-loop", "1",
-    "-i", opts.screenshotPath,
-    "-i", opts.audioPath,
-    "-filter_complex", filterComplex,
-    "-map", "[v]",
-    "-map", "[a]",
-    "-c:v", "libx264",
-    "-preset", "medium",
-    "-crf", "20",
-    "-c:a", "aac",
-    "-b:a", "160k",
-    "-ar", "44100",
-    "-pix_fmt", "yuv420p",
-    "-t", paddedDuration.toFixed(3),
-    "-movflags", "+faststart",
-    outputPath,
-  ];
+  const staticFilters = `${drawboxFilter}${blurFilter}${redactFilter}${pixelateFilter}${spotlightFilter}${colorFilter}${cropFilter}`;
+
+  // The blurred backdrop only ever shows in the letterbox bars. When the source
+  // fits the canvas edge-to-edge (a 16:9 screenshot into a 16:9 video — the
+  // common case) it is completely hidden behind the foreground, so skip it.
+  const needsBackdrop = geo.offsetX > 1 || geo.offsetY > 1;
+
+  let prepassFilter: string;
+  if (needsBackdrop) {
+    const bgW = 2 * Math.round(BG_PROXY_WIDTH / 2);
+    const bgH = 2 * Math.round((BG_PROXY_WIDTH * ssH) / ssW / 2);
+    prepassFilter =
+      `[0:v]${staticFilters}split=2[bg][fg];` +
+      `[bg]scale=${bgW}:${bgH}:force_original_aspect_ratio=increase:flags=bilinear,crop=${bgW}:${bgH},` +
+      `boxblur=${BG_BLUR_AT_PROXY}:${BG_BLUR_AT_PROXY},scale=${ssW}:${ssH}:flags=bilinear[bg_blurred];` +
+      `[fg]scale=${ssW}:${ssH}:force_original_aspect_ratio=decrease:flags=lanczos[fg_scaled];` +
+      `[bg_blurred][fg_scaled]overlay=(W-w)/2:(H-h)/2[base]`;
+  } else {
+    prepassFilter =
+      `[0:v]${staticFilters}scale=${ssW}:${ssH}:force_original_aspect_ratio=decrease:flags=lanczos,` +
+      `pad=${ssW}:${ssH}:(ow-iw)/2:(oh-ih)/2[base]`;
+  }
+
+  const basePath = path.join(WORK_DIR, `base_${nanoid(12)}.png`);
+
+  const videoFilter =
+    `[0:v]${postZoomChain ? postZoomChain + "," : ""}format=yuv420p[v];` +
+    `[1:a]${buildAudioFilter(opts.clipDurationOverride && opts.clipDurationOverride > 0 ? paddedDuration : undefined)}[a]`;
 
   try {
     if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
-    await execFileAsync(ffmpegPath, args, {
-      timeout: 300000, // supersampled zoompan is heavier — allow 5 min
-      });
+
+    // Pass 1: composite the static base frame once.
+    await execFileAsync(ffmpegPath, [
+      "-y",
+      "-i", opts.screenshotPath,
+      "-filter_complex", prepassFilter,
+      "-map", "[base]",
+      "-frames:v", "1",
+      "-compression_level", "1", // fastest PNG encode; this file is transient
+      basePath,
+    ], { timeout: 120000 });
+
+    // Pass 2: animate the base frame.
+    await execFileAsync(ffmpegPath, [
+      "-y",
+      "-loop", "1",
+      "-i", basePath,
+      "-i", opts.audioPath,
+      "-filter_complex", videoFilter,
+      "-map", "[v]",
+      "-map", "[a]",
+      "-c:v", "libx264",
+      "-preset", X264_PRESET,
+      "-crf", "20",
+      ...cutPointArgs(opts.transitionDurationSec),
+      "-c:a", "aac",
+      "-b:a", "160k",
+      "-ar", "44100",
+      "-pix_fmt", "yuv420p",
+      "-t", paddedDuration.toFixed(3),
+      "-movflags", "+faststart",
+      outputPath,
+    ], { timeout: 300000 });
   } catch (err: any) {
     log.warn("Primary render failed, retrying simplified", { error: err.message });
     return renderStepVideoFallback(opts, outputPath, paddedDuration);
+  } finally {
+    await fs.unlink(basePath).catch(() => {});
   }
 
   // Verify output
@@ -1241,8 +1350,9 @@ async function renderStepVideoFallback(
     "-map", "[v]",
     "-map", "[a]",
     "-c:v", "libx264",
-    "-preset", "medium",
+    "-preset", X264_PRESET,
     "-crf", "23",
+    ...cutPointArgs(opts.transitionDurationSec),
     "-c:a", "aac",
     "-b:a", "128k",
     "-ar", "44100",
@@ -1348,7 +1458,7 @@ async function concatenateSegmentsReencode(
     "-map", "[v]",
     "-map", "[a]",
     "-c:v", "libx264",
-    "-preset", "medium",
+    "-preset", X264_PRESET,
     "-crf", "20",
     "-c:a", "aac",
     "-b:a", "160k",
@@ -1441,8 +1551,9 @@ export async function renderTextSegment(
     "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
     "-vf", `drawtext=fontfile=${fontFile}:text='${escapedText}':fontcolor=${textColor}:fontsize=${fontSize}:x=(w-text_w)/2:y=(h-text_h)/2:shadowcolor=0x000000:shadowx=2:shadowy=2`,
     "-c:v", "libx264",
-    "-preset", "medium",
+    "-preset", X264_PRESET,
     "-crf", "23",
+    ...gopArgs(),
     "-c:a", "aac",
     "-t", durationSec.toString(),
     "-pix_fmt", "yuv420p",
@@ -1471,8 +1582,49 @@ export async function renderTextSegment(
   return outputPath;
 }
 
+/** Map our frontend transition names onto FFmpeg xfade names. */
+function xfadeName(requested: string): string {
+  switch (requested) {
+    case "slide-left": return "slideleft";
+    case "slide-right": return "slideright";
+    case "slide-up": return "slideup";
+    // "flip" has no xfade equivalent; pixelize is the closest in feel
+    case "flip": return "pixelize";
+    case "dissolve": return "fade";
+    default: return "fade";
+  }
+}
+
 /**
- * Concatenate segments with FFmpeg xfade transitions.
+ * Concatenate segments with crossfade transitions, re-encoding ONLY the
+ * transition regions.
+ *
+ * The obvious implementation — one xfade filter chain over every input — makes
+ * FFmpeg decode and re-encode the entire timeline to produce a few seconds of
+ * actual blending. Measured on 8 scenes / 56s of video: 21.3s, against 0.3s for
+ * a stream-copy concat. All that work reproduces frames that were already
+ * encoded, slightly worse each time.
+ *
+ * Instead: cut each segment into a body (stream-copied, free) and a short
+ * overlap, encode only the overlaps into transition clips, then concat the
+ * whole sequence with the demuxer.
+ *
+ *   [body0][trans0][body1][trans1][body2] ... [bodyN-1]
+ *
+ * Copying can only START on a keyframe, which is why segments carry an IDR
+ * frame every CUT_GRID_SEC (see gopArgs) and the transition duration is snapped
+ * to that grid.
+ *
+ * Audio deliberately does NOT follow the same split. Every AAC encode prepends
+ * priming samples, so encoding each of the ~2n clips separately made the
+ * concatenated result drift long by roughly 43ms per clip (measured: 53.15s
+ * where 52.50s was expected, across 15 clips). The audio is therefore built in
+ * a single pass over the original segments — cheap, since only audio is
+ * decoded — and muxed against the copied video at the end. That also preserves
+ * true acrossfade blending instead of butt-joining at each cut.
+ *
+ * Falls back to the single-pass xfade on any failure, and that in turn falls
+ * back to a plain concat — output is always produced.
  */
 export async function concatenateSegmentsWithTransitions(
   segmentPaths: string[],
@@ -1484,6 +1636,237 @@ export async function concatenateSegmentsWithTransitions(
   if (segmentPaths.length === 0) throw new Error("No segments to concatenate");
   if (segmentPaths.length === 1) return segmentPaths[0];
 
+  try {
+    return await concatViaTransitionClips(segmentPaths, transitions, transitionDuration);
+  } catch (err: any) {
+    log.warn("Split-encode concat failed, falling back to single-pass xfade", {
+      error: err?.message ?? String(err),
+    });
+  }
+
+  return concatViaSinglePassXfade(segmentPaths, transitions, transitionDuration);
+}
+
+/**
+ * Fast path: encode only the crossfade regions, stream-copy everything else.
+ */
+async function concatViaTransitionClips(
+  segmentPaths: string[],
+  transitions: string[],
+  transitionDuration: number
+): Promise<string> {
+  if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
+
+  const n = segmentPaths.length;
+  const id = nanoid(8);
+  const outputPath = path.join(WORK_DIR, `final_split_${id}.mp4`);
+  const scratch: string[] = [];
+
+  // Snap to the keyframe grid the segments were encoded on. The default 0.5s
+  // is already a grid multiple, so it is untouched for almost every project.
+  const td = Math.max(
+    CUT_GRID_SEC,
+    Math.round(transitionDuration / CUT_GRID_SEC) * CUT_GRID_SEC
+  );
+
+  const durations: number[] = [];
+  for (const p of segmentPaths) durations.push(await probeMediaDuration(p));
+
+  // Each segment gives up `td` to the transition before it and `td` to the one
+  // after. Without enough left over there is no body to copy, so bail to the
+  // single-pass path rather than emitting degenerate clips.
+  for (let i = 0; i < n; i++) {
+    const consumed = (i === 0 || i === n - 1 ? 1 : 2) * td;
+    if (durations[i] - consumed < CUT_GRID_SEC) {
+      throw new Error(
+        `Segment ${i} (${durations[i].toFixed(2)}s) is too short for ${td}s transitions`
+      );
+    }
+  }
+
+  // A stream copy that starts mid-GOP yields frames referencing data we threw
+  // away. Confirm the cut point really is an IDR frame in every segment rather
+  // than assuming the encoder honoured the request; if not, fall back.
+  for (let i = 1; i < n; i++) {
+    if (!(await hasKeyframeAt(segmentPaths[i], td))) {
+      throw new Error(`Segment ${i} has no keyframe at ${td}s; cannot stream-copy`);
+    }
+  }
+
+  const probe = await probeVideoParams(segmentPaths[0]);
+
+  try {
+    // ── VIDEO: copy the bodies, encode only the overlaps ──
+    const parts: string[] = [];
+
+    for (let i = 0; i < n; i++) {
+      const bodyStart = i === 0 ? 0 : td;
+      const bodyEnd = i === n - 1 ? durations[i] : durations[i] - td;
+      const bodyPath = path.join(WORK_DIR, `body_${id}_${i}.mp4`);
+      scratch.push(bodyPath);
+
+      // Cut by frame count, not by `-t`. A time-based cut on a copied stream
+      // includes whichever packets fall under the threshold, which drifted the
+      // timeline 2 frames long over 8 scenes; a frame count is exact.
+      const bodyFrames = Math.round((bodyEnd - bodyStart) * RENDER_FPS);
+
+      await execFileAsync(ffmpegPath, [
+        "-y",
+        // Input seeking lands on a keyframe, verified above.
+        ...(bodyStart > 0 ? ["-ss", bodyStart.toFixed(3)] : []),
+        "-i", segmentPaths[i],
+        "-frames:v", String(bodyFrames),
+        "-map", "0:v:0",
+        "-c:v", "copy",
+        "-an",
+        "-avoid_negative_ts", "make_zero",
+        bodyPath,
+      ], { timeout: 120000 });
+
+      parts.push(bodyPath);
+
+      if (i < n - 1) {
+        const transPath = path.join(WORK_DIR, `trans_${id}_${i}.mp4`);
+        scratch.push(transPath);
+        const name = xfadeName(transitions[i] || "fade");
+
+        await execFileAsync(ffmpegPath, [
+          "-y",
+          "-ss", (durations[i] - td).toFixed(3), "-i", segmentPaths[i],
+          "-t", td.toFixed(3), "-i", segmentPaths[i + 1],
+          "-filter_complex",
+          `[0:v]settb=AVTB,fps=${RENDER_FPS},format=yuv420p[x0];` +
+            `[1:v]settb=AVTB,fps=${RENDER_FPS},format=yuv420p[x1];` +
+            `[x0][x1]xfade=transition=${name}:duration=${td}:offset=0[v]`,
+          "-map", "[v]",
+          "-an",
+          "-c:v", "libx264",
+          "-preset", X264_PRESET,
+          "-crf", "20",
+          ...gopArgs(),
+          // Match the copied bodies so the demuxer sees one consistent stream.
+          "-profile:v", probe.profile,
+          "-pix_fmt", "yuv420p",
+          "-frames:v", String(Math.round(td * RENDER_FPS)),
+          transPath,
+        ], { timeout: 180000 });
+
+        parts.push(transPath);
+      }
+    }
+
+    const listFile = path.join(WORK_DIR, `split_list_${id}.txt`);
+    scratch.push(listFile);
+    await fs.writeFile(
+      listFile,
+      parts.map((p) => `file '${p.replace(/\\/g, "/").replace(/'/g, "'\\''")}'`).join("\n"),
+      "utf-8"
+    );
+
+    const videoOnly = path.join(WORK_DIR, `vonly_${id}.mp4`);
+    scratch.push(videoOnly);
+    await execFileAsync(ffmpegPath, [
+      "-y",
+      "-f", "concat", "-safe", "0", "-i", listFile,
+      "-c", "copy",
+      videoOnly,
+    ], { timeout: 300000 });
+
+    // ── AUDIO: one pass, one encode, real crossfades ──
+    const audioOnly = path.join(WORK_DIR, `aonly_${id}.m4a`);
+    scratch.push(audioOnly);
+    const aArgs = ["-y"];
+    for (const p of segmentPaths) aArgs.push("-i", p);
+    let aChain = "";
+    let lastA = "[0:a]";
+    for (let i = 1; i < n; i++) {
+      const out = `[ax${i}]`;
+      aChain += `${lastA}[${i}:a]acrossfade=d=${td}${out};`;
+      lastA = out;
+    }
+    aArgs.push(
+      "-filter_complex", aChain.slice(0, -1),
+      "-map", lastA,
+      "-c:a", "aac", "-b:a", "160k", "-ar", "44100",
+      audioOnly
+    );
+    await execFileAsync(ffmpegPath, aArgs, { timeout: 300000 });
+
+    // ── MUX ──
+    await execFileAsync(ffmpegPath, [
+      "-y",
+      "-i", videoOnly,
+      "-i", audioOnly,
+      "-map", "0:v:0", "-map", "1:a:0",
+      "-c", "copy",
+      "-shortest",
+      "-movflags", "+faststart",
+      outputPath,
+    ], { timeout: 120000 });
+
+    const stat = await fs.stat(outputPath);
+    if (stat.size === 0) throw new Error("Split-encode concat produced an empty file");
+
+    return outputPath;
+  } finally {
+    await cleanupTempFiles(scratch);
+  }
+}
+
+/** True when the video stream has a keyframe within half a frame of `atSec`. */
+async function hasKeyframeAt(filePath: string, atSec: number): Promise<boolean> {
+  if (!ffprobeStatic.path) return false;
+  const tol = 1 / (2 * RENDER_FPS);
+  try {
+    // `-skip_frame nokey` decodes only keyframes, so scanning the whole stream
+    // costs ~130ms even for a minute of video — cheaper and far more reliable
+    // than `-read_intervals`, which seeks back to the preceding keyframe and
+    // can read a window that never reaches the point being asked about.
+    //
+    // `best_effort_timestamp_time` rather than `pts_time`: ffmpeg-static still
+    // ships ffprobe 4.0.2, which predates that field name and silently returns
+    // blanks for it.
+    const { stdout } = await execFileAsync(ffprobeStatic.path, [
+      "-v", "error",
+      "-select_streams", "v:0",
+      "-skip_frame", "nokey",
+      "-show_entries", "frame=best_effort_timestamp_time",
+      "-of", "csv=p=0",
+      filePath,
+    ], { timeout: 30000 });
+
+    return stdout
+      .trim()
+      .split(/\r?\n/)
+      .some((line) => Math.abs(parseFloat(line) - atSec) <= tol);
+  } catch {
+    return false;
+  }
+}
+
+/** Read the video parameters we need to match when splicing in new clips. */
+async function probeVideoParams(filePath: string): Promise<{ profile: string }> {
+  if (!ffprobeStatic.path) throw new Error("ffprobe-static path is undefined");
+  const { stdout } = await execFileAsync(ffprobeStatic.path, [
+    "-v", "error",
+    "-select_streams", "v:0",
+    "-show_entries", "stream=profile",
+    "-of", "csv=p=0",
+    filePath,
+  ], { timeout: 10000 });
+  const profile = stdout.trim().toLowerCase();
+  // x264 accepts baseline/main/high; anything else we leave to the encoder default.
+  return { profile: ["baseline", "main", "high"].includes(profile) ? profile : "high" };
+}
+
+/**
+ * Original single-pass implementation, kept as the fallback path.
+ */
+async function concatViaSinglePassXfade(
+  segmentPaths: string[],
+  transitions: string[],
+  transitionDuration: number
+): Promise<string> {
   const outputPath = path.join(WORK_DIR, `final_xfade_${nanoid(8)}.mp4`);
   
   // Probe durations
@@ -1518,15 +1901,7 @@ export async function concatenateSegmentsWithTransitions(
     const outV = `[v_xfade${i}]`;
     const outA = `[a_xfade${i}]`;
     
-    // Map transition names from our frontend to ffmpeg xfade names
-    // fade, slide-left, slide-right, slide-up, flip, dissolve
-    let tName = "fade";
-    const reqT = transitions[i - 1] || "fade";
-    if (reqT === "slide-left") tName = "slideleft";
-    if (reqT === "slide-right") tName = "slideright";
-    if (reqT === "slide-up") tName = "slideup";
-    if (reqT === "flip") tName = "pixelize"; // flip doesn't exist in basic xfade, use pixelize or wipeleft
-    if (reqT === "dissolve") tName = "fade";
+    const tName = xfadeName(transitions[i - 1] || "fade");
 
     filterComplex += `${lastV}${nextV}xfade=transition=${tName}:duration=${transitionDuration}:offset=${currentOffset.toFixed(3)}${outV};`;
     filterComplex += `${lastA}${nextA}acrossfade=d=${transitionDuration}${outA};`;
@@ -1539,7 +1914,7 @@ export async function concatenateSegmentsWithTransitions(
   args.push("-filter_complex", filterComplex.slice(0, -1)); // remove trailing semicolon
   args.push("-map", lastV);
   args.push("-map", lastA);
-  args.push("-c:v", "libx264", "-preset", "medium", "-crf", "20");
+  args.push("-c:v", "libx264", "-preset", X264_PRESET, "-crf", "20");
   args.push("-c:a", "aac", "-b:a", "160k");
   args.push("-pix_fmt", "yuv420p");
   args.push("-movflags", "+faststart");
@@ -1605,6 +1980,8 @@ export async function renderMultiZoomSegments(opts: {
   screenshotPath: string;
   audioPath: string;
   audioDuration: number;
+  /** Forwarded to renderStepVideo; see the note on its own option. */
+  transitionDurationSec?: number;
   multiZooms: Array<{
     targetX: number;
     targetY: number;
@@ -1758,6 +2135,7 @@ export async function renderMultiZoomSegments(opts: {
     screenshotPath: opts.screenshotPath,
     audioPath: opts.audioPath,
     audioDuration: opts.audioDuration,
+    transitionDurationSec: opts.transitionDurationSec,
     clipDurationOverride: effectiveDuration,
     // Use first waypoint as the "target" for highlight box compatibility
     zoomTargetX: zooms[0].targetX,

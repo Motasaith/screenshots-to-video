@@ -1,6 +1,6 @@
 import { useRef, useEffect, useState } from "react";
 import { motion, useInView } from "framer-motion";
-import { Sparkles, Cpu, Award, Zap } from "lucide-react";
+import { PenTool, Cpu, Award, Zap } from "lucide-react";
 
 const stats = [
   {
@@ -23,7 +23,7 @@ const stats = [
     value: 30,
     suffix: "+",
     label: "Editor Tools",
-    icon: Sparkles,
+    icon: PenTool,
     percentage: 90,
     strokeColor: "var(--teal-600)",
   },

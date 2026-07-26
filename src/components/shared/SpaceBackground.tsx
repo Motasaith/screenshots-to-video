@@ -1,7 +1,16 @@
 
 export function SpaceBackground() {
   return (
-    <div className="absolute inset-0 z-0 overflow-hidden pointer-events-none select-none">
+    // `fixed`, not `absolute`. Absolute meant this layer scrolled with the
+    // page, so four 120px-blurred orbs had to be recomposited on every scroll
+    // frame -- on every page, since every page renders this. Pinned to the
+    // viewport the layer never moves, so scrolling touches it not at all.
+    // `contain: paint` additionally stops it participating in the rest of the
+    // page's paint work.
+    <div
+      className="fixed inset-0 z-0 overflow-hidden pointer-events-none select-none"
+      style={{ contain: "paint" }}
+    >
       <div className="glow-orb glow-orb-indigo top-[-5%] left-[-10%]" />
       <div className="glow-orb glow-orb-cyan top-[25%] right-[-5%]" />
       <div className="glow-orb glow-orb-violet top-[55%] left-[-15%]" />

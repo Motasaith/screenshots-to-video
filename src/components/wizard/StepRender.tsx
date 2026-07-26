@@ -85,7 +85,7 @@ export default function StepRender() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         {!isComplete && !isError && (
           <div className="font-hand text-xl text-[var(--sketch-fg-muted)] animate-float mb-4">
-            Generating magic... ✨
+            Rendering your video…
           </div>
         )}
         <h2 className="font-body font-bold text-3xl tracking-tight text-[var(--sketch-fg)]">
@@ -100,7 +100,7 @@ export default function StepRender() {
             ? "Redirecting to preview..."
             : isError
               ? status?.job?.message || "An error occurred during rendering."
-              : "This takes 2-5 minutes. You can safely close this tab — your video will be ready."}
+              : "This takes 2-5 minutes. You can safely close this tab; your video will be ready when you return."}
         </p>
 
         {startError && (

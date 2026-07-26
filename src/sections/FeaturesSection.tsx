@@ -7,9 +7,69 @@ import {
   ShieldCheck,
   MessageSquare,
   Smartphone,
-  Zap,
   Edit3,
 } from "lucide-react";
+
+/**
+ * Mounts its children only while they are near the viewport.
+ *
+ * The illustrations below run ~21 `repeat: Infinity` animations between them,
+ * most of which drive paint-triggering properties (borderColor, backgroundColor,
+ * width, pathLength). framer-motion starts those on mount and never stops them,
+ * so scrolling anywhere on the landing page competed with animation work for
+ * cards several screens away.
+ *
+ * Unmounting is what actually stops the work — pausing is not something these
+ * animations expose. Four of the six illustrations size themselves from their
+ * content, so the height is measured before the first unmount and held while
+ * the children are gone; without that the card would collapse and the page
+ * would shift under the scroll. `rootMargin` mounts them before they are
+ * visible, so nothing ever pops in.
+ */
+function IllustrationSlot({
+  className,
+  style,
+  children,
+}: {
+  className?: string;
+  style?: React.CSSProperties;
+  children: React.ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  // Starts mounted so the very first layout is correct and measurable; the
+  // observer unmounts the off-screen ones on its first callback.
+  const [visible, setVisible] = useState(true);
+  const [reservedHeight, setReservedHeight] = useState<number>();
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) {
+          const h = el.offsetHeight;
+          if (h > 0) setReservedHeight(h);
+        }
+        setVisible(entry.isIntersecting);
+      },
+      { rootMargin: "300px" }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className={className}
+      style={!visible && reservedHeight ? { ...style, height: reservedHeight } : style}
+    >
+      {visible ? children : null}
+    </div>
+  );
+}
 
 // Mini animated illustrations for each card
 function UIProcessingIllustration() {
@@ -837,15 +897,16 @@ function BentoCard({
           </p>
         </div>
 
-        {/* Animated illustration — speeds up on hover */}
-        <div
+        {/* Animated illustration, speeds up on hover. Only runs while near the
+            viewport — see IllustrationSlot. */}
+        <IllustrationSlot
           className="mt-4 rounded-lg border border-[var(--space-border)] bg-[var(--space-card)] overflow-hidden"
           style={{
             animationDuration: isHovered ? "0.5s" : "1s",
           }}
         >
           <Illustration />
-        </div>
+        </IllustrationSlot>
       </div>
     </motion.div>
   );
@@ -867,17 +928,8 @@ export default function FeaturesSection() {
           transition={{ duration: 0.6 }}
           className="mb-16 text-center"
         >
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/10 border border-teal-500/20 mb-3">
-            <Zap className="w-3.5 h-3.5 text-teal-500" />
-            <span className="font-mono text-xs font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-wider">
-              Advanced Tooling
-            </span>
-          </div>
-
-          <h2 className="font-extrabold text-3xl lg:text-5xl mt-3 tracking-tight text-[var(--space-text)] max-w-2xl mx-auto leading-tight">
-            Built for professional
-            <br />
-            <span className="text-gradient-neon">technical content creators</span>
+          <h2 className="font-extrabold text-3xl lg:text-5xl tracking-tight text-[var(--space-text)] max-w-2xl mx-auto leading-tight">
+            Built for professional technical content creators
           </h2>
         </motion.div>
 

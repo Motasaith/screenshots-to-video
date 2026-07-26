@@ -54,7 +54,7 @@ export function RenderPreflightDialog({
       }}
     >
       <DialogContent
-        className="max-w-xl border border-amber-500/35 bg-[var(--sketch-card-bg)] text-[var(--sketch-fg)] shadow-2xl"
+        className="max-w-xl border border-amber-500/35 bg-[var(--sketch-surface)] text-[var(--sketch-fg)] shadow-2xl"
         onInteractOutside={(event) => {
           if (busy) event.preventDefault();
         }}

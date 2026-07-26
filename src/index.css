@@ -65,6 +65,9 @@
     --sketch-fg-subtle: rgba(5, 36, 33, 0.4);
     --sketch-border-color: rgba(0, 71, 65, 0.15);
     --sketch-card-bg: #ffffff;
+    /* Opaque surface for floating UI. See the dark-mode counterpart for why
+       this exists separately from --sketch-card-bg. */
+    --sketch-surface: #ffffff;
     --sketch-panel-bg: #F8F6F0;
     --sketch-toolbar-bg: #FAF9F5;
     --sketch-input-bg: #ffffff;
@@ -84,7 +87,9 @@
     --foreground: 43 20% 92%;
     --card: 172 71% 8% / 0.45;
     --card-foreground: 43 20% 92%;
-    --popover: 172 71% 8% / 0.95;
+    /* Floating menus sit over arbitrary content; 5% bleed-through was
+       visible over the editor canvas. */
+    --popover: 172 71% 8%;
     --popover-foreground: 43 20% 92%;
     --primary: 172 66% 50%;
     --primary-foreground: 172 75% 8%;
@@ -137,6 +142,14 @@
     --sketch-fg-subtle: rgba(240, 237, 228, 0.4);
     --sketch-border-color: rgba(45, 212, 191, 0.15);
     --sketch-card-bg: rgba(6, 36, 33, 0.45);
+    /* Opaque surface for anything that floats over arbitrary content.
+       --sketch-card-bg is deliberately 45% transparent: it is meant for inline
+       cards that pair it with backdrop-filter (see .glass-panel / .sketch-card),
+       where the blur is what turns 45% into frosted glass. A dialog or menu has
+       no such pairing, so the raw token let the page read straight through --
+       at 27% even under the dialog scrim. This is the same hue composited to
+       full opacity, a touch lighter so it still reads as elevated. */
+    --sketch-surface: #0a2622;
     --sketch-panel-bg: rgba(6, 36, 33, 0.65);
     --sketch-toolbar-bg: rgba(4, 23, 21, 0.85);
     --sketch-input-bg: rgba(6, 36, 33, 0.45);
@@ -486,16 +499,27 @@
   --teal-950: #042f2e;
 }
 
-/* Glowing Mesh Orbs */
+/* Glowing Mesh Orbs
+ *
+ * These are the most expensive elements on the page: a 120px blur forces the
+ * orb into its own large offscreen buffer. That buffer can be rasterized ONCE
+ * and then moved around by the compositor for free — but only if the animation
+ * touches nothing but `translate`. The keyframes used to animate `scale()` as
+ * well, which changes the rasterized size and so re-ran the 120px blur on every
+ * frame, on four elements, for the entire life of the page.
+ *
+ * `will-change: transform` pins each orb to its own layer so the surrounding
+ * content is never repainted along with it.
+ */
 .glow-orb {
   position: absolute;
   border-radius: 50%;
   filter: blur(120px);
   opacity: var(--orb-opacity);
-  mix-blend-mode: plus-lite;
   pointer-events: none;
   z-index: 0;
   transition: opacity 0.3s;
+  will-change: transform;
 }
 
 .glow-orb-indigo {
@@ -519,31 +543,57 @@
   animation: orb-float-3 30s ease-in-out infinite alternate;
 }
 
+/* Translate only — see the note above on why `scale()` cannot appear here.
+ * The travel distances are widened slightly to keep the same sense of drift
+ * that the scaling used to contribute. */
 @keyframes orb-float-1 {
-  0% { transform: translate(-10%, -10%) scale(1); }
-  100% { transform: translate(20%, 30%) scale(1.2); }
+  0% { transform: translate(-12%, -12%); }
+  100% { transform: translate(24%, 34%); }
 }
 
 @keyframes orb-float-2 {
-  0% { transform: translate(10%, 40%) scale(1.1); }
-  100% { transform: translate(-30%, -20%) scale(0.9); }
+  0% { transform: translate(12%, 44%); }
+  100% { transform: translate(-34%, -24%); }
 }
 
 @keyframes orb-float-3 {
-  0% { transform: translate(30%, -30%) scale(0.85); }
-  100% { transform: translate(-10%, 20%) scale(1.15); }
+  0% { transform: translate(34%, -34%); }
+  100% { transform: translate(-12%, 24%); }
 }
 
-/* 3D Glass Panels */
-/* 3D Glass Panels */
+@media (prefers-reduced-motion: reduce) {
+  .glow-orb {
+    animation: none;
+    will-change: auto;
+  }
+}
+
+/* 3D Glass Panels
+ *
+ * `backdrop-filter` is deliberately NOT on the base rules — see the dark-mode
+ * block below. In light mode --space-card is #ffffff, i.e. fully opaque, so
+ * blurring the backdrop produced a pixel-for-pixel identical result while
+ * still forcing a separate compositing pass on every card. With four animated
+ * blurred orbs drifting behind them, that pass had to be redone every frame.
+ */
 .glass-panel {
   background: var(--space-card);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--space-border);
   box-shadow: 0 10px 30px rgba(9, 13, 22, 0.03),
               0 1px 3px rgba(9, 13, 22, 0.02);
   transition: background-color 0.3s, border-color 0.3s;
+}
+
+/* Dark mode is the only place the effect is visible: --space-card drops to
+ * rgba(6, 36, 33, 0.45), so what sits behind the card genuinely shows through. */
+.dark .glass-panel,
+.dark .glass-panel-interactive,
+.dark .theme-3d-immersive .sketch-card,
+.dark .theme-3d-immersive .neo-card,
+.dark .theme-3d-immersive .sketch-card-hover,
+.dark .theme-3d-immersive .neo-card-hover {
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
 }
 
 .dark .glass-panel {
@@ -553,8 +603,6 @@
 
 .glass-panel-interactive {
   background: var(--space-card);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--space-border);
   box-shadow: 0 10px 30px rgba(9, 13, 22, 0.03),
               0 1px 3px rgba(9, 13, 22, 0.02);
@@ -1055,13 +1103,16 @@
   --sketch-border-color: var(--space-border);
   --sketch-card-bg: var(--space-card);
   --sketch-input-bg: var(--space-card);
+  --sketch-surface: #ffffff;
+}
+
+.dark .theme-3d-immersive {
+  --sketch-surface: #0a2622;
 }
 
 .theme-3d-immersive .sketch-card,
 .theme-3d-immersive .neo-card {
   background: var(--space-card);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--space-border);
   border-radius: 0.75rem;
   box-shadow: 0 10px 30px rgba(9, 13, 22, 0.03);
@@ -1076,8 +1127,6 @@
 .theme-3d-immersive .sketch-card-hover,
 .theme-3d-immersive .neo-card-hover {
   background: var(--space-card);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--space-border);
   border-radius: 0.75rem;
   box-shadow: 0 10px 30px rgba(9, 13, 22, 0.03);

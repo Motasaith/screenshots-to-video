@@ -11,7 +11,7 @@ const UPDATES = [
       { type: "added", text: "Production-ready admin dashboard with detailed stats, user management, log viewer, and system controls." },
       { type: "added", text: "Structured file-based logging system with automatic rotation and 30-day retention." },
       { type: "added", text: "Enhanced rate limiting across all endpoints including auth and admin routes." },
-      { type: "improved", text: "Removed guest user mode — authentication is now required for all features." },
+      { type: "improved", text: "Removed guest user mode. Authentication is now required for all features." },
       { type: "improved", text: "Streamlined to a single 3-step workflow: Create, Edit, Render & Export." },
       { type: "fixed", text: "Removed all dead code, unused files, and legacy studio system." },
     ],

@@ -37,7 +37,9 @@ import {
   Mic,
   Merge,
   CheckCircle,
-  Sparkles,
+  Wand2,
+  Compass,
+  Hand,
   Bot,
   Save,
   ZoomIn,
@@ -59,6 +61,7 @@ import {
   Menu,
   Sliders,
 } from "lucide-react";
+import { stepThumbUrl } from "@/lib/thumbUrl";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -93,6 +96,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip
 import type { TransitionType } from "@/hooks/useWizardStore";
 import AIGuide from "@/components/wizard/AIGuide";
 import Timeline, { type TimelineClip } from "@/components/wizard/Timeline";
+import { startOnboardingTour } from "@/components/wizard/OnboardingTour";
 import { INTRO_TEMPLATES, OUTRO_TEMPLATES, getTemplate } from "@/components/wizard/introOutroTemplates";
 import { RenderPreflightDialog } from "@/components/wizard/RenderPreflightDialog";
 import {
@@ -399,7 +403,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       id: s.id,
       order: s.order,
       name: s.description || `Scene ${s.order}`,
-      thumbnail: s.screenshotPath,
+      thumbnail: stepThumbUrl(s.id, s.screenshotPath, 192) ?? s.screenshotPath,
       duration: (s as any).editorDuration ?? 5.0,
       transition: s.transition,
       isVideo: s.screenshotPath?.includes(".mp4") || 
@@ -2046,7 +2050,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       <div className="space-y-4 mt-3 border-t border-[var(--sketch-fg-subtle)]/20 pt-3">
         <h3 className="font-mono text-[10px] text-[var(--sketch-fg-muted)] uppercase tracking-wider mb-2 flex items-center gap-1">
           <Settings2 className="w-3 h-3" />
-          Properties — {mode}
+          Properties: {mode}
         </h3>
         <div className="space-y-4">
           {/* Caption Properties */}
@@ -3696,7 +3700,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 : "text-[var(--sketch-fg-subtle)] hover:text-[var(--sketch-fg-muted)]"
               }`}
           >
-            <Sparkles className="w-3.5 h-3.5" />
+            <Wand2 className="w-3.5 h-3.5" />
             <span>AI Generate</span>
           </button>
           <button
@@ -3727,7 +3731,15 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                         <div className="flex items-center gap-2">
                           <div className="w-10 h-10 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/25 rounded-md overflow-hidden flex-shrink-0 flex items-center justify-center">
                             {s.screenshotPath ? (
-                              <img src={s.screenshotPath} alt="" className="w-full h-full object-cover" />
+                              <img
+                                src={stepThumbUrl(s.id, s.screenshotPath) ?? s.screenshotPath}
+                                alt=""
+                                width={40}
+                                height={40}
+                                loading="lazy"
+                                decoding="async"
+                                className="w-full h-full object-cover"
+                              />
                             ) : (
                               <span className="font-mono text-xs text-[var(--sketch-fg-subtle)]">{idx + 1}</span>
                             )}
@@ -3867,7 +3879,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-4 h-4" />
+                        <Wand2 className="w-4 h-4" />
                         <span>Generate All Scripts (Text AI)</span>
                       </>
                     )}
@@ -3967,7 +3979,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                       </>
                     ) : (
                       <>
-                        <Sparkles className="w-4 h-4" />
+                        <Wand2 className="w-4 h-4" />
                         <span>Generate All Scripts (Text AI)</span>
                       </>
                     )}
@@ -4110,7 +4122,15 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                         <div className="flex items-center gap-2">
                           <div className="w-10 h-10 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/25 rounded-md overflow-hidden flex-shrink-0 flex items-center justify-center">
                             {s.screenshotPath ? (
-                              <img src={s.screenshotPath} alt="" className="w-full h-full object-cover" />
+                              <img
+                                src={stepThumbUrl(s.id, s.screenshotPath) ?? s.screenshotPath}
+                                alt=""
+                                width={40}
+                                height={40}
+                                loading="lazy"
+                                decoding="async"
+                                className="w-full h-full object-cover"
+                              />
                             ) : (
                               <span className="font-mono text-xs text-[var(--sketch-fg-subtle)]">{idx + 1}</span>
                             )}
@@ -4359,7 +4379,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 {credits.data.remaining > 0 ? (
                   <span className="text-emerald-600 font-bold">✓ Active</span>
                 ) : (
-                  <span className="text-red-500 font-bold">⚠️ Exhausted</span>
+                  <span className="text-red-500 font-bold">Exhausted</span>
                 )}
               </div>
             ) : (
@@ -5208,7 +5228,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               {currentStep.isSafe === 1 ? "✓ Safe" : "✗ Flagged"}
             </span>
             {currentStep.safetyReason && (
-              <span className="truncate">— {currentStep.safetyReason}</span>
+              <span className="truncate">{currentStep.safetyReason}</span>
             )}
           </div>
         )}
@@ -5227,7 +5247,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   return (
     <div className="w-full h-full flex flex-col bg-[var(--sketch-bg)] text-[var(--sketch-fg)] select-none font-sans overflow-hidden">
       {/* 1. Main Top Header Bar */}
-      <header className="w-full bg-[var(--sketch-toolbar-bg)] border-b-2 border-[var(--sketch-border-color)] px-2 sm:px-4 py-2 flex flex-col gap-1.5 flex-shrink-0">
+      <header data-tour="header" className="w-full bg-[var(--sketch-toolbar-bg)] border-b-2 border-[var(--sketch-border-color)] px-2 sm:px-4 py-2 flex flex-col gap-1.5 flex-shrink-0">
         <div className="flex items-center justify-between">
           {/* Left: Logo, Title row */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
@@ -5284,6 +5304,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           <div className="flex items-center gap-3">
             {/* Render & Export Trigger Button */}
             <button
+              data-tour="export-btn"
               onClick={handleExportRequest}
               disabled={isPreparingExport}
               className="py-1 px-3 bg-[#FBBF24] hover:bg-[#FBBF24]/90 dark:bg-[#FBBF24]/20 dark:hover:bg-[#FBBF24]/30 text-black dark:text-[#FBBF24] text-xs font-bold rounded shadow-sm hover:shadow transition-all flex items-center gap-1.5 cursor-pointer border border-[#FBBF24]/30"
@@ -5291,9 +5312,18 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               {isPreparingExport ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               ) : (
-                <Sparkles className="w-3.5 h-3.5" />
+                <Download className="w-3.5 h-3.5" />
               )}
               <span>{isPreparingExport ? "Checking..." : "Export"}</span>
+            </button>
+
+            {/* Replay the onboarding tour */}
+            <button
+              onClick={() => startOnboardingTour()}
+              className="p-1.5 hover:bg-[var(--sketch-fg-subtle)]/10 rounded-full text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] transition-all cursor-pointer border border-[var(--sketch-border-color)]/20 flex items-center justify-center w-8 h-8"
+              title="Replay the editor tour"
+            >
+              <HelpCircle className="w-4 h-4" />
             </button>
 
             {/* Light/Dark Mode toggle button */}
@@ -5335,7 +5365,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 onClick={handleExportRequest}
                 disabled={isPreparingExport}
               >
-                <Sparkles className="w-3.5 h-3.5 mr-2" /> Export Video…
+                <Download className="w-3.5 h-3.5 mr-2" /> Export Video…
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -5659,6 +5689,9 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-52">
+              <DropdownMenuItem onClick={() => startOnboardingTour()}>
+                <Compass className="w-3.5 h-3.5 mr-2" /> Replay Editor Tour
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => toggleRightTab("help")}>
                 <HelpCircle className="w-3.5 h-3.5 mr-2" /> Help Guide
               </DropdownMenuItem>
@@ -5737,7 +5770,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 onClick={handleExportRequest}
                 disabled={isPreparingExport}
               >
-                <Sparkles className="w-3.5 h-3.5 mr-2" /> Export Video…
+                <Download className="w-3.5 h-3.5 mr-2" /> Export Video…
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -5804,6 +5837,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
             animate={{ height: 42, opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.15 }}
+            data-tour="toolbar"
             className="w-full bg-[var(--sketch-panel-bg)] border-b-2 border-[var(--sketch-border-color)] px-2 sm:px-4 flex items-center justify-between flex-shrink-0 select-none overflow-hidden h-[42px]"
           >
             {/* Left: Fit, Undo/Redo, Tools */}
@@ -5856,8 +5890,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
               {/* Tools row */}
               <div className="flex items-center gap-1 px-1 overflow-x-auto scrollbar-none py-0.5 flex-1 min-w-0">
-                <ToolbarToolButton active={mode === "select"} onClick={() => setMode("select")} icon={<MousePointer className="w-3.5 h-3.5" />} label="Select" shortcut="V" description="Click to select and move annotations on the canvas." />
-                <ToolbarToolButton active={mode === "pan"} onClick={() => setMode("pan")} icon={<Move className="w-3.5 h-3.5" />} label="Pan" shortcut="Space" description="Drag to scroll around the canvas when zoomed in." />
+                <ToolbarToolButton active={mode === "select"} onClick={() => setMode("select")} icon={<MousePointer className="w-3.5 h-3.5" />} label="Select" shortcut="V" description="Click to select and move annotations on the canvas." dataTour="tool-select" />
+                <ToolbarToolButton active={mode === "pan"} onClick={() => setMode("pan")} icon={<Move className="w-3.5 h-3.5" />} label="Pan" shortcut="Space" description="Drag to scroll around the canvas when zoomed in." dataTour="tool-pan" />
                 <ToolbarToolButton
                   active={mode === "crop"}
                   onClick={() => {
@@ -5883,20 +5917,21 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   label="Crop"
                   shortcut="C"
                   description="Drag to crop the screenshot. Removes areas outside the selection."
+                  dataTour="tool-crop"
                 />
                 <div className="h-4 w-[1px] bg-[#D3D3D3]/50 mx-1 flex-shrink-0" />
-                <ToolbarToolButton active={mode === "highlight"} onClick={() => setMode("highlight")} icon={<Square className="w-3.5 h-3.5" />} label="Highlight" shortcut="H" description="Drag to draw a colored highlight box around important UI elements." />
-                <ToolbarToolButton active={mode === "zoom"} onClick={() => setMode("zoom")} icon={<Target className="w-3.5 h-3.5" />} label="Zoom" shortcut="Z" description="Click to set a zoom target point. The camera will zoom into this area during the video. Add multiple points for a pan effect." />
+                <ToolbarToolButton active={mode === "highlight"} onClick={() => setMode("highlight")} icon={<Square className="w-3.5 h-3.5" />} label="Highlight" shortcut="H" description="Drag to draw a colored highlight box around important UI elements." dataTour="tool-highlight" />
+                <ToolbarToolButton active={mode === "zoom"} onClick={() => setMode("zoom")} icon={<Target className="w-3.5 h-3.5" />} label="Zoom" shortcut="Z" description="Click to set a zoom target point. The camera will zoom into this area during the video. Add multiple points for a pan effect." dataTour="tool-zoom" />
                 <div className="h-4 w-[1px] bg-[#D3D3D3]/50 mx-1 flex-shrink-0" />
-                <ToolbarToolButton active={mode === "overlay"} onClick={() => setMode("overlay")} icon={<Type className="w-3.5 h-3.5" />} label="Text Overlay" shortcut="T" description="Click to place custom text on the screenshot. Useful for labels and callouts." />
-                <ToolbarToolButton active={mode === "badge"} onClick={() => setMode("badge")} icon={<BadgeCheck className="w-3.5 h-3.5" />} label="Badge" shortcut="B" description="Click to add a numbered step badge. Automatically numbers your steps." />
-                <ToolbarToolButton active={mode === "watermark"} onClick={() => setMode("watermark")} icon={<Stamp className="w-3.5 h-3.5" />} label="Watermark" shortcut="W" description="Add a text watermark to protect your video. Choose position and opacity." />
+                <ToolbarToolButton active={mode === "overlay"} onClick={() => setMode("overlay")} icon={<Type className="w-3.5 h-3.5" />} label="Text Overlay" shortcut="T" description="Click to place custom text on the screenshot. Useful for labels and callouts." dataTour="tool-overlay" />
+                <ToolbarToolButton active={mode === "badge"} onClick={() => setMode("badge")} icon={<BadgeCheck className="w-3.5 h-3.5" />} label="Badge" shortcut="B" description="Click to add a numbered step badge. Automatically numbers your steps." dataTour="tool-badge" />
+                <ToolbarToolButton active={mode === "watermark"} onClick={() => setMode("watermark")} icon={<Stamp className="w-3.5 h-3.5" />} label="Watermark" shortcut="W" description="Add a text watermark to protect your video. Choose position and opacity." dataTour="tool-watermark" />
                 <div className="h-4 w-[1px] bg-[#D3D3D3]/50 mx-1 flex-shrink-0" />
-                <ToolbarToolButton active={mode === "blur"} onClick={() => setMode("blur")} icon={<Aperture className="w-3.5 h-3.5" />} label="Blur" shortcut="U" description="Drag to blur sensitive information like passwords, emails, or API keys." />
-                <ToolbarToolButton active={mode === "redact"} onClick={() => setMode("redact")} icon={<Shield className="w-3.5 h-3.5" />} label="Redact" shortcut="R" description="Drag to black out sensitive areas completely. Use for PII or confidential data." />
-                <ToolbarToolButton active={mode === "pixelate"} onClick={() => setMode("pixelate")} icon={<Grid3x3 className="w-3.5 h-3.5" />} label="Pixelate" shortcut="P" description="Drag to pixelate an area. Less aggressive than blur, good for faces." />
-                <ToolbarToolButton active={mode === "spotlight"} onClick={() => setMode("spotlight")} icon={<Sun className="w-3.5 h-3.5" />} label="Spotlight" shortcut="L" description="Drag to highlight an area with a bright spotlight effect. Dims the rest." />
-                <ToolbarToolButton active={mode === "filter"} onClick={() => setMode("filter")} icon={<Palette className="w-3.5 h-3.5" />} label="Filter" shortcut="F" description="Apply color filters like grayscale, sepia, or invert to the screenshot." />
+                <ToolbarToolButton active={mode === "blur"} onClick={() => setMode("blur")} icon={<Aperture className="w-3.5 h-3.5" />} label="Blur" shortcut="U" description="Drag to blur sensitive information like passwords, emails, or API keys." dataTour="tool-blur" />
+                <ToolbarToolButton active={mode === "redact"} onClick={() => setMode("redact")} icon={<Shield className="w-3.5 h-3.5" />} label="Redact" shortcut="R" description="Drag to black out sensitive areas completely. Use for PII or confidential data." dataTour="tool-redact" />
+                <ToolbarToolButton active={mode === "pixelate"} onClick={() => setMode("pixelate")} icon={<Grid3x3 className="w-3.5 h-3.5" />} label="Pixelate" shortcut="P" description="Drag to pixelate an area. Less aggressive than blur, good for faces." dataTour="tool-pixelate" />
+                <ToolbarToolButton active={mode === "spotlight"} onClick={() => setMode("spotlight")} icon={<Sun className="w-3.5 h-3.5" />} label="Spotlight" shortcut="L" description="Drag to highlight an area with a bright spotlight effect. Dims the rest." dataTour="tool-spotlight" />
+                <ToolbarToolButton active={mode === "filter"} onClick={() => setMode("filter")} icon={<Palette className="w-3.5 h-3.5" />} label="Filter" shortcut="F" description="Apply color filters like grayscale, sepia, or invert to the screenshot." dataTour="tool-filter" />
               </div>
             </div>
 
@@ -5918,7 +5953,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       {isToolbarCollapsed && (
         <button
           onClick={() => setIsToolbarCollapsed(false)}
-          className="absolute left-4 top-[64px] z-50 p-1 bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/20 shadow-sm hover:bg-[var(--sketch-fg-subtle)]/10 rounded-full text-[var(--sketch-fg-muted)] cursor-pointer"
+          className="absolute left-4 top-[64px] z-50 p-1 bg-[var(--sketch-surface)] border border-[var(--sketch-border-color)]/20 shadow-sm hover:bg-[var(--sketch-fg-subtle)]/10 rounded-full text-[var(--sketch-fg-muted)] cursor-pointer"
           title="Expand toolbar"
         >
           <ChevronDown className="w-3.5 h-3.5" />
@@ -5931,7 +5966,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         {/* LEFT COLUMN: Canvas + Timeline stacked vertically */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {/* Canvas area */}
-          <div className="flex-1 flex flex-col bg-[var(--sketch-bg)] relative min-w-0 p-2 sm:p-4 min-h-0">
+          <div data-tour="canvas" className="flex-1 flex flex-col bg-[var(--sketch-bg)] relative min-w-0 p-2 sm:p-4 min-h-0">
             <div className="flex-1 w-full relative min-h-0 flex flex-col overflow-hidden">
               {currentStep ? (
                 <div
@@ -6208,7 +6243,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                   }}
                                 >
                                   <div className="absolute top-1 left-1 bg-[#00E676] text-black text-[10px] font-mono px-1 rounded font-bold">
-                                    Crop — keep this area
+                                    Crop: keep this area
                                   </div>
 
                                   {/* Edge handles — 8 resize handles (corners + midpoints) */}
@@ -6216,7 +6251,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                     <div
                                       key={h.name}
                                       data-handle={h.name}
-                                      className="absolute w-3 h-3 bg-[var(--sketch-card-bg)] border-2 border-[#00E676] rounded-sm pointer-events-auto"
+                                      className="absolute w-3 h-3 bg-[var(--sketch-surface)] border-2 border-[#00E676] rounded-sm pointer-events-auto"
                                       style={{ ...h.style, zIndex: 10 }}
                                       onMouseDown={(e) => {
                                         e.preventDefault();
@@ -6987,7 +7022,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         )}
 
         {/* Far-right vertical tab strip — full height on desktop, hidden on mobile */}
-        <div className="editor-tab-strip-vertical w-16 bg-[var(--sketch-panel-bg)] border-l border-[var(--sketch-border-color)]/40 flex flex-col items-center flex-shrink-0 h-full overflow-y-auto scrollbar-thin py-2 gap-1 hidden md:flex">
+        <div data-tour="sidebar-tabs" className="editor-tab-strip-vertical w-16 bg-[var(--sketch-panel-bg)] border-l border-[var(--sketch-border-color)]/40 flex flex-col items-center flex-shrink-0 h-full overflow-y-auto scrollbar-thin py-2 gap-1 hidden md:flex">
           <RightTabButton active={activeRightTab === "properties"} onClick={() => toggleRightTab("properties")} icon={<Settings2 className="w-4.5 h-4.5" />} label="Properties" />
           <RightTabButton active={activeRightTab === "script"} onClick={() => toggleRightTab("script")} icon={<Type className="w-4.5 h-4.5" />} label="Script" />
           <RightTabButton active={activeRightTab === "voiceover"} onClick={() => toggleRightTab("voiceover")} icon={<Volume2 className="w-4.5 h-4.5" />} label="Voiceover" />
@@ -7130,7 +7165,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               {!(renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete") &&
                 !(renderStatus?.projectStatus === "error" || renderStatus?.job?.status === "error" || startRenderError) && (
                   <span className="font-hand text-xl text-[var(--sketch-fg-muted)] absolute -top-7 left-36 rotate-[3deg] animate-float hidden sm:block">
-                    Generating magic... ✨
+                    Rendering your video…
                   </span>
                 )}
             </div>
@@ -7146,7 +7181,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 ? "Redirecting to preview page..."
                 : renderStatus?.projectStatus === "error" || renderStatus?.job?.status === "error" || startRenderError
                   ? renderStatus?.job?.message || startRenderError || "An error occurred during rendering."
-                  : "This takes 2-5 minutes. You can safely close this — your video will render in the background."}
+                  : "This takes 2-5 minutes. You can safely close this; your video will keep rendering in the background."}
             </DialogDescription>
           </DialogHeader>
 
@@ -7403,7 +7438,7 @@ function ShortcutGuideNote() {
       <div className="block md:hidden max-w-md w-full space-y-4 text-center">
         <div className="space-y-1">
           <h3 className="text-sm font-bold text-[var(--sketch-fg)] flex items-center justify-center gap-1.5">
-            <Sparkles className="w-4 h-4 text-[#FBBF24]" /> Mobile Gesture Guide
+            <Hand className="w-4 h-4 text-[#FBBF24]" /> Mobile Gesture Guide
           </h3>
           <p className="text-[10px] text-[var(--sketch-fg-muted)]">
             Quick tips to edit your video screenshots on touchscreens.
@@ -7466,6 +7501,7 @@ function ToolbarToolButton({
   label,
   shortcut,
   description,
+  dataTour,
 }: {
   active: boolean;
   onClick: () => void;
@@ -7473,11 +7509,13 @@ function ToolbarToolButton({
   label: string;
   shortcut?: string;
   description?: string;
+  dataTour?: string;
 }) {
   const btn = (
     <button
       onClick={onClick}
       title={shortcut ? `${label} (${shortcut})` : label}
+      data-tour={dataTour}
       className={`px-2 py-1 hover:bg-[var(--sketch-fg-subtle)]/20 rounded text-[var(--sketch-fg)] transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap text-[11px] font-medium ${active ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-muted)]"
         }`}
     >

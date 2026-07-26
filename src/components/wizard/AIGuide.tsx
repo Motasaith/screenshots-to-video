@@ -4,7 +4,6 @@ import { useWizardStore } from "@/hooks/useWizardStore";
 import { trpc } from "@/providers/trpc";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Sparkles,
   Send,
   ChevronDown,
   ChevronUp,
@@ -195,7 +194,7 @@ export default function AIGuide({ onCollapse }: { onCollapse?: () => void }) {
         <div className="p-4 border-b-2 border-[var(--sketch-fg-subtle)] hidden lg:flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 bg-[#FBBF24]/10 border-2 border-[#FBBF24] flex items-center justify-center sketch-border-sm">
-              <Sparkles className="w-4 h-4 text-[var(--sketch-fg)]" />
+              <Bot className="w-4 h-4 text-[var(--sketch-fg)]" />
             </div>
             <div>
               <span className="font-body font-semibold text-sm text-[var(--sketch-fg)]">AI Guide</span>
@@ -244,7 +243,7 @@ export default function AIGuide({ onCollapse }: { onCollapse?: () => void }) {
                   style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
                 >
                   {msg.role === "ai" ? (
-                    <Sparkles className="w-3 h-3 text-[var(--sketch-fg)]" />
+                    <Bot className="w-3 h-3 text-[var(--sketch-fg)]" />
                   ) : (
                     <User className="w-3 h-3 text-[var(--sketch-fg-subtle)]" />
                   )}
@@ -270,7 +269,7 @@ export default function AIGuide({ onCollapse }: { onCollapse?: () => void }) {
               className="flex gap-2"
             >
               <div className="w-6 h-6 flex-shrink-0 flex items-center justify-center border-2 bg-[#FBBF24]/10 border-[#FBBF24]" style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}>
-                <Sparkles className="w-3 h-3 text-[var(--sketch-fg)] animate-pulse" />
+                <Bot className="w-3 h-3 text-[var(--sketch-fg)]" />
               </div>
               <div className="p-3 bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-fg-subtle)] sketch-border-sm">
                 <div className="flex gap-1">

@@ -5,6 +5,7 @@ import { nanoid } from "nanoid";
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { createLogger } from "./logger";
+import { isLocalKey, readLocalFile, deleteLocalFile, localFilePath } from "./localStore";
 
 const log = createLogger({ path: "r2" });
 
@@ -94,6 +95,10 @@ export async function uploadToR2(
       Key: key,
       Body: buffer,
       ContentType: opts.contentType || "application/octet-stream",
+      // Every key we write embeds a nanoid or a step id and is never rewritten
+      // in place, so the bytes behind a key are immutable. Without this header
+      // B2 sends no Cache-Control at all and browsers re-fetch on every load.
+      CacheControl: "public, max-age=31536000, immutable",
     }));
 
     log.info(`Successfully uploaded to B2: ${key}`);
@@ -102,7 +107,41 @@ export async function uploadToR2(
 }
 
 /**
+ * Cache of B2 presigned URLs, keyed by storage key.
+ *
+ * A presigned URL embeds the signing timestamp, so generating one per request
+ * produced a *different URL string for the same bytes* every time the client
+ * asked. The browser treats each as a new resource, so every screenshot was
+ * re-downloaded on every page load and the HTTP cache never once hit. Handing
+ * back the same URL until it nears expiry is what makes caching possible at all.
+ */
+const signedUrlCache = new Map<string, { url: string; refreshAfter: number }>();
+
+/** SigV4 caps presigned URL lifetime at 7 days. Sign for 6, reissue after 5. */
+const SIGNED_URL_TTL_SEC = 6 * 24 * 60 * 60;
+const SIGNED_URL_REUSE_MS = 5 * 24 * 60 * 60 * 1000;
+
+/** Bound the cache so a long-lived worker process can't grow it forever. */
+const SIGNED_URL_CACHE_MAX = 5000;
+
+function rememberSignedUrl(realKey: string, url: string): void {
+  if (signedUrlCache.size >= SIGNED_URL_CACHE_MAX) {
+    // Map iterates in insertion order, so this drops the oldest entries.
+    for (const k of signedUrlCache.keys()) {
+      signedUrlCache.delete(k);
+      if (signedUrlCache.size < SIGNED_URL_CACHE_MAX * 0.9) break;
+    }
+  }
+  signedUrlCache.set(realKey, { url, refreshAfter: Date.now() + SIGNED_URL_REUSE_MS });
+}
+
+/**
  * Generate a download URL.
+ *
+ * `_expiresIn` is honoured only as a floor: callers asking for a short-lived
+ * URL still get the long-lived cached one, because a stable URL is worth more
+ * than a tight expiry for assets that are already access-controlled by the
+ * unguessable key.
  */
 export async function getSignedDownloadUrl(
   key: string,
@@ -110,9 +149,17 @@ export async function getSignedDownloadUrl(
 ): Promise<string> {
   if (!key) return "";
 
+  // Files kept on the server's own disk are served by /api/file, which applies
+  // the same ownership check the object-storage signature used to stand in for.
+  if (isLocalKey(key)) return `/api/file?key=${encodeURIComponent(key)}`;
+
   // If the key starts with b2:, generate pre-signed URL
   if (key.startsWith("b2:")) {
     const realKey = key.slice("b2:".length);
+
+    const cached = signedUrlCache.get(realKey);
+    if (cached && cached.refreshAfter > Date.now()) return cached.url;
+
     const s3 = getB2S3Client();
     try {
       const url = await getSignedUrl(
@@ -121,8 +168,9 @@ export async function getSignedDownloadUrl(
           Bucket: B2_BUCKET,
           Key: realKey,
         }),
-        { expiresIn: _expiresIn }
+        { expiresIn: Math.max(_expiresIn, SIGNED_URL_TTL_SEC) }
       );
+      rememberSignedUrl(realKey, url);
       return url;
     } catch (err: any) {
       log.error(`Failed to generate B2 signed URL for ${realKey}`, err);
@@ -142,8 +190,11 @@ export async function getSignedDownloadUrl(
 export async function deleteFromR2(key: string): Promise<void> {
   if (!key) return;
 
+  if (isLocalKey(key)) return deleteLocalFile(key);
+
   if (key.startsWith("b2:")) {
     const realKey = key.slice("b2:".length);
+    signedUrlCache.delete(realKey); // don't hand out URLs to deleted objects
     const s3 = getB2S3Client();
     try {
       await s3.send(
@@ -171,6 +222,8 @@ export async function deleteFromR2(key: string): Promise<void> {
  * Check if an object exists.
  */
 export async function existsInR2(key: string): Promise<boolean> {
+  if (isLocalKey(key)) return (await localFilePath(key)) !== null;
+
   const url = await getSignedDownloadUrl(key);
   try {
     const res = await fetch(url, { method: "HEAD" });
@@ -185,6 +238,8 @@ export async function existsInR2(key: string): Promise<boolean> {
  * Download an object as a buffer.
  */
 export async function downloadFromR2(key: string): Promise<Buffer> {
+  if (isLocalKey(key)) return readLocalFile(key);
+
   const url = await getSignedDownloadUrl(key);
   log.info(`Downloading from: ${url.substring(0, 120)}...`);
 

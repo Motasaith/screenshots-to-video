@@ -123,7 +123,7 @@ export default function Settings() {
                 <div>
                   <p className="font-semibold text-sm text-[var(--space-text)]">Free Plan</p>
                   <p className="text-xs text-[var(--space-text-muted)]">
-                    5 videos per month — 720p export
+                    5 videos per month · 720p export
                   </p>
                 </div>
                 <Button variant="ghost" className="glass-btn glass-btn-secondary px-4 py-2 font-semibold text-xs rounded-xl" onClick={() => navigate("/pricing")}>

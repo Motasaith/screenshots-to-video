@@ -75,7 +75,7 @@ export default function Docs() {
                 <div className="glass-panel p-5 border border-[var(--space-border)] bg-[var(--space-card)]/80 rounded-2xl">
                   <h3 className="font-bold text-lg mb-2 text-[var(--space-text)]">Writing Descriptions</h3>
                   <ul className="list-disc pl-5 text-sm text-[var(--space-text-muted)] space-y-2 leading-relaxed">
-                    <li>Keep it concise — describe the single action taking place.</li>
+                    <li>Keep it concise: describe the single action taking place.</li>
                     <li>Use active voice (e.g., "Click the submit button").</li>
                     <li>Chat with the Proactive AI Guide if you get stuck.</li>
                   </ul>

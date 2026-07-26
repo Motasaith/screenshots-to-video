@@ -10,12 +10,13 @@ import {
   Clock,
   Monitor,
   HardDrive,
-  Sparkles,
+  ClipboardCheck,
   Plus,
   LayoutDashboard,
   Loader2,
   ChevronLeft,
 } from "lucide-react";
+import { stepThumbUrl } from "@/lib/thumbUrl";
 import { Button } from "@/components/ui/button";
 import SocialShare from "./SocialShare";
 
@@ -75,7 +76,7 @@ export default function StepExport() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <div className="relative inline-block mb-1">
           <span className="font-hand text-xl text-[var(--sketch-fg-muted)] animate-float hidden sm:block">
-            Ta-da! 🎬
+            All done
           </span>
         </div>
         <h2 className="font-body font-bold text-2xl sm:text-3xl tracking-tight text-[var(--sketch-fg)]">
@@ -213,8 +214,12 @@ export default function StepExport() {
                       <div className="w-10 h-10 bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-border-color)] flex-shrink-0 flex items-center justify-center overflow-hidden sketch-border-sm">
                         {step.screenshotPath ? (
                           <img
-                            src={step.screenshotPath}
+                            src={stepThumbUrl(step.id, step.screenshotPath) ?? step.screenshotPath}
                             alt=""
+                            width={40}
+                            height={40}
+                            loading="lazy"
+                            decoding="async"
                             className="w-full h-full object-cover"
                             onError={(e) => {
                               (e.target as HTMLImageElement).style.display = "none";
@@ -265,7 +270,7 @@ export default function StepExport() {
                             Audio
                           </span>
                           <span className="font-mono text-[10px] text-[var(--sketch-fg-subtle)] flex items-center gap-1">
-                            {step.videoSegmentPath ? (
+                            {step.status === "done" ? (
                               <Check className="w-3 h-3 text-emerald-600" />
                             ) : (
                               <Clock className="w-3 h-3" />
@@ -283,7 +288,7 @@ export default function StepExport() {
             {/* AI Quality Review */}
             <div className="sketch-card p-5 bg-[#FBBF24]/5 border-[#FBBF24]">
               <h3 className="font-body font-semibold text-lg mb-3 flex items-center gap-2 text-[var(--sketch-fg)]">
-                <Sparkles className="w-5 h-5 text-[#FBBF24]" />
+                <ClipboardCheck className="w-5 h-5 text-[#FBBF24]" />
                 AI Quality Review
               </h3>
               <div className="space-y-2">

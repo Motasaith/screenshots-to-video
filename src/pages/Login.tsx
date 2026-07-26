@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Film, Sparkles, ArrowLeft } from "lucide-react";
+import { Film, LogIn, ArrowLeft } from "lucide-react";
 import { Link } from "react-router";
 import { useState } from "react";
 import { SpaceBackground } from "@/components/shared/SpaceBackground";
@@ -83,7 +83,7 @@ export default function Login() {
               size="lg"
               onClick={handleSignIn}
             >
-              <Sparkles className="w-4 h-4" />
+              <LogIn className="w-4 h-4" />
               Sign in with Google
             </Button>
 

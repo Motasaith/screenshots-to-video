@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from "react";
 import { motion, useInView, AnimatePresence } from "framer-motion";
-import { Star, Quote, MessageSquare, ChevronLeft, ChevronRight } from "lucide-react";
+import { Star, Quote, ChevronLeft, ChevronRight } from "lucide-react";
 
 const testimonials = [
   {
@@ -109,16 +109,8 @@ export default function TestimonialsSection() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 mb-3">
-            <MessageSquare className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
-            <span className="font-mono text-xs font-semibold text-cyan-600 dark:text-cyan-400 uppercase tracking-wider">
-              Reviews
-            </span>
-          </div>
-          <h2 className="font-extrabold text-3xl lg:text-5xl mt-3 tracking-tight text-[var(--space-text)] max-w-xl mx-auto leading-tight">
-            Loved by leading
-            <br />
-            <span className="text-gradient-neon">technical teams</span>
+          <h2 className="font-extrabold text-3xl lg:text-5xl tracking-tight text-[var(--space-text)] max-w-xl mx-auto leading-tight">
+            What technical teams say
           </h2>
         </motion.div>
 

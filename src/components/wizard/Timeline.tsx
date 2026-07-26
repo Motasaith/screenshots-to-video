@@ -165,6 +165,7 @@ export default function Timeline({
 
   return (
     <div
+      data-tour="timeline"
       className={`bg-[var(--sketch-toolbar-bg)] border-t-2 border-[var(--sketch-border-color)] flex flex-col select-none transition-all ${
         isDragOver ? "ring-2 ring-[#FBBF24] bg-[#FBBF24]/5" : ""
       }`}
@@ -268,6 +269,8 @@ export default function Timeline({
                         <img
                           src={clip.thumbnail}
                           alt={`Scene ${idx + 1}`}
+                          loading="lazy"
+                          decoding="async"
                           className="w-full h-full object-cover"
                           draggable={false}
                         />

@@ -14,7 +14,7 @@ export default function Privacy() {
     <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
       <SEO
         title="Privacy Policy"
-        description="AIVideo's Privacy Policy — learn how we collect, use, and protect your data."
+        description="AIVideo's Privacy Policy: how we collect, use, and protect your data."
         canonical="https://aivideo.ai/privacy"
         noindex
         jsonLd={breadcrumbJsonLd}

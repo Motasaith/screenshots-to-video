@@ -73,25 +73,25 @@ export function detectGibberish(text: string): GibberishCheck {
   if (longestRepeatedChar(text) >= 4) {
     return {
       isGibberish: true,
-      reason: "Looks like repeated characters — please write a real step description.",
+      reason: "Looks like repeated characters. Please write a real step description.",
     };
   }
   if (longestConsonantRun(text) >= 5) {
     return {
       isGibberish: true,
-      reason: "Looks like random letters — please describe what the user should do.",
+      reason: "Looks like random letters. Please describe what the user should do.",
     };
   }
   if (vowelRatio(text) < 0.12) {
     return {
       isGibberish: true,
-      reason: "Too few vowels — please write a real step description in plain English.",
+      reason: "Too few vowels. Please write a real step description in plain English.",
     };
   }
   if (letters.length >= 12 && bigramVariety(text) < 0.3) {
     return {
       isGibberish: true,
-      reason: "Looks like random characters — please write a real step description.",
+      reason: "Looks like random characters. Please write a real step description.",
     };
   }
   return { isGibberish: false };

@@ -8,10 +8,27 @@ import { env } from "./lib/env";
 import { createOAuthCallbackHandler } from "./kimi/auth";
 import { Paths } from "@contracts/constants";
 import { authenticateRequest } from "./kimi/auth";
-import { uploadToR2, getSignedDownloadUrl, isR2Configured } from "./lib/r2";
+import { getSignedDownloadUrl } from "./lib/r2";
 import { startRenderWorker } from "./lib/worker";
 import { checkRateLimit, getClientIP } from "./lib/ratelimit";
 import { createLogger, logger } from "./lib/logger";
+import {
+  getThumbnail,
+  thumbnailETag,
+  isAllowedThumbWidth,
+  ALLOWED_THUMB_WIDTHS,
+} from "./lib/thumbnail";
+import { getDb } from "./queries/connection";
+import { steps, projects } from "@db/schema";
+import { eq } from "drizzle-orm";
+import {
+  saveLocalFile,
+  readLocalFile,
+  localFilePath,
+  localContentType,
+  localKeyOwner,
+  isLocalKey,
+} from "./lib/localStore";
 
 const app = new Hono<{ Bindings: HttpBindings }>();
 
@@ -72,14 +89,6 @@ app.post("/api/upload", async (c) => {
     );
   }
 
-  if (!isR2Configured()) {
-    log.error("R2 storage not configured");
-    return c.json(
-      { error: "Storage is not configured. Set R2 environment variables." },
-      500
-    );
-  }
-
   try {
     const body = await c.req.parseBody();
     const file = body["file"];
@@ -113,10 +122,13 @@ app.post("/api/upload", async (c) => {
     const buffer = Buffer.from(await file.arrayBuffer());
     const folder = (body["folder"] as string) || "screenshots";
 
-    const key = await uploadToR2(buffer, {
+    // Render inputs stay on local disk. The worker runs in this process, so
+    // shipping them to object storage only to fetch them back at render time
+    // was two HTTPS round-trips for bytes already in this buffer.
+    const key = await saveLocalFile(buffer, {
+      userId: user.id,
       folder,
       filename: file.name,
-      contentType: file.type,
     });
 
     const url = await getSignedDownloadUrl(key);
@@ -172,6 +184,118 @@ app.get("/api/signed-url", async (c) => {
     log.error("Signed URL error", err, { userId: user.id, key });
     const message = err instanceof Error ? err.message : "Failed to generate signed URL";
     return c.json({ error: message }, 500);
+  }
+});
+
+// ── Local File Serving ──
+// Screenshots live on this server's disk now, so it also serves them. The
+// object-storage equivalent leaned on an unguessable signed URL for access
+// control; here the owner is encoded in the key path and checked explicitly.
+app.get("/api/file", async (c) => {
+  const ip = getClientIP(c.req.raw.headers);
+  const log = createLogger({ ip, path: "/api/file" });
+
+  const ipLimit = checkRateLimit(`ip:${ip}:file`, 60_000, 600);
+  if (!ipLimit.allowed) {
+    return c.json(
+      { error: `Rate limit exceeded. Retry after ${Math.ceil((ipLimit.resetAt - Date.now()) / 1000)}s.` },
+      429
+    );
+  }
+
+  let user;
+  try {
+    user = await authenticateRequest(c.req.raw.headers);
+  } catch {
+    return c.json({ error: "Authentication required." }, 401);
+  }
+
+  const key = c.req.query("key");
+  if (!key || !isLocalKey(key)) return c.json({ error: "Invalid key" }, 400);
+
+  // Ownership before existence: a mismatched key must not reveal whether the
+  // file is there.
+  const owner = localKeyOwner(key);
+  if (owner === null || (owner !== user.id && user.role !== "admin")) {
+    return c.json({ error: "Not Found" }, 404);
+  }
+
+  // resolveLocalPath (inside localFilePath) rejects anything that escapes the
+  // storage root, so a crafted key cannot read arbitrary files.
+  const abs = await localFilePath(key);
+  if (!abs) return c.json({ error: "Not Found" }, 404);
+
+  try {
+    const buf = await readLocalFile(key);
+    c.header("Content-Type", localContentType(key));
+    // Keys embed a nanoid and are never rewritten, so the bytes are immutable.
+    c.header("Cache-Control", "private, max-age=31536000, immutable");
+    return c.body(new Uint8Array(buf));
+  } catch (err) {
+    log.error("Local file read failed", err, { userId: user.id });
+    return c.json({ error: "Not Found" }, 404);
+  }
+});
+
+// ── Screenshot Thumbnails ──
+// Keyed by step id rather than by URL on purpose: an endpoint that resized
+// whatever address the caller supplied would be an open request proxy.
+app.get("/api/thumb", async (c) => {
+  const ip = getClientIP(c.req.raw.headers);
+  const log = createLogger({ ip, path: "/api/thumb" });
+
+  const ipLimit = checkRateLimit(`ip:${ip}:thumb`, 60_000, 300);
+  if (!ipLimit.allowed) {
+    return c.json(
+      { error: `Rate limit exceeded. Retry after ${Math.ceil((ipLimit.resetAt - Date.now()) / 1000)}s.` },
+      429
+    );
+  }
+
+  let user;
+  try {
+    user = await authenticateRequest(c.req.raw.headers);
+  } catch {
+    return c.json({ error: "Authentication required." }, 401);
+  }
+
+  const stepId = Number(c.req.query("stepId"));
+  const width = Number(c.req.query("w") ?? 96);
+  if (!Number.isInteger(stepId) || stepId <= 0) {
+    return c.json({ error: "Missing or invalid 'stepId'" }, 400);
+  }
+  if (!isAllowedThumbWidth(width)) {
+    return c.json({ error: `'w' must be one of ${ALLOWED_THUMB_WIDTHS.join(", ")}` }, 400);
+  }
+
+  try {
+    // Join through to the project so a step id from another account is a 404,
+    // not a thumbnail.
+    const [row] = await getDb()
+      .select({ screenshotPath: steps.screenshotPath, ownerId: projects.userId })
+      .from(steps)
+      .innerJoin(projects, eq(steps.projectId, projects.id))
+      .where(eq(steps.id, stepId))
+      .limit(1);
+
+    if (!row || row.ownerId !== user.id) return c.json({ error: "Not Found" }, 404);
+    if (!row.screenshotPath || row.screenshotPath.startsWith("blob:")) {
+      return c.json({ error: "Step has no stored screenshot" }, 404);
+    }
+
+    const etag = `"${thumbnailETag(row.screenshotPath, width)}"`;
+    // The URL is stable across screenshot replacements, so correctness rests on
+    // revalidation rather than a long max-age.
+    c.header("Cache-Control", "private, max-age=60, must-revalidate");
+    c.header("ETag", etag);
+    if (c.req.header("if-none-match") === etag) return c.body(null, 304);
+
+    const buf = await getThumbnail(row.screenshotPath, width);
+    c.header("Content-Type", "image/webp");
+    return c.body(new Uint8Array(buf));
+  } catch (err) {
+    log.error("Thumbnail error", err, { userId: user.id, stepId });
+    return c.json({ error: "Failed to generate thumbnail" }, 500);
   }
 });
 

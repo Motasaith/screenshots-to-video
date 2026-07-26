@@ -13,7 +13,7 @@ import {
   checkMediaSafety,
 } from "./lib/llm";
 import { generateTTSAudio, speedToRate, getElevenLabsCredits } from "./lib/tts";
-import { uploadToR2 } from "./lib/r2";
+import { saveLocalFile } from "./lib/localStore";
 import { detectGibberish } from "./lib/gibberish";
 import { createLogger } from "./lib/logger";
 import fs from "fs/promises";
@@ -601,10 +601,13 @@ export const aiRouter = createRouter({
 
       try {
         const audioBuffer = await fs.readFile(filePath);
-        const audioKey = await uploadToR2(audioBuffer, {
-          folder: `projects/${project.id}/audio`,
+        // Narration is only ever read back as a presence flag (the AUDIO
+        // badge, the export checkmark and count, the timeline indicator), so
+        // it has no reason to leave the machine that generated it.
+        const audioKey = await saveLocalFile(audioBuffer, {
+          userId: ctx.user!.id,
+          folder: "audio",
           filename: `step_${step.id}.mp3`,
-          contentType: "audio/mpeg",
         });
 
         await getDb()
@@ -650,10 +653,10 @@ export const aiRouter = createRouter({
 
         try {
           const audioBuffer = await fs.readFile(filePath);
-          const audioKey = await uploadToR2(audioBuffer, {
-            folder: `projects/${project.id}/audio`,
+          const audioKey = await saveLocalFile(audioBuffer, {
+            userId: ctx.user!.id,
+            folder: "audio",
             filename: `step_${step.id}.mp3`,
-            contentType: "audio/mpeg",
           });
 
           await getDb()

@@ -6,7 +6,6 @@ import {
   Upload,
   Target,
   Download,
-  Sparkles,
   ChevronRight,
   Eye,
   CheckCircle2
@@ -106,19 +105,11 @@ export default function HowItWorksSection() {
 
         {/* Section Header */}
         <div className="text-center mb-16 lg:mb-24">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-teal-500/10 border border-teal-500/20 mb-4">
-            <Sparkles className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
-            <span className="font-mono text-[10px] font-bold text-teal-600 dark:text-teal-400 uppercase tracking-wider">
-              Interactive Workflow
-            </span>
-          </div>
-          <h2 className="font-extrabold text-3xl lg:text-5xl mt-3 tracking-tight text-[var(--space-text)] max-w-2xl mx-auto leading-tight">
-            How it works:
-            <br />
-            <span className="text-gradient-neon">From screenshots to finished tutorials</span>
+          <h2 className="font-extrabold text-3xl lg:text-5xl tracking-tight text-[var(--space-text)] max-w-2xl mx-auto leading-tight">
+            From screenshots to a finished tutorial
           </h2>
           <p className="mt-4 text-base lg:text-lg text-[var(--space-text-muted)] max-w-xl mx-auto font-sans leading-relaxed">
-            Follow our 3-step workflow: upload screenshots, edit with annotations and AI scripts, then render and download your video.
+            Upload your screenshots, edit them with annotations and a script, then render and download the video.
           </p>
         </div>
 

@@ -2,6 +2,7 @@ import { getDb } from "../queries/connection";
 import { projects, steps, users } from "@db/schema";
 import { eq, and, isNotNull, lt, gt, count, inArray } from "drizzle-orm";
 import { deleteFromR2 } from "./r2";
+import { localStorageBytes } from "./localStore";
 import { createLogger } from "./logger";
 
 const log = createLogger({ path: "cleanup" });
@@ -180,6 +181,7 @@ export async function getStorageStats(): Promise<{
   expiredPending: number;
   expiredOverdue: number;
   estimatedFiles: number;
+  localBytes: number;
 }> {
   const db = getDb();
 
@@ -198,8 +200,9 @@ export async function getStorageStats(): Promise<{
   const expired = await findExpiredProjects();
   const pending = await findPendingExpiryProjects();
 
-  // Each project has: 1 final video + N steps × (1 screenshot + 1 audio + 1 segment) = 1 + 3N
-  const estimatedFiles = (projectCount?.value ?? 0) + (stepCount?.value ?? 0) * 3;
+  // 1 final video per project + 1 screenshot + 1 audio per step. Segments are
+  // no longer uploaded, so they are not counted.
+  const estimatedFiles = (projectCount?.value ?? 0) + (stepCount?.value ?? 0) * 2;
 
   return {
     totalProjectsWithFiles: projectCount?.value ?? 0,
@@ -207,5 +210,8 @@ export async function getStorageStats(): Promise<{
     expiredPending: pending.length,
     expiredOverdue: expired.length,
     estimatedFiles,
+    // Screenshots live on this server's disk now, so free space is an
+    // operational concern rather than a vendor bill.
+    localBytes: await localStorageBytes(),
   };
 }

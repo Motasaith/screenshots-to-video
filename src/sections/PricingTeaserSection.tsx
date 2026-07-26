@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { motion, useInView } from "framer-motion";
 import { useTheme } from "next-themes";
-import { Check, Zap, HelpCircle } from "lucide-react";
+import { Check, Zap } from "lucide-react";
 
 const plans = [
   {
@@ -212,17 +212,11 @@ export default function PricingTeaserSection() {
           transition={{ duration: 0.6 }}
           className="text-center mb-16"
         >
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-500/10 border border-teal-500/20 mb-3">
-            <HelpCircle className="w-3.5 h-3.5 text-teal-500" />
-            <span className="font-mono text-xs font-semibold text-teal-600 dark:text-teal-400 uppercase tracking-wider">
-              Pricing Plans
-            </span>
-          </div>
-          <h2 className="font-extrabold text-3xl lg:text-5xl mt-3 tracking-tight text-[var(--space-text)] max-w-xl mx-auto leading-tight">
-            Simple, transparent pricing
+          <h2 className="font-extrabold text-3xl lg:text-5xl tracking-tight text-[var(--space-text)] max-w-xl mx-auto leading-tight">
+            Plans and pricing
           </h2>
           <p className="text-base lg:text-lg font-sans text-[var(--space-text-muted)] mt-4 max-w-lg mx-auto leading-relaxed">
-            Choose the plan that suits your creative requirements. Upgrade as you scale.
+            Start free. Move up a plan when you need more renders.
           </p>
 
           {/* Billing toggle */}
