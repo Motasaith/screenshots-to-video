@@ -41,6 +41,30 @@ export default function StepRender() {
     }
   );
 
+  // Elapsed time while rendering.
+  //
+  // This replaces a hardcoded "2-5 minutes", which was both wrong (renders are
+  // several times faster now) and the kind of claim that silently rots. Elapsed
+  // time is a fact rather than a prediction, so it cannot go stale, and paired
+  // with the scene counter it tells the user things are still moving.
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const jobStartedAt = status?.job?.createdAt ? new Date(status.job.createdAt).getTime() : null;
+  const isSettled = status?.projectStatus === "complete" || status?.job?.status === "error";
+
+  useEffect(() => {
+    if (isSettled || !jobStartedAt) return;
+    const id = setInterval(() => setNowMs(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [isSettled, jobStartedAt]);
+
+  const elapsedLabel = (() => {
+    if (!jobStartedAt) return null;
+    const secs = Math.max(0, Math.floor((nowMs - jobStartedAt) / 1000));
+    const m = Math.floor(secs / 60);
+    const s = secs % 60;
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+  })();
+
   // Start render on mount
   useEffect(() => {
     if (!hasStarted && projectIdNum > 0 && !startedRef.current) {
@@ -100,7 +124,17 @@ export default function StepRender() {
             ? "Redirecting to preview..."
             : isError
               ? status?.job?.message || "An error occurred during rendering."
-              : "This takes 2-5 minutes. You can safely close this tab; your video will be ready when you return."}
+              : (
+                <>
+                  Rendering runs on our servers, so you can safely close this tab
+                  and come back.
+                  {elapsedLabel && (
+                    <span className="ml-1 font-mono text-[var(--sketch-fg-subtle)]">
+                      Elapsed {elapsedLabel}.
+                    </span>
+                  )}
+                </>
+              )}
         </p>
 
         {startError && (

@@ -1,4 +1,5 @@
-import { env } from "./env";
+import { env } from "./env";
+import { buildGuideSystemPrompt } from "./productKnowledge";
 import { createLogger } from "./logger";
 
 const log = createLogger({ path: "llm" });
@@ -494,22 +495,23 @@ export async function getGuideMessage(
   eventType: string,
   context: Record<string, any>
 ): Promise<string> {
-  const prompt = `You are a helpful AI assistant inside a video creation tool called AIVideo. The user is creating a tutorial video from screenshots.
-
-Your job: Give one short, specific, actionable message (max 2 sentences). Be direct. Don't use filler.
+  const prompt = `The user is at this point in the flow.
 
 Current step: ${currentStep}
 Event: ${eventType}
-Context: ${JSON.stringify(context)}
+Editor state: ${JSON.stringify(context)}
 
-Give one short guidance message for the user right now. Return ONLY the message text, no JSON.`;
+Give ONE short guidance message for right now. Prefer the most useful next
+action for this exact state over generic encouragement. Return ONLY the message
+text, no JSON.`;
 
   const response = await chatCompletion(
     [
       {
         role: "system",
-        content:
-          "You are a concise AI assistant. Respond with plain text only, 1-2 sentences max.",
+        content: buildGuideSystemPrompt(
+          "Respond with plain text only, at most 2 sentences. This is an unprompted nudge, so say something the user does not already know."
+        ),
       },
       { role: "user", content: prompt },
     ],
@@ -724,10 +726,12 @@ export async function getChatMessageResponse(
   currentStep: string,
   context: Record<string, any>
 ): Promise<string> {
-  const prompt = `You are a helpful, concise AI assistant inside a video creation tool called AIVideo. Answer the user's question directly. Keep answers under 3 sentences. Do not use filler.
-  
+  const prompt = buildGuideSystemPrompt(
+    "Answer the user's question directly, in under 3 sentences."
+  ) + `
+
 Current step: ${currentStep}
-Context: ${JSON.stringify(context)}`;
+Editor state: ${JSON.stringify(context)}`;
 
   const chatHistory: ChatMessage[] = history.map((m) => ({
     role: m.role === "ai" ? "assistant" : "user",

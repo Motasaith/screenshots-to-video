@@ -186,6 +186,57 @@ export const projectRouter = createRouter({
       return project[0];
     }),
 
+  /**
+   * Create a fully populated demo project.
+   *
+   * Exists so the first thing a new user sees is the product working rather
+   * than an empty upload screen. Everything is real — real screenshots through
+   * the normal storage path, real steps, real zoom points — so it can be
+   * edited, rendered and deleted exactly like a project they made themselves.
+   */
+  createSample: authedQuery
+    .use(rateLimitByUser(3_600_000, 5))
+    .mutation(async ({ ctx }) => {
+      const { buildSampleSteps } = await import("./lib/sampleProject");
+      const seeds = await buildSampleSteps(ctx.user!.id);
+
+      const [result] = await getDb()
+        .insert(projects)
+        .values({
+          userId: ctx.user!.id,
+          title: "Sample: how this works",
+          description:
+            "A ready-made example project. Edit anything, or render it as-is to see the finished result.",
+          platform: "youtube",
+          aspectRatio: "16:9",
+          status: "draft",
+        })
+        .$returningId();
+
+      await getDb().insert(steps).values(
+        seeds.map((s) => ({
+          projectId: result.id,
+          order: s.order,
+          description: s.description,
+          screenshotPath: s.screenshotPath,
+          aiScript: s.script,
+          zoomTargetX: s.zoomTargetX,
+          zoomTargetY: s.zoomTargetY,
+          editorZoomScale: 1.8,
+          editorMultiZooms: s.multiZooms,
+          status: "pending" as const,
+        }))
+      );
+
+      const [project] = await getDb()
+        .select()
+        .from(projects)
+        .where(eq(projects.id, result.id))
+        .limit(1);
+
+      return project;
+    }),
+
   update: authedQuery
     .use(rateLimitByUser(60_000, 30))
     .input(

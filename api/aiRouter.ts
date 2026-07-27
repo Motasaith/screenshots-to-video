@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { createRouter, authedQuery, rateLimitByUser } from "./middleware";
 import { getDb } from "./queries/connection";
 import { projects, steps } from "@db/schema";
@@ -672,6 +673,98 @@ export const aiRouter = createRouter({
       }
 
       return { count: projectSteps.length };
+    }),
+
+  /**
+   * Turn a plain-English instruction into validated editor operations.
+   *
+   * Returns operations rather than applying them: the client feeds the result
+   * through the same history stack a manual edit uses, so Ctrl+Z undoes an AI
+   * change exactly like any other. The model never touches annotation state
+   * directly — anything that fails the schema is dropped rather than saved.
+   */
+  editScene: authedQuery
+    .use(rateLimitByUser(60_000, 20))
+    .input(
+      z.object({
+        stepId: z.number(),
+        instruction: z.string().min(2).max(500),
+        /** Current annotation state, so the model can reason about what exists. */
+        current: z.record(z.string(), z.unknown()).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const { editorOpsResponseSchema, EDITOR_OPS_REFERENCE } = await import(
+        "@contracts/editorOps"
+      );
+      const { chatCompletion } = await import("./lib/llm");
+      const { buildGuideSystemPrompt } = await import("./lib/productKnowledge");
+
+      // Ownership: a step id from another account must not be editable.
+      const [row] = await getDb()
+        .select({ stepId: steps.id, ownerId: projects.userId, description: steps.description })
+        .from(steps)
+        .innerJoin(projects, eq(steps.projectId, projects.id))
+        .where(eq(steps.id, input.stepId))
+        .limit(1);
+
+      if (!row || row.ownerId !== ctx.user!.id) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Scene not found" });
+      }
+
+      const system = buildGuideSystemPrompt(
+        `You are editing one scene. Reply ONLY with JSON matching:
+{"summary": "<one sentence, past tense, what you changed>", "ops": [ ... ]}
+
+${EDITOR_OPS_REFERENCE}
+
+Return {"summary": "...", "ops": []} if the request is unclear or outside these
+operations, and explain why in the summary. Never invent an operation name.`
+      );
+
+      const raw = await chatCompletion(
+        [
+          { role: "system", content: system },
+          {
+            role: "user",
+            content: `Scene: ${row.description || "(no description)"}
+Current annotations: ${JSON.stringify(input.current ?? {})}
+
+Instruction: ${input.instruction}`,
+          },
+        ],
+        { temperature: 0.2, maxTokens: 700, jsonMode: true }
+      );
+
+      // Models wrap JSON in prose or fences often enough to be worth handling.
+      const jsonText = raw.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(jsonText);
+      } catch {
+        return { summary: "I could not turn that into an edit. Try rephrasing.", ops: [] };
+      }
+
+      const result = editorOpsResponseSchema.safeParse(parsed);
+      if (!result.success) {
+        // Salvage whatever individual ops are valid rather than failing wholesale.
+        const maybeOps = (parsed as any)?.ops;
+        const { editorOpSchema } = await import("@contracts/editorOps");
+        const ops = Array.isArray(maybeOps)
+          ? maybeOps.map((o) => editorOpSchema.safeParse(o)).filter((r) => r.success).map((r) => (r as any).data)
+          : [];
+        return {
+          summary:
+            typeof (parsed as any)?.summary === "string"
+              ? (parsed as any).summary
+              : ops.length
+                ? "Applied the parts of that I could."
+                : "I could not turn that into an edit.",
+          ops,
+        };
+      }
+
+      return result.data;
     }),
 
   // ── Search Pexels stock media (used by editor) ──

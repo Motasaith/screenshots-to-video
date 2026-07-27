@@ -210,6 +210,16 @@ export const steps = mysqlTable("steps", {
       rectH?: number;
       zoomScale?: number;
       duration?: number;
+      /**
+       * Narration for this zoom point specifically.
+       *
+       * When set, this waypoint gets its own audio clip and the camera holds
+       * for as long as that clip lasts. That inverts the default relationship:
+       * normally the camera's fixed choreography sets scene length and any
+       * leftover narration time becomes trailing silence, which is what made
+       * three zoom points on a 6s script produce 6.5s of dead air.
+       */
+      script?: string;
     }>
   >(),
   audioPath: text("audioPath"),

@@ -62,6 +62,8 @@ import {
   Sliders,
 } from "lucide-react";
 import { stepThumbUrl } from "@/lib/thumbUrl";
+import { ScenePreview } from "./ScenePreview";
+import { computeSceneTiming, estimateNarrationSeconds, MW_MIN_HOLD } from "@contracts/sceneTiming";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -224,6 +226,8 @@ interface StepAnnotation {
     rectH?: number;
     zoomScale?: number;
     duration?: number;
+    /** Narration spoken while the camera holds on this point. */
+    script?: string;
   }> | null;
 }
 
@@ -464,6 +468,14 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
   const [history, setHistory] = useState<Record<number, StepAnnotation>[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+
+  /** Open state for the free, client-side scene preview. */
+  const [showScenePreview, setShowScenePreview] = useState(false);
+
+  /** Autosave state, surfaced in the toolbar and guarded on unload. */
+  const [saveState, setSaveState] = useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
+  /** Serialized annotation last written to the server, to detect real changes. */
+  const lastSavedSnapshot = useRef<string>("");
   const [dragItem, setDragItem] = useState<{
     type: "overlay" | "badge" | "magnify" | "zoomTarget" | "zoomRect" | "blur" | "redact" | "pixelate" | "spotlight" | "multizoom" | "crop" | "blurArr" | "pixelateArr" | "spotlightArr" | "highlightArr";
     id?: string;
@@ -1936,14 +1948,57 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     utils.project.getById.invalidate({ id: projectIdNum });
   };
 
-  // Autosave annotations to backend
+  // Switching scenes: whatever is in state came from the server, so treat it as
+  // already saved. Declared before the autosave effect so it seeds the snapshot
+  // first and the comparison below sees no change.
   useEffect(() => {
     if (!currentStep) return;
-    const timer = setTimeout(() => {
-      handleSaveStep();
+    lastSavedSnapshot.current = JSON.stringify(annotations[currentStep.id] ?? {});
+    setSaveState("idle");
+    // Deliberately keyed on the step only — re-seeding on every annotation edit
+    // would defeat the point.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep?.id]);
+
+  // Autosave annotations to backend.
+  //
+  // The save itself already worked; what was missing was any sign of it. Edits
+  // went to the server silently, so "is my work saved?" had no answer and
+  // closing the tab was guesswork. This tracks the state the indicator and the
+  // unload guard both read.
+  useEffect(() => {
+    if (!currentStep) return;
+
+    const snapshot = JSON.stringify(annotations[currentStep.id] ?? {});
+    if (snapshot === lastSavedSnapshot.current) return;
+
+    setSaveState("dirty");
+    const timer = setTimeout(async () => {
+      setSaveState("saving");
+      try {
+        await handleSaveStep();
+        lastSavedSnapshot.current = snapshot;
+        setSaveState("saved");
+      } catch {
+        // Left visible rather than retried silently: the user needs to know
+        // their last edits are not on the server.
+        setSaveState("error");
+      }
     }, 1000);
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [annotations, currentStep?.id]);
+
+  // Don't let the tab close over unsaved edits.
+  useEffect(() => {
+    if (saveState !== "dirty" && saveState !== "saving" && saveState !== "error") return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [saveState]);
 
 
 
@@ -1969,6 +2024,30 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     if (mode === "select" || mode === toolMode) return "auto";
     return "none";
   };
+
+  /**
+   * How long this scene will actually run, and why.
+   *
+   * Uses the renderer's own arithmetic (contracts/sceneTiming) rather than a
+   * copy, so the editor can never quote a number the render disagrees with.
+   * Narration is estimated from the script when no audio has been generated yet,
+   * and taken from the real measured duration once it has.
+   */
+  const sceneTiming = (() => {
+    if (!currentStep) return null;
+    const zooms = currentAnn?.editorMultiZooms ?? [];
+    const script =
+      currentStep.userEditedScript ?? currentStep.aiScript ?? currentStep.description ?? "";
+    const narration =
+      currentStep.audioDuration && currentStep.audioDuration > 0
+        ? currentStep.audioDuration
+        : estimateNarrationSeconds(script, project?.speed ?? 1);
+    return computeSceneTiming(
+      zooms.length,
+      zooms.map((z) => z.duration ?? MW_MIN_HOLD),
+      narration
+    );
+  })();
 
   const projectRatio = project?.aspectRatio || "16:9";
   const getCanvasDimensions = () => {
@@ -2027,6 +2106,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       h: currentAnn.editorCropH,
     }
     : null;
+
 
   const redactRect = currentAnn
     ? {
@@ -3348,6 +3428,52 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 </button>
               </div>
 
+              {(currentAnn?.editorMultiZooms?.length ?? 0) > 0 && currentStep?.screenshotPath && (
+                <button
+                  onClick={() => setShowScenePreview(true)}
+                  title="Play this scene's camera move without rendering"
+                  aria-label="Preview this scene"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--sketch-border-color)]/30 bg-[var(--sketch-fg-subtle)]/5 py-1.5 text-[11px] font-semibold text-[var(--sketch-fg)] hover:bg-[var(--sketch-fg-subtle)]/10"
+                >
+                  <Play className="h-3 w-3" />
+                  Preview camera move
+                </button>
+              )}
+
+              {/* Adding zoom points lengthens the scene, and until now nothing
+                  said so — the renderer extends the clip to fit the camera move
+                  and pads the narration with silence. Show both numbers. */}
+              {sceneTiming && sceneTiming.cameraSec > 0 && (
+                <div
+                  className={`rounded-lg border px-2.5 py-2 text-[11px] leading-relaxed ${
+                    sceneTiming.silenceSec > 1.5
+                      ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                      : "border-[var(--sketch-border-color)]/30 bg-[var(--sketch-fg-subtle)]/5 text-[var(--sketch-fg-muted)]"
+                  }`}
+                >
+                  <div className="flex items-center justify-between font-mono">
+                    <span>Scene length</span>
+                    <span className="font-bold">{sceneTiming.sceneSec.toFixed(1)}s</span>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between font-mono opacity-80">
+                    <span>Camera needs</span>
+                    <span>{sceneTiming.cameraSec.toFixed(1)}s</span>
+                  </div>
+                  <div className="flex items-center justify-between font-mono opacity-80">
+                    <span>Narration</span>
+                    <span>{sceneTiming.narrationSec.toFixed(1)}s</span>
+                  </div>
+                  {sceneTiming.silenceSec > 1.5 && (
+                    <p className="mt-1.5 font-sans">
+                      The camera outlasts your narration by{" "}
+                      <strong>{sceneTiming.silenceSec.toFixed(1)}s</strong>, which will
+                      play as silence. Write a longer script, shorten the holds, or
+                      remove a zoom point.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-2">
                 {currentAnn?.editorMultiZooms?.map((mz, idx) => (
                   <div key={mz.id} className="p-2 border border-[var(--sketch-fg-subtle)]/20 rounded bg-[var(--sketch-fg-subtle)]/5">
@@ -3461,6 +3587,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                     <div key={hl.id} className="flex items-center justify-between text-xs bg-[var(--sketch-fg-subtle)]/10 rounded px-2 py-1">
                       <span className="font-mono">Box {idx + 1}: {hl.w.toFixed(1)}% × {hl.h.toFixed(1)}%</span>
                       <button
+                        title={`Remove highlight box ${idx + 1}`}
+                        aria-label={`Remove highlight box ${idx + 1}`}
                         onClick={() => {
                           const next = {
                             ...annotations,
@@ -5262,6 +5390,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               }}
               className="p-1 hover:bg-[var(--sketch-fg-subtle)]/10 rounded text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] transition-all cursor-pointer flex items-center justify-center mr-1"
               title="Back to Dashboard"
+              aria-label="Back to Dashboard"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
@@ -5302,6 +5431,44 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
           {/* Right: Light/Dark Mode toggle button */}
           <div className="flex items-center gap-3">
+            {/* Autosave status. Quiet when idle, explicit when it matters —
+                a failed save is the one state the user must not miss. */}
+            {saveState !== "idle" && (
+              <span
+                role="status"
+                aria-live="polite"
+                className={`hidden sm:flex items-center gap-1.5 text-[11px] font-medium select-none ${
+                  saveState === "error"
+                    ? "text-red-500"
+                    : "text-[var(--sketch-fg-subtle)]"
+                }`}
+                title={
+                  saveState === "error"
+                    ? "Your latest changes could not be saved. Check your connection."
+                    : saveState === "saved"
+                      ? "All changes are saved to your project"
+                      : "Saving your changes"
+                }
+              >
+                {saveState === "saving" || saveState === "dirty" ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Saving…
+                  </>
+                ) : saveState === "saved" ? (
+                  <>
+                    <Check className="w-3 h-3 text-emerald-500" />
+                    Saved
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="w-3 h-3" />
+                    Not saved
+                  </>
+                )}
+              </span>
+            )}
+
             {/* Render & Export Trigger Button */}
             <button
               data-tour="export-btn"
@@ -5322,6 +5489,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               onClick={() => startOnboardingTour()}
               className="p-1.5 hover:bg-[var(--sketch-fg-subtle)]/10 rounded-full text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] transition-all cursor-pointer border border-[var(--sketch-border-color)]/20 flex items-center justify-center w-8 h-8"
               title="Replay the editor tour"
+              aria-label="Replay the editor tour"
             >
               <HelpCircle className="w-4 h-4" />
             </button>
@@ -5875,6 +6043,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   onClick={handleUndo}
                   className="p-1 hover:bg-[var(--sketch-fg-subtle)]/20 rounded disabled:opacity-30 text-[var(--sketch-fg-muted)] cursor-pointer"
                   title="Undo"
+                  aria-label="Undo"
                 >
                   <Undo2 className="w-3.5 h-3.5" />
                 </button>
@@ -5883,6 +6052,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   onClick={handleRedo}
                   className="p-1 hover:bg-[var(--sketch-fg-subtle)]/20 rounded disabled:opacity-30 text-[var(--sketch-fg-muted)] cursor-pointer"
                   title="Redo"
+                  aria-label="Redo"
                 >
                   <Redo2 className="w-3.5 h-3.5" />
                 </button>
@@ -5941,6 +6111,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 onClick={() => setIsToolbarCollapsed(true)}
                 className="p-1 hover:bg-[var(--sketch-fg-subtle)]/20 rounded text-[var(--sketch-fg-muted)] cursor-pointer"
                 title="Collapse toolbar"
+                aria-label="Collapse toolbar"
               >
                 <ChevronDown className="w-3.5 h-3.5 rotate-180" />
               </button>
@@ -5955,6 +6126,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           onClick={() => setIsToolbarCollapsed(false)}
           className="absolute left-4 top-[64px] z-50 p-1 bg-[var(--sketch-surface)] border border-[var(--sketch-border-color)]/20 shadow-sm hover:bg-[var(--sketch-fg-subtle)]/10 rounded-full text-[var(--sketch-fg-muted)] cursor-pointer"
           title="Expand toolbar"
+          aria-label="Expand toolbar"
         >
           <ChevronDown className="w-3.5 h-3.5" />
         </button>
@@ -6430,7 +6602,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                               </div>
                             )}
 
-                            {/* Watermark preview */}
+                            {/* Watermark preview.
+                                Positioned against the canvas container, which is
+                                sized to the project aspect ratio and therefore IS
+                                the output frame — the same thing FFmpeg positions
+                                the watermark against. Do not re-anchor this to the
+                                crop rectangle: the crop changes what fills the
+                                frame, not where the frame's edges are. */}
                             {currentAnn?.editorWatermarkText && (
                               <div
                                 className="absolute pointer-events-none select-none"
@@ -6893,7 +7071,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                           </div>
                         )}
 
-                        {/* Live caption preview — shows how captions will look in the final video */}
+                        {/* Live caption preview — like the watermark, positioned
+                            against the canvas container, which is the output frame. */}
                         {(props.captionsEnabled ?? true) && currentStep && (
                           <div
                             className="absolute left-1/2 -translate-x-1/2 z-10 pointer-events-none px-3 py-1.5 rounded text-center max-w-[80%]"
@@ -6970,6 +7149,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
             onMouseDown={handleSidebarResizeStart}
             className="w-1.5 bg-[var(--sketch-border-color)] hover:bg-[var(--sketch-accent)]/40 transition-colors cursor-col-resize flex-shrink-0 relative group hidden md:block"
             title="Drag to resize sidebar"
+            aria-label="Drag to resize sidebar"
           >
             <div className="absolute inset-y-0 -left-1 -right-1" />
           </div>
@@ -7105,6 +7285,16 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         onCancel={() => setShowRenderPreflight(false)}
       />
 
+      {showScenePreview && currentStep?.screenshotPath && (
+        <ScenePreview
+          screenshotUrl={currentStep.screenshotPath}
+          zoomPoints={currentAnn?.editorMultiZooms ?? []}
+          narrationSec={sceneTiming?.narrationSec ?? 0}
+          aspect={projectRatio}
+          onClose={() => setShowScenePreview(false)}
+        />
+      )}
+
       {/* Delete Scene Confirmation Dialog */}
       <AlertDialog open={deleteSceneIdx !== null} onOpenChange={(open) => { if (!open) setDeleteSceneIdx(null); }}>
         <AlertDialogContent className="max-w-sm">
@@ -7181,7 +7371,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 ? "Redirecting to preview page..."
                 : renderStatus?.projectStatus === "error" || renderStatus?.job?.status === "error" || startRenderError
                   ? renderStatus?.job?.message || startRenderError || "An error occurred during rendering."
-                  : "This takes 2-5 minutes. You can safely close this; your video will keep rendering in the background."}
+                  : "Rendering runs on our servers — you can safely close this and it will keep going in the background."}
             </DialogDescription>
           </DialogHeader>
 

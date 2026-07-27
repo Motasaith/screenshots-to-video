@@ -604,7 +604,44 @@ async function processRenderJob(
         && multiZooms.some((mz: any) => (mz.zoomScale ?? 1) > 1.0);
       if (hasValidZoom && hasValidMultiZooms) {
         const { renderMultiZoomSegments } = await import("./ffmpeg");
+
+        // ── Per-waypoint narration ──
+        //
+        // When zoom points carry their own scripts, each gets its own clip and
+        // the camera holds for exactly as long as that clip runs. That is what
+        // removes the dead air: previously one scene-wide script had to stretch
+        // across a camera timeline it had no relationship to, so three zoom
+        // points on a 6s script left ~6.5s of silence.
+        //
+        // Generated concurrently for the same reason the scene-level narration
+        // is: these are network round-trips, not CPU work.
+        const waypointScripts: string[] = multiZooms.map((mz: any) =>
+          typeof mz.script === "string" ? mz.script.trim() : ""
+        );
+        let waypointAudio: Array<{ path: string; duration: number } | null> | undefined;
+
+        if (!renderSilently && waypointScripts.some((sc) => sc.length > 0)) {
+          const clips: Array<{ path: string; duration: number } | null> =
+            new Array(waypointScripts.length).fill(null);
+
+          await mapWithConcurrency(waypointScripts, TTS_CONCURRENCY, async (script, wi) => {
+            if (!script) return;
+            const { filePath, duration } = await generateTTSAudio(script, {
+              voice: project.voice!,
+              rate: speedToRate(project.speed || 1.0),
+            });
+            tempFiles.push(filePath);
+            clips[wi] = { path: filePath, duration };
+          });
+
+          waypointAudio = clips;
+          logger.info(
+            `Step ${i + 1}/${totalSteps}: ${clips.filter(Boolean).length} per-waypoint narration clips`
+          );
+        }
+
         stepSegments = await renderMultiZoomSegments({
+          waypointAudio,
           screenshotPath: screenshotLocalPath,
           audioPath: audioLocalPath,
           audioDuration: audioDuration,
@@ -619,6 +656,7 @@ async function processRenderJob(
             rectH: mz.rectH,
             zoomScale: mz.zoomScale ?? 2,
             duration: mz.duration ?? 3,
+            script: mz.script,
           })),
           outputRes: outputRes,
           captions: {

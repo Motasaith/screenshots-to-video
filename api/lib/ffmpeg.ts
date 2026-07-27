@@ -11,6 +11,17 @@ import { nanoid } from "nanoid";
 // Use static binaries so the user doesn't need to install ffmpeg globally
 import ffmpegPath from "ffmpeg-static";
 import ffprobeStatic from "ffprobe-static";
+import { getCursorPng } from "./cursorOverlay";
+import {
+  RENDER_FPS,
+  AUDIO_LEAD_IN,
+  AUDIO_TAIL,
+  MW_ZOOM_IN_HOLD,
+  MW_ZOOM_IN_DUR,
+  MW_PAN_DUR,
+  MW_ZOOM_OUT_DUR,
+  MW_MIN_HOLD,
+} from "@contracts/sceneTiming";
 
 const execFileAsync = promisify(execFile);
 
@@ -19,13 +30,25 @@ const WORK_DIR = path.join(os.tmpdir(), "aivideo-render");
 // ─────────────────────────────────────────────────────────────────
 // Rendering constants — tuned to mimic human-edited tutorial videos
 // ─────────────────────────────────────────────────────────────────
-export const RENDER_FPS = 30;
+// Scene timing lives in contracts/ so the editor can show the user the same
+// numbers the renderer acts on. Re-exported here to keep existing imports
+// working.
+export {
+  RENDER_FPS,
+  AUDIO_LEAD_IN,
+  AUDIO_TAIL,
+  MW_ZOOM_IN_HOLD,
+  MW_ZOOM_IN_DUR,
+  MW_PAN_DUR,
+  MW_ZOOM_OUT_DUR,
+  MW_MIN_HOLD,
+} from "@contracts/sceneTiming";
 
 /**
- * Supersampling: zoompan rounds pan offsets to whole input pixels, which
- * causes the infamous "jittery zoom". Rendering the zoom on a 2x-upscaled
- * canvas gives sub-pixel precision at the output size → buttery motion.
- * Capped so 4K outputs don't explode memory.
+ * Supersampling: zoompan rounds pan offsets to whole input pixels, which causes
+ * the infamous "jittery zoom". Rendering the zoom on a 2x-upscaled canvas gives
+ * sub-pixel precision at the output size → buttery motion. Capped so 4K outputs
+ * don't explode memory.
  */
 const MAX_SS_WIDTH = 4200;
 
@@ -35,9 +58,7 @@ const MAX_SS_WIDTH = 4200;
  * Our source is a still screenshot under slow camera motion — the cheapest
  * content x264 will ever see. `medium` spends 3-5x the CPU of `veryfast`
  * chasing motion-estimation wins that do not exist here; at a fixed CRF the
- * output is visually indistinguishable. Measured on a 7s 1080p clip:
- * medium 10.7s vs veryfast 9.0s for the encode alone, and the gap widens on
- * the full-timeline re-encode where every frame is paid for twice.
+ * output is visually indistinguishable.
  */
 const X264_PRESET = "veryfast";
 
@@ -83,21 +104,6 @@ function cutPointArgs(td: number | undefined): string[] {
   if (!td || td <= 0) return gopArgs();
   return ["-force_key_frames", `0,${td.toFixed(3)}`];
 }
-
-/** Silence padding around narration so speech never starts on frame 0. */
-export const AUDIO_LEAD_IN = 0.4; // seconds of silence before narration
-export const AUDIO_TAIL = 0.6; // seconds of silence after narration
-
-// ── Multi-waypoint camera motion timing (seconds) ──
-// These are FIXED motion phases. They are never compressed to fit the audio, so
-// pans always read as deliberate camera moves (never teleports) and the final
-// zoom-out always completes. When the narration is shorter than the animation
-// needs, we extend the clip with trailing silence instead of squashing motion.
-export const MW_ZOOM_IN_HOLD = 0.5; // brief wide hold before the first zoom-in
-export const MW_ZOOM_IN_DUR = 1.0; // ease into the first waypoint
-export const MW_PAN_DUR = 2.5; // glide between two consecutive waypoints
-export const MW_ZOOM_OUT_DUR = 1.0; // ease back out after the last waypoint
-export const MW_MIN_HOLD = 2.0; // floor for the per-waypoint hold time
 
 /**
  * Ensure the work directory exists.
@@ -312,14 +318,40 @@ export function computeMultiWaypointTotalFrames(
  * teleporting (the old nested-`if` form evaluated every lerp at t=0 during its
  * own pan window, so the camera jumped straight to the destination).
  */
-export function buildMultiWaypointZoomFilter(
-  waypoints: Array<{ xPx: number; yPx: number; durationFrames: number; zoomScale: number }>,
-  totalFrames: number,
-  outputRes: string
-): string {
-  if (waypoints.length === 0) return "";
+export interface WaypointCamera {
+  zoomInHoldF: number;
+  zoomInDurF: number;
+  panF: number;
+  zoomOutF: number;
+  holds: number[];
+  holdStarts: number[];
+  holdEnds: number[];
+  maxZoom: number;
+  /**
+   * The camera's zoom over time.
+   *
+   * Takes the frame variable because FFmpeg does not use one name for it:
+   * inside zoompan it is `on`, in overlay (and most other filters) it is `n`.
+   * Reusing a zoompan expression in an overlay silently produces
+   * "Error when evaluating the expression" and kills the whole render.
+   */
+  zoomExprFor: (frameVar: string) => string;
+  /** Convenience for the zoompan call site. */
+  zoomExpr: string;
+}
 
-  // Use the max zoomScale across all waypoints as the peak zoom level
+/**
+ * Frame markers and the zoom curve for a multi-waypoint move.
+ *
+ * Shared by the zoompan filter and the cursor overlay: the cursor has to be
+ * placed in screen space, which means undoing the very camera transform this
+ * describes. Recomputing it separately would let the two drift apart by a frame
+ * and put the pointer somewhere the camera isn't looking.
+ */
+export function computeWaypointCamera(
+  waypoints: Array<{ durationFrames: number; zoomScale: number }>,
+  totalFrames: number
+): WaypointCamera {
   const maxZoom = Math.max(...waypoints.map((w) => w.zoomScale));
   const zoomDelta = (maxZoom - 1).toFixed(6);
 
@@ -354,11 +386,30 @@ export function buildMultiWaypointZoomFilter(
     if (i < waypoints.length - 1) cursor += panF; // pan to the next waypoint
   }
 
+  const zoomExprFor = (v: string) =>
+    `1+${zoomDelta}*(${smoothstepExpr(v, zoomInHoldF, zoomInDurF)}-` +
+    `${smoothstepExpr(v, holdEnds[holdEnds.length - 1], zoomOutF)})`;
+
+  return {
+    zoomInHoldF, zoomInDurF, panF, zoomOutF,
+    holds, holdStarts, holdEnds, maxZoom,
+    zoomExprFor,
+    zoomExpr: zoomExprFor("on"),
+  };
+}
+
+export function buildMultiWaypointZoomFilter(
+  waypoints: Array<{ xPx: number; yPx: number; durationFrames: number; zoomScale: number }>,
+  totalFrames: number,
+  outputRes: string
+): string {
+  if (waypoints.length === 0) return "";
+
+  const cam = computeWaypointCamera(waypoints, totalFrames);
+  const { panF, holdEnds } = cam;
+
   // ── Zoom expression: ease in at the start, ease out after the last hold ──
-  const pIn = smoothstepExpr("on", zoomInHoldF, zoomInDurF);
-  const zoomOutStart = holdEnds[holdEnds.length - 1];
-  const pOut = smoothstepExpr("on", zoomOutStart, zoomOutF);
-  const zoomExpr = `1+${zoomDelta}*(${pIn}-${pOut})`;
+  const zoomExpr = cam.zoomExpr;
 
   // ── Position expressions: additive smoothstep displacement ──
   // Start at waypoint 0, then ADD each pan's displacement as its own ramp that
@@ -389,6 +440,118 @@ export function buildMultiWaypointZoomFilter(
     `y='${yExpr}':` +
     `d=${totalFrames}:s=${outputRes}:fps=${RENDER_FPS}`
   );
+}
+
+/**
+ * Lay per-waypoint narration clips onto the camera timeline.
+ *
+ * Each clip is delayed so speech starts just after the camera settles on its
+ * waypoint, then everything is mixed into one track padded to the full scene.
+ * `amix` rather than concat because the clips sit at absolute offsets with
+ * silence between them, not end to end.
+ *
+ * Returns the path to the combined track.
+ */
+async function buildWaypointAudioTrack(
+  clips: Array<{ path: string; duration: number } | null>,
+  holdStartsFrames: number[],
+  totalFrames: number,
+  normalize: boolean
+): Promise<string> {
+  if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
+  await ensureWorkDir();
+
+  const present = clips
+    .map((c, i) => (c ? { ...c, index: i } : null))
+    .filter((c): c is { path: string; duration: number; index: number } => c !== null);
+
+  const outPath = path.join(WORK_DIR, `wpaudio_${nanoid(10)}.m4a`);
+  const totalSec = totalFrames / RENDER_FPS;
+
+  const args: string[] = ["-y"];
+  for (const c of present) args.push("-i", c.path);
+
+  const parts: string[] = [];
+  present.forEach((c, n) => {
+    const startSec = holdStartsFrames[c.index] / RENDER_FPS + AUDIO_LEAD_IN;
+    parts.push(`[${n}:a]adelay=${Math.round(startSec * 1000)}:all=1[d${n}]`);
+  });
+
+  const mixInputs = present.map((_, n) => `[d${n}]`).join("");
+  // normalize=0: amix divides by input count by default, which would make every
+  // clip quieter the more waypoints a scene has.
+  const mix =
+    `${mixInputs}amix=inputs=${present.length}:normalize=0:duration=longest` +
+    `,apad=whole_dur=${totalSec.toFixed(3)}` +
+    (normalize ? ",loudnorm=I=-16:TP=-1.5:LRA=11" : "");
+
+  args.push(
+    "-filter_complex", `${parts.join(";")};${mix}[a]`,
+    "-map", "[a]",
+    "-c:a", "aac", "-b:a", "160k", "-ar", "44100",
+    "-t", totalSec.toFixed(3),
+    outPath
+  );
+
+  await execFileAsync(ffmpegPath, args, { timeout: 180000 });
+  return outPath;
+}
+
+/**
+ * Screen-space overlay expressions for an animated mouse cursor.
+ *
+ * The cursor is the one element that has to exist in both coordinate spaces at
+ * once. It points at things in the picture, so its path is defined in image
+ * space; but it is a pointer, so it must stay a constant size on screen rather
+ * than growing with the zoom. And because it moves over time it cannot be baked
+ * into the static pre-pass like the other annotations.
+ *
+ * So it is overlaid after zoompan, with its image-space path pushed back
+ * through the camera transform. zoompan crops a window of `iw/z` at `x` and
+ * scales it to the output, so a content point maps to screen as:
+ *
+ *     screenX = (contentX - camX(n)) * z(n) * outW / ssW
+ *
+ * The cursor also LEADS the camera. It completes each move in a fraction of the
+ * pan window, so it arrives and the camera glides after it — which is what a
+ * real screen recording looks like. Moving it in lockstep would pin it to the
+ * centre of the frame forever, since that is exactly where the camera points.
+ */
+export function buildCursorOverlayExprs(
+  waypoints: Array<{ xPx: number; yPx: number }>,
+  cam: WaypointCamera,
+  camXExpr: string,
+  camYExpr: string,
+  ssW: number,
+  ssH: number,
+  outW: number,
+  outH: number,
+  cursorSize: number
+): { x: string; y: string } {
+  // Fraction of the pan the cursor uses. Lower = more lead on the camera.
+  const CURSOR_LEAD = 0.45;
+  const leadF = Math.max(1, Math.round(cam.panF * CURSOR_LEAD));
+
+  // `n`, not `on`: this expression is evaluated by overlay, not zoompan.
+  const path = (key: "xPx" | "yPx"): string => {
+    const terms: string[] = [waypoints[0][key].toFixed(1)];
+    for (let i = 1; i < waypoints.length; i++) {
+      const ramp = smoothstepExpr("n", cam.holdEnds[i - 1], leadF);
+      terms.push(`(${(waypoints[i][key] - waypoints[i - 1][key]).toFixed(1)})*${ramp}`);
+    }
+    return terms.join("+");
+  };
+
+  const z = cam.zoomExprFor("n");
+  // Anchor the pointer tip, not its centre — a pointer's hotspot is its corner.
+  const sx = `((${path("xPx")})-(${camXExpr}))*(${z})*${(outW / ssW).toFixed(6)}`;
+  const sy = `((${path("yPx")})-(${camYExpr}))*(${z})*${(outH / ssH).toFixed(6)}`;
+
+  // Keep it inside the frame even if a waypoint sits near an edge.
+  return {
+    x: `max(0,min(${outW - cursorSize},${sx}))`,
+    y: `max(0,min(${outH - cursorSize},${sy}))`,
+  };
 }
 
 /**
@@ -713,6 +876,11 @@ export async function renderStepVideo(opts: {
    * bitrate — 2 keyframes per second is a lot to pay for one cut.
    */
   transitionDurationSec?: number;
+  /**
+   * Animated mouse pointer, composited after the camera move.
+   * Built by renderMultiZoomSegments, which is where the waypoints live.
+   */
+  cursor?: { pngPath: string; xExpr: string; yExpr: string; size: number };
 }): Promise<string> {
   await ensureWorkDir();
 
@@ -794,6 +962,12 @@ export async function renderStepVideo(opts: {
     cropFilter = `crop=${r.w}:${r.h}:${r.x}:${r.y},`;
   }
 
+  // Effective image dimensions after crop. This is the region that ends up
+  // filling the output frame, so anything sized to look like "N% of the video"
+  // has to be measured against it rather than against the raw screenshot.
+  const effW = cropW;
+  const effH = cropH;
+
   // ── Canvas editor: blur (supports multiple regions) ──
   const blurFilter = buildBlurFilter(opts, imgWidth, imgHeight);
 
@@ -845,6 +1019,17 @@ export async function renderStepVideo(opts: {
   const spotlightFilter = buildSpotlightFilter(opts, imgWidth, imgHeight);
 
   // ── Canvas editor: badge ──
+  //
+  // Drawn on the ORIGINAL image, alongside the highlight boxes, so the badge
+  // stays attached to whatever UI element it was placed on while the camera
+  // moves. It used to be applied after zoompan, which pinned it to the output
+  // frame: place a badge on a button, zoom into that button, and the badge sat
+  // where it started, pointing at nothing.
+  //
+  // Being pre-zoom also puts it in the coordinate space its percentages were
+  // always measured in. Applied post-zoom, `imgWidth` was the wrong basis for a
+  // frame that is `outW` wide — a badge dropped at 50% of a 2560px screenshot
+  // landed at 66% of a 1920px frame, at 5.4% of frame height instead of 4%.
   let badgeFilter = "";
   if (
     opts.editorBadgeNumber !== undefined &&
@@ -855,12 +1040,29 @@ export async function renderStepVideo(opts: {
     const by = Math.round((opts.editorBadgeY / 100) * imgHeight);
     const bColor = (opts.editorBadgeColor || "#FBBF24").replace("#", "0x");
     const fontFile = getFontPath();
-    const badgeSize = Math.round(Math.min(imgWidth, imgHeight) * 0.04);
-    badgeFilter = `,drawbox=x=${bx - badgeSize/2}:y=${by - badgeSize/2}:w=${badgeSize}:h=${badgeSize}:color=${bColor}:t=fill,drawtext=fontfile='${fontFile}':text='${opts.editorBadgeNumber}':fontcolor=0x000000:fontsize=${Math.round(badgeSize * 0.6)}:x=${bx}-text_w/2:y=${by}-text_h/2`;
+    // Sized against the region that will fill the frame, so a cropped render
+    // still shows the badge at ~4% of frame height.
+    const badgeSize = Math.round(Math.min(effW, effH) * 0.04);
+    badgeFilter = `drawbox=x=${bx - badgeSize/2}:y=${by - badgeSize/2}:w=${badgeSize}:h=${badgeSize}:color=${bColor}:t=fill,drawtext=fontfile='${fontFile}':text='${opts.editorBadgeNumber}':fontcolor=0x000000:fontsize=${Math.round(badgeSize * 0.6)}:x=${bx}-text_w/2:y=${by}-text_h/2,`;
   }
 
   // ── Canvas editor: magnify ──
-  let magnifyFilter = "";
+  //
+  // A magnifier is two things in two different coordinate spaces, which is why
+  // it was broken in both: the REGION it magnifies is a place on the screenshot,
+  // while the INSET it draws is furniture pinned to a corner of the video. The
+  // old filter did the whole thing after zoompan using screenshot pixel
+  // coordinates, so it cropped the wrong area of the output frame (and could
+  // ask for a region outside it entirely) and pinned the inset using the
+  // screenshot's dimensions rather than the frame's.
+  //
+  // Split accordingly: the patch is cut from the annotated image in the static
+  // pre-pass (so blurs and redactions are respected inside the magnifier — it
+  // must not become a way to read past a redaction), and composited over the
+  // finished frame afterwards.
+  let magnifyPatchFilter = "";   // pre-pass: produces [patch]
+  let magnifyOverlayFilter = ""; // video pass: composites [patch] onto the frame
+  let magnifyInset: { x: number; y: number; w: number; h: number } | null = null;
   if (
     opts.editorMagnifyX !== undefined &&
     opts.editorMagnifyY !== undefined &&
@@ -869,18 +1071,27 @@ export async function renderStepVideo(opts: {
     opts.editorMagnifyW > 0 &&
     opts.editorMagnifyH > 0
   ) {
-    const mx = Math.round((opts.editorMagnifyX / 100) * imgWidth);
-    const my = Math.round((opts.editorMagnifyY / 100) * imgHeight);
-    const mw = Math.round((opts.editorMagnifyW / 100) * imgWidth);
-    const mh = Math.round((opts.editorMagnifyH / 100) * imgHeight);
-    const corner = opts.editorMagnifyCorner || "bottom-right";
-    const insetW = Math.round(Math.min(imgWidth, imgHeight) * 0.15);
+    // Source region: screenshot space, clamped so a region dragged past the
+    // edge cannot produce an out-of-bounds crop.
+    const r = clampRegion(
+      Math.round((opts.editorMagnifyX / 100) * imgWidth),
+      Math.round((opts.editorMagnifyY / 100) * imgHeight),
+      Math.round((opts.editorMagnifyW / 100) * imgWidth),
+      Math.round((opts.editorMagnifyH / 100) * imgHeight),
+      imgWidth, imgHeight
+    );
+
+    // Inset: output-frame space, 15% of the short side, in the chosen corner.
+    const insetW = 2 * Math.round((Math.min(outW, outH) * 0.15) / 2);
     const insetH = insetW;
-    let insetX = imgWidth - insetW - 20;
-    let insetY = imgHeight - insetH - 20;
-    if (corner.includes("left")) insetX = 20;
-    if (corner.includes("top")) insetY = 20;
-    magnifyFilter = `split[orig][magbase];[magbase]crop=${mw}:${mh}:${mx}:${my},scale=${insetW}:${insetH}:flags=lanczos[mag];[orig][mag]overlay=${insetX}:${insetY}:format=auto,drawbox=x=${insetX}:y=${insetY}:w=${insetW}:h=${insetH}:color=white@0.8:t=3,`;
+    const margin = Math.round(Math.min(outW, outH) * 0.02);
+    const corner = opts.editorMagnifyCorner || "bottom-right";
+    const insetX = corner.includes("left") ? margin : outW - insetW - margin;
+    const insetY = corner.includes("top") ? margin : outH - insetH - margin;
+
+    magnifyInset = { x: insetX, y: insetY, w: insetW, h: insetH };
+    magnifyPatchFilter = `crop=${r.w}:${r.h}:${r.x}:${r.y},scale=${insetW}:${insetH}:flags=lanczos`;
+    magnifyOverlayFilter = `overlay=${insetX}:${insetY}:format=auto`;
   }
 
   // ── Canvas editor: color filter ──
@@ -904,10 +1115,6 @@ export async function renderStepVideo(opts: {
         break;
     }
   }
-
-  // Effective image dimensions after crop (for zoom/geometry calculations)
-  const effW = cropW;
-  const effH = cropH;
 
   // Zoom target in supersampled-canvas pixels
   const geo = fitGeometry(effW, effH, ssW, ssH);
@@ -943,17 +1150,28 @@ export async function renderStepVideo(opts: {
   }
 
   // ── Canvas editor: text overlay ──
+  //
+  // Like the badge, this is placed against the screenshot in the editor, so it
+  // belongs in the pre-zoom chain and travels with the content. Its position is
+  // therefore in full-image pixels, not output pixels.
+  //
+  // Consequence worth knowing: the label is now part of the picture, so the
+  // camera scales it. Zooming in makes the text grow, which is right for a
+  // label pinned to a UI element and wrong if you wanted fixed-size furniture —
+  // that is what the watermark and captions are for.
   let overlayFilter = "";
   if (opts.editorOverlayText && opts.editorOverlayX !== undefined && opts.editorOverlayY !== undefined) {
     const fontFile = getFontPath();
-    const ovSize = opts.editorOverlaySize === "small" ? Math.round(outH * 0.04)
-      : opts.editorOverlaySize === "large" ? Math.round(outH * 0.07)
-      : Math.round(outH * 0.055);
+    // Sized against the post-crop region so it still reads as the same
+    // proportion of the finished frame.
+    const ovSize = opts.editorOverlaySize === "small" ? Math.round(effH * 0.04)
+      : opts.editorOverlaySize === "large" ? Math.round(effH * 0.07)
+      : Math.round(effH * 0.055);
     const ovColor = (opts.editorOverlayColor || "#FFFFFF").replace("#", "0x");
-    const ovX = Math.round((opts.editorOverlayX / 100) * outW);
-    const ovY = Math.round((opts.editorOverlayY / 100) * outH);
+    const ovX = Math.round((opts.editorOverlayX / 100) * imgWidth);
+    const ovY = Math.round((opts.editorOverlayY / 100) * imgHeight);
     const escapedOvText = opts.editorOverlayText.replace(/'/g, "’").replace(/:/g, "\\:").replace(/%/g, "\\%");
-    overlayFilter = `,drawtext=fontfile='${fontFile}':text='${escapedOvText}':fontcolor=${ovColor}:fontsize=${ovSize}:x=${ovX}-text_w/2:y=${ovY}-text_h/2:shadowcolor=0x000000:shadowx=2:shadowy=2`;
+    overlayFilter = `drawtext=fontfile='${fontFile}':text='${escapedOvText}':fontcolor=${ovColor}:fontsize=${ovSize}:x=${ovX}-text_w/2:y=${ovY}-text_h/2:shadowcolor=0x000000:shadowx=2:shadowy=2,`;
   }
 
   // ── Captions: prefer canvas editor caption if set ──
@@ -996,44 +1214,98 @@ export async function renderStepVideo(opts: {
   // When zoomFilter is empty (no zoom), zoompan doesn't downscale from supersampled
   // to output resolution, so we need an explicit scale step.
   const downscaleFilter = zoomFilter ? "" : `scale=${outW}:${outH}:flags=lanczos`;
-  const postZoomParts = [zoomFilter, overlayFilter, watermarkFilter, badgeFilter, magnifyFilter, captionsFilter, downscaleFilter]
+
+  // Only frame furniture stays here — things that belong to the video rather
+  // than to the picture, and so must not move when the camera does.
+  const postZoomParts = [zoomFilter, watermarkFilter, captionsFilter, downscaleFilter]
     .map(stripComma)
     .filter((f) => f && f.length > 0);
   const postZoomChain = postZoomParts.join(",");
 
-  const staticFilters = `${drawboxFilter}${blurFilter}${redactFilter}${pixelateFilter}${spotlightFilter}${colorFilter}${cropFilter}`;
+  // Annotations that point at something in the screenshot. Baked into the image
+  // before the camera moves, so they stay attached to what they annotate.
+  //
+  // The crop is deliberately NOT included here: everything above is expressed
+  // in full-image coordinates, so the crop has to come after (buildBaseChain
+  // appends it), and the magnifier needs to cut its patch from the annotated
+  // image before the crop narrows it — after the blurs and redactions, so the
+  // magnifier can never be used to read past a redaction.
+  const annotationFilters =
+    `${drawboxFilter}${blurFilter}${redactFilter}${pixelateFilter}${spotlightFilter}` +
+    `${badgeFilter}${overlayFilter}${colorFilter}`;
 
   // The blurred backdrop only ever shows in the letterbox bars. When the source
   // fits the canvas edge-to-edge (a 16:9 screenshot into a 16:9 video — the
   // common case) it is completely hidden behind the foreground, so skip it.
   const needsBackdrop = geo.offsetX > 1 || geo.offsetY > 1;
 
-  let prepassFilter: string;
-  if (needsBackdrop) {
-    const bgW = 2 * Math.round(BG_PROXY_WIDTH / 2);
-    const bgH = 2 * Math.round((BG_PROXY_WIDTH * ssH) / ssW / 2);
-    prepassFilter =
-      `[0:v]${staticFilters}split=2[bg][fg];` +
-      `[bg]scale=${bgW}:${bgH}:force_original_aspect_ratio=increase:flags=bilinear,crop=${bgW}:${bgH},` +
-      `boxblur=${BG_BLUR_AT_PROXY}:${BG_BLUR_AT_PROXY},scale=${ssW}:${ssH}:flags=bilinear[bg_blurred];` +
-      `[fg]scale=${ssW}:${ssH}:force_original_aspect_ratio=decrease:flags=lanczos[fg_scaled];` +
-      `[bg_blurred][fg_scaled]overlay=(W-w)/2:(H-h)/2[base]`;
-  } else {
-    prepassFilter =
-      `[0:v]${staticFilters}scale=${ssW}:${ssH}:force_original_aspect_ratio=decrease:flags=lanczos,` +
-      `pad=${ssW}:${ssH}:(ow-iw)/2:(oh-ih)/2[base]`;
-  }
+  const buildBaseChain = (input: string) =>
+    needsBackdrop
+      ? `${input}${cropFilter}split=2[bg][fg];` +
+        `[bg]scale=${2 * Math.round(BG_PROXY_WIDTH / 2)}:${2 * Math.round((BG_PROXY_WIDTH * ssH) / ssW / 2)}:force_original_aspect_ratio=increase:flags=bilinear,` +
+        `crop=${2 * Math.round(BG_PROXY_WIDTH / 2)}:${2 * Math.round((BG_PROXY_WIDTH * ssH) / ssW / 2)},` +
+        `boxblur=${BG_BLUR_AT_PROXY}:${BG_BLUR_AT_PROXY},scale=${ssW}:${ssH}:flags=bilinear[bg_blurred];` +
+        `[fg]scale=${ssW}:${ssH}:force_original_aspect_ratio=decrease:flags=lanczos[fg_scaled];` +
+        `[bg_blurred][fg_scaled]overlay=(W-w)/2:(H-h)/2[base]`
+      : `${input}${cropFilter}scale=${ssW}:${ssH}:force_original_aspect_ratio=decrease:flags=lanczos,` +
+        `pad=${ssW}:${ssH}:(ow-iw)/2:(oh-ih)/2[base]`;
+
+  const prepassFilter = magnifyPatchFilter
+    // Fork the annotated image: one branch becomes the base frame, the other
+    // becomes the magnifier patch. Both fall out of the same single pre-pass.
+    ? `[0:v]${annotationFilters}split=2[ann_base][ann_mag];` +
+      buildBaseChain("[ann_base]") +
+      `;[ann_mag]${magnifyPatchFilter}[patch]`
+    : buildBaseChain(`[0:v]${annotationFilters}`);
 
   const basePath = path.join(WORK_DIR, `base_${nanoid(12)}.png`);
+  const patchPath = magnifyPatchFilter ? path.join(WORK_DIR, `mag_${nanoid(12)}.png`) : null;
 
-  const videoFilter =
-    `[0:v]${postZoomChain ? postZoomChain + "," : ""}format=yuv420p[v];` +
-    `[1:a]${buildAudioFilter(opts.clipDurationOverride && opts.clipDurationOverride > 0 ? paddedDuration : undefined)}[a]`;
+  // The magnifier inset is composited last, over the finished frame, so the
+  // camera never moves it.
+  const insetBorder = magnifyInset
+    ? `,drawbox=x=${magnifyInset.x}:y=${magnifyInset.y}:w=${magnifyInset.w}:h=${magnifyInset.h}:` +
+      `color=white@0.8:t=${Math.max(2, Math.round(Math.min(outW, outH) * 0.003))}`
+    : "";
+
+  // ── Video pass inputs ──
+  // 0 = base frame, 1 = audio, then the optional image inputs in a fixed order.
+  // Their indices shift depending on what is present, so they are tracked here
+  // rather than hardcoded.
+  const extraInputs: string[] = [];
+  const patchIdx = patchPath ? 2 + extraInputs.push(patchPath) - 1 : -1;
+  const cursorIdx = opts.cursor ? 2 + extraInputs.push(opts.cursor.pngPath) - 1 : -1;
+
+  const audioChain = `[1:a]${buildAudioFilter(
+    opts.clipDurationOverride && opts.clipDurationOverride > 0 ? paddedDuration : undefined
+  )}[a]`;
+
+  // Compositing order after the camera move: magnifier inset, then cursor on
+  // top of everything — a pointer is never occluded by furniture.
+  const stages: string[] = [];
+  let last = "vz";
+  stages.push(`[0:v]${postZoomChain ? postZoomChain + "," : ""}format=yuv420p[${last}]`);
+  if (patchIdx >= 0) {
+    stages.push(`[${last}][${patchIdx}:v]${magnifyOverlayFilter}${insetBorder}[vm]`);
+    last = "vm";
+  }
+  if (cursorIdx >= 0) {
+    stages.push(`[${last}][${cursorIdx}:v]overlay=x='${opts.cursor!.xExpr}':y='${opts.cursor!.yExpr}'[vc]`);
+    last = "vc";
+  }
+  // Rename the final stage's output to [v] for the mapping below.
+  stages[stages.length - 1] = stages[stages.length - 1].replace(
+    new RegExp(`\\[${last}\\]$`),
+    "[v]"
+  );
+
+  const videoFilter = `${stages.join(";")};${audioChain}`;
 
   try {
     if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
 
-    // Pass 1: composite the static base frame once.
+    // Pass 1: composite the static base frame once (plus the magnifier patch,
+    // as a second output of the same command).
     await execFileAsync(ffmpegPath, [
       "-y",
       "-i", opts.screenshotPath,
@@ -1042,6 +1314,7 @@ export async function renderStepVideo(opts: {
       "-frames:v", "1",
       "-compression_level", "1", // fastest PNG encode; this file is transient
       basePath,
+      ...(patchPath ? ["-map", "[patch]", "-frames:v", "1", "-compression_level", "1", patchPath] : []),
     ], { timeout: 120000 });
 
     // Pass 2: animate the base frame.
@@ -1050,6 +1323,7 @@ export async function renderStepVideo(opts: {
       "-loop", "1",
       "-i", basePath,
       "-i", opts.audioPath,
+      ...extraInputs.flatMap((f) => ["-loop", "1", "-i", f]),
       "-filter_complex", videoFilter,
       "-map", "[v]",
       "-map", "[a]",
@@ -1070,6 +1344,7 @@ export async function renderStepVideo(opts: {
     return renderStepVideoFallback(opts, outputPath, paddedDuration);
   } finally {
     await fs.unlink(basePath).catch(() => {});
+    if (patchPath) await fs.unlink(patchPath).catch(() => {});
   }
 
   // Verify output
@@ -1213,8 +1488,8 @@ async function renderStepVideoFallback(
     const by = Math.round((opts.editorBadgeY / 100) * imgHeight);
     const bColor = (opts.editorBadgeColor || "#FBBF24").replace("#", "0x");
     const fontFile = getFontPath();
-    const badgeSize = Math.round(Math.min(imgWidth, imgHeight) * 0.04);
-    badgeFilter = `,drawbox=x=${bx - badgeSize/2}:y=${by - badgeSize/2}:w=${badgeSize}:h=${badgeSize}:color=${bColor}:t=fill,drawtext=fontfile='${fontFile}':text='${opts.editorBadgeNumber}':fontcolor=0x000000:fontsize=${Math.round(badgeSize * 0.6)}:x=${bx}-text_w/2:y=${by}-text_h/2`;
+    const badgeSize = Math.round(Math.min(cropW, cropH) * 0.04);
+    badgeFilter = `drawbox=x=${bx - badgeSize/2}:y=${by - badgeSize/2}:w=${badgeSize}:h=${badgeSize}:color=${bColor}:t=fill,drawtext=fontfile='${fontFile}':text='${opts.editorBadgeNumber}':fontcolor=0x000000:fontsize=${Math.round(badgeSize * 0.6)}:x=${bx}-text_w/2:y=${by}-text_h/2,`;
   }
 
   // ── Canvas editor: magnify (fallback) ──
@@ -1227,18 +1502,25 @@ async function renderStepVideoFallback(
     opts.editorMagnifyW > 0 &&
     opts.editorMagnifyH > 0
   ) {
-    const mx = Math.round((opts.editorMagnifyX / 100) * imgWidth);
-    const my = Math.round((opts.editorMagnifyY / 100) * imgHeight);
-    const mw = Math.round((opts.editorMagnifyW / 100) * imgWidth);
-    const mh = Math.round((opts.editorMagnifyH / 100) * imgHeight);
+    // The primary renderer splits this across two passes so the inset stays
+    // pinned to the frame. The fallback is a single pass, so it keeps the whole
+    // magnifier in image space: the region magnified is correct and the crop can
+    // no longer run off the edge, but the inset scales with the camera.
+    const r = clampRegion(
+      Math.round((opts.editorMagnifyX / 100) * imgWidth),
+      Math.round((opts.editorMagnifyY / 100) * imgHeight),
+      Math.round((opts.editorMagnifyW / 100) * imgWidth),
+      Math.round((opts.editorMagnifyH / 100) * imgHeight),
+      imgWidth, imgHeight
+    );
     const corner = opts.editorMagnifyCorner || "bottom-right";
-    const insetW = Math.round(Math.min(imgWidth, imgHeight) * 0.15);
+    const insetW = 2 * Math.round((Math.min(imgWidth, imgHeight) * 0.15) / 2);
     const insetH = insetW;
-    let insetX = imgWidth - insetW - 20;
-    let insetY = imgHeight - insetH - 20;
-    if (corner.includes("left")) insetX = 20;
-    if (corner.includes("top")) insetY = 20;
-    magnifyFilter = `split[orig][magbase];[magbase]crop=${mw}:${mh}:${mx}:${my},scale=${insetW}:${insetH}:flags=lanczos[mag];[orig][mag]overlay=${insetX}:${insetY}:format=auto,drawbox=x=${insetX}:y=${insetY}:w=${insetW}:h=${insetH}:color=white@0.8:t=3,`;
+    const margin = Math.round(Math.min(imgWidth, imgHeight) * 0.02);
+    const insetX = corner.includes("left") ? margin : imgWidth - insetW - margin;
+    const insetY = corner.includes("top") ? margin : imgHeight - insetH - margin;
+    const border = Math.max(2, Math.round(Math.min(imgWidth, imgHeight) * 0.003));
+    magnifyFilter = `split[orig][magbase];[magbase]crop=${r.w}:${r.h}:${r.x}:${r.y},scale=${insetW}:${insetH}:flags=lanczos[mag];[orig][mag]overlay=${insetX}:${insetY}:format=auto,drawbox=x=${insetX}:y=${insetY}:w=${insetW}:h=${insetH}:color=white@0.8:t=${border},`;
   }
 
   // ── Canvas editor: color filter (fallback) ──
@@ -1298,14 +1580,16 @@ async function renderStepVideoFallback(
   let overlayFilter = "";
   if (opts.editorOverlayText && opts.editorOverlayX !== undefined && opts.editorOverlayY !== undefined) {
     const fontFile = getFontPath();
-    const ovSize = opts.editorOverlaySize === "small" ? Math.round(outH * 0.04)
-      : opts.editorOverlaySize === "large" ? Math.round(outH * 0.07)
-      : Math.round(outH * 0.055);
+    // Image space, matching the primary renderer, so the label stays on what it
+    // labels rather than floating over the frame.
+    const ovSize = opts.editorOverlaySize === "small" ? Math.round(cropH * 0.04)
+      : opts.editorOverlaySize === "large" ? Math.round(cropH * 0.07)
+      : Math.round(cropH * 0.055);
     const ovColor = (opts.editorOverlayColor || "#FFFFFF").replace("#", "0x");
-    const ovX = Math.round((opts.editorOverlayX / 100) * outW);
-    const ovY = Math.round((opts.editorOverlayY / 100) * outH);
+    const ovX = Math.round((opts.editorOverlayX / 100) * imgWidth);
+    const ovY = Math.round((opts.editorOverlayY / 100) * imgHeight);
     const escapedOvText = opts.editorOverlayText.replace(/'/g, "’").replace(/:/g, "\\:").replace(/%/g, "\\%");
-    overlayFilter = `,drawtext=fontfile='${fontFile}':text='${escapedOvText}':fontcolor=${ovColor}:fontsize=${ovSize}:x=${ovX}-text_w/2:y=${ovY}-text_h/2:shadowcolor=0x000000:shadowx=2:shadowy=2`;
+    overlayFilter = `drawtext=fontfile='${fontFile}':text='${escapedOvText}':fontcolor=${ovColor}:fontsize=${ovSize}:x=${ovX}-text_w/2:y=${ovY}-text_h/2:shadowcolor=0x000000:shadowx=2:shadowy=2,`;
   }
 
   // ── Captions: prefer canvas editor caption if set ──
@@ -1333,7 +1617,7 @@ async function renderStepVideoFallback(
   }
 
   const stripCommaMz = (s: string) => s.replace(/^,+/, "").replace(/,+$/, "");
-  const mzPostZoomParts = [zoomFilter, overlayFilter, watermarkFilter, badgeFilter, magnifyFilter, captionsFilter]
+  const mzPostZoomParts = [zoomFilter, watermarkFilter, captionsFilter]
     .map(stripCommaMz)
     .filter((f) => f && f.length > 0);
   const mzPostZoomChain = mzPostZoomParts.join(",");
@@ -1344,7 +1628,7 @@ async function renderStepVideoFallback(
     "-i", opts.screenshotPath,
     "-i", opts.audioPath,
     "-filter_complex",
-    `[0:v]${drawboxFilter}${blurFilter}${redactFilter}${pixelateFilter}${spotlightFilter}${colorFilter}${cropFilter}scale=${outW}:${outH}:force_original_aspect_ratio=decrease,` +
+    `[0:v]${drawboxFilter}${blurFilter}${redactFilter}${pixelateFilter}${spotlightFilter}${badgeFilter}${overlayFilter}${magnifyFilter}${colorFilter}${cropFilter}scale=${outW}:${outH}:force_original_aspect_ratio=decrease,` +
       `pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2${mzPostZoomChain ? "," + mzPostZoomChain : ""},format=yuv420p[v];` +
       `[1:a]adelay=${delayMs}:all=1,${opts.clipDurationOverride && opts.clipDurationOverride > 0 ? `apad=whole_dur=${paddedDuration.toFixed(3)}` : `apad=pad_dur=${AUDIO_TAIL}`}[a]`,
     "-map", "[v]",
@@ -1982,6 +2266,19 @@ export async function renderMultiZoomSegments(opts: {
   audioDuration: number;
   /** Forwarded to renderStepVideo; see the note on its own option. */
   transitionDurationSec?: number;
+  /**
+   * One narration clip per zoom point, in waypoint order.
+   *
+   * When supplied, each waypoint holds for as long as its own clip, and the
+   * clips are laid onto the camera timeline at the moment the camera arrives.
+   * Without it the whole scene shares one clip and any camera time beyond the
+   * narration becomes trailing silence.
+   *
+   * Entries may be null for waypoints with nothing to say.
+   */
+  waypointAudio?: Array<{ path: string; duration: number } | null>;
+  /** Worker already passes this; declared so the option is typed. */
+  normalizeAudio?: boolean;
   multiZooms: Array<{
     targetX: number;
     targetY: number;
@@ -2102,7 +2399,7 @@ export async function renderMultiZoomSegments(opts: {
   const geo = fitGeometry(effW, effH, ssW, ssH);
 
   // ── Map each waypoint's percentage coords to supersampled-frame pixels ──
-  const waypoints = zooms.map((z) => {
+  const waypoints = zooms.map((z, i) => {
     let tx = z.targetX;
     let ty = z.targetY;
     // Adjust for crop
@@ -2112,10 +2409,17 @@ export async function renderMultiZoomSegments(opts: {
       tx = clamp(((origX - cropX) / effW) * 100, 0, 100);
       ty = clamp(((origY - cropY) / effH) * 100, 0, 100);
     }
+    // Per-waypoint narration, when present, sets the hold: the camera waits
+    // exactly as long as there is something to say, plus a short beat either
+    // side so speech never begins the instant the pan stops.
+    const wpAudio = opts.waypointAudio?.[i] ?? null;
+    const spokenHold = wpAudio ? wpAudio.duration + AUDIO_LEAD_IN + AUDIO_TAIL : null;
+    const holdSec = spokenHold ?? (z.duration || 3);
+
     return {
       xPx: geo.offsetX + (tx / 100) * geo.scaledW,
       yPx: geo.offsetY + (ty / 100) * geo.scaledH,
-      durationFrames: Math.round((z.duration || 3) * RENDER_FPS),
+      durationFrames: Math.round(holdSec * RENDER_FPS),
       zoomScale: z.zoomScale ?? 2,
     };
   });
@@ -2124,17 +2428,96 @@ export async function renderMultiZoomSegments(opts: {
   // When the narration is shorter than the camera animation needs, the segment
   // is lengthened (audio padded with trailing silence) instead of squashing the
   // motion — that squashing is what made pans teleport and holds shrink.
-  const totalFrames = computeMultiWaypointTotalFrames(waypoints, audioFrames);
+  //
+  // With per-waypoint audio the holds already fit their clips, so there is no
+  // scene-wide narration to accommodate and the camera timeline stands alone.
+  const usingWaypointAudio = !!opts.waypointAudio?.some(Boolean);
+  const totalFrames = computeMultiWaypointTotalFrames(
+    waypoints,
+    usingWaypointAudio ? 0 : audioFrames
+  );
   const effectiveDuration = totalFrames / RENDER_FPS;
 
   // ── Build the single multi-waypoint zoom filter ──
   const customZoomFilter = buildMultiWaypointZoomFilter(waypoints, totalFrames, outputRes);
 
+  // ── Per-waypoint narration ──
+  // Built here because it needs the hold markers, which only exist once the
+  // waypoints and total length are settled.
+  let audioPath = opts.audioPath;
+  let audioDurationForRender = opts.audioDuration;
+  if (usingWaypointAudio) {
+    const cam = computeWaypointCamera(waypoints, totalFrames);
+    try {
+      audioPath = await buildWaypointAudioTrack(
+        opts.waypointAudio!,
+        cam.holdStarts,
+        totalFrames,
+        opts.normalizeAudio !== false
+      );
+      audioDurationForRender = totalFrames / RENDER_FPS;
+    } catch (err: any) {
+      // Fall back to the single scene-wide track rather than losing the render.
+      log.warn("Per-waypoint audio failed, falling back to the scene track", {
+        error: err?.message ?? String(err),
+      });
+    }
+  }
+
+  // ── Animated mouse pointer ──
+  //
+  // Only for genuine multi-waypoint moves. A single zoom has nothing to travel
+  // between, and a pointer sitting motionless in the middle of the frame reads
+  // as a rendering artefact rather than a demonstration.
+  let cursor: { pngPath: string; xExpr: string; yExpr: string; size: number } | undefined;
+  if (waypoints.length > 1) {
+    try {
+      const cam = computeWaypointCamera(waypoints, totalFrames);
+
+      // The camera's crop-window origin, written with literals. The zoompan
+      // expression cannot be reused verbatim: `iw`, `ih` and `zoom` only exist
+      // inside zoompan, and in the overlay that follows it `iw` would mean the
+      // output frame instead of the supersampled canvas.
+      const camAxis = (key: "xPx" | "yPx", span: number): string => {
+        const terms: string[] = [waypoints[0][key].toFixed(1)];
+        for (let i = 1; i < waypoints.length; i++) {
+          const ramp = smoothstepExpr("n", cam.holdEnds[i - 1], cam.panF);
+          terms.push(`(${(waypoints[i][key] - waypoints[i - 1][key]).toFixed(1)})*${ramp}`);
+        }
+        const centre = terms.join("+");
+        const z = cam.zoomExprFor("n");
+        return `max(0,min(${span}-${span}/(${z}),(${centre})-${span}/(2*(${z}))))`;
+      };
+
+      const cursorSize = 32;
+      const exprs = buildCursorOverlayExprs(
+        waypoints,
+        cam,
+        camAxis("xPx", ssW),
+        camAxis("yPx", ssH),
+        ssW, ssH, outW, outH,
+        cursorSize
+      );
+      cursor = {
+        pngPath: await getCursorPng(cursorSize),
+        xExpr: exprs.x,
+        yExpr: exprs.y,
+        size: cursorSize,
+      };
+    } catch (err: any) {
+      // A missing pointer is cosmetic; a failed render is not.
+      log.warn("Cursor overlay unavailable, rendering without it", {
+        error: err?.message ?? String(err),
+      });
+    }
+  }
+
   // ── Render one single segment with the continuous zoom+pan filter ──
   const segPath = await renderStepVideo({
+    cursor,
     screenshotPath: opts.screenshotPath,
-    audioPath: opts.audioPath,
-    audioDuration: opts.audioDuration,
+    audioPath,
+    audioDuration: audioDurationForRender,
     transitionDurationSec: opts.transitionDurationSec,
     clipDurationOverride: effectiveDuration,
     // Use first waypoint as the "target" for highlight box compatibility

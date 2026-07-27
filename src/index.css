@@ -566,6 +566,22 @@
     animation: none;
     will-change: auto;
   }
+
+  /* The CSS-driven half of the site's motion: drifting particles, marquees,
+     shimmer sweeps, breathing glows and the rest. framer-motion is handled
+     separately by MotionConfig in main.tsx, since JS-driven inline styles are
+     invisible to this query.
+
+     Animations are reduced to a single instant frame rather than removed, so
+     anything that animates *into* view still ends up visible. */
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* 3D Glass Panels
