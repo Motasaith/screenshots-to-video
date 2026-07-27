@@ -32,6 +32,7 @@ import {
   ArrowLeft,
   Volume2,
   Play,
+  Pause,
   Crown,
   AlertTriangle,
   Mic,
@@ -63,6 +64,7 @@ import {
 } from "lucide-react";
 import { stepThumbUrl } from "@/lib/thumbUrl";
 import { ScenePreview } from "./ScenePreview";
+import { CaptureDialog } from "./CaptureDialog";
 import { computeSceneTiming, estimateNarrationSeconds, MW_MIN_HOLD } from "@contracts/sceneTiming";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -107,6 +109,7 @@ import {
   type RenderPreflightResult,
 } from "@/components/wizard/renderPreflight";
 import { detectGibberish } from "@/lib/gibberish";
+import { isVideoPath } from "@/lib/mediaPath";
 
 /* ------------------------------------------------------------------ */
 /*  Types & Helpers (carried over from old StepAnnotate)              */
@@ -228,6 +231,8 @@ interface StepAnnotation {
     duration?: number;
     /** Narration spoken while the camera holds on this point. */
     script?: string;
+    /** For video scenes: the moment in the clip this keyframe applies to. */
+    atSec?: number;
   }> | null;
 }
 
@@ -471,6 +476,96 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
   /** Open state for the free, client-side scene preview. */
   const [showScenePreview, setShowScenePreview] = useState(false);
+  const [isApplyingCrop, setIsApplyingCrop] = useState(false);
+  const [bumperUploading, setBumperUploading] = useState<"intro" | "outro" | null>(null);
+  const [captureMode, setCaptureMode] = useState<"camera" | null>(null);
+  const [videoPlaying, setVideoPlaying] = useState(false);
+
+  /**
+   * Add a captured photo or recording to the timeline as a new scene.
+   *
+   * Recordings are marked "#video" so the renderer takes the footage path
+   * rather than compositing a single frame from them.
+   */
+  const handleCaptured = async (file: File, kind: "image" | "video") => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("folder", "screenshots");
+
+    const res = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
+      credentials: "include",
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({ error: "Upload failed" }));
+      throw new Error(e.error || `Upload failed (${res.status})`);
+    }
+    const { key } = (await res.json()) as { key: string };
+
+    await createStep.mutateAsync({
+      projectId: projectIdNum,
+      order: (steps.length || (props.parentSteps || []).length) + 1,
+      description: kind === "video" ? "Screen recording" : "Camera photo",
+      screenshotPath: kind === "video" ? `${key}#video` : key,
+    });
+    await utils.project.getById.invalidate({ id: projectIdNum });
+    toast.success(kind === "video" ? "Recording added to the timeline" : "Photo added to the timeline");
+  };
+
+  /**
+   * Store a custom intro/outro clip.
+   *
+   * The renderer has always read `introVideoPath`/`outroVideoPath`; nothing ever
+   * wrote them, so picking "custom video" silently did nothing. Images are
+   * allowed as well as video — the renderer holds a still for the configured
+   * duration.
+   */
+  const handleBumperUpload = async (kind: "intro" | "outro", file: File) => {
+    setBumperUploading(kind);
+    try {
+      const isVideo = file.type.startsWith("video/");
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("folder", "bumpers");
+
+      // Videos must not go through the image compressor, so this posts directly
+      // rather than reusing uploadFile().
+      const res = await fetch("/api/upload", {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({ error: "Upload failed" }));
+        throw new Error(e.error || `Upload failed (${res.status})`);
+      }
+      const { key } = (await res.json()) as { key: string };
+
+      await updateProject.mutateAsync({
+        id: projectIdNum,
+        ...(kind === "intro" ? { introVideoPath: key } : { outroVideoPath: key }),
+      });
+      await utils.project.getById.invalidate({ id: projectIdNum });
+      toast.success(`${kind === "intro" ? "Intro" : "Outro"} ${isVideo ? "video" : "image"} saved`);
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setBumperUploading(null);
+    }
+  };
+
+  const handleBumperClear = async (kind: "intro" | "outro") => {
+    try {
+      await updateProject.mutateAsync({
+        id: projectIdNum,
+        ...(kind === "intro" ? { introVideoPath: "" } : { outroVideoPath: "" }),
+      });
+      await utils.project.getById.invalidate({ id: projectIdNum });
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Could not remove it");
+    }
+  };
 
   /** Autosave state, surfaced in the toolbar and guarded on unload. */
   const [saveState, setSaveState] = useState<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
@@ -508,6 +603,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const deleteStep = trpc.step.delete.useMutation();
   const checkSafety = trpc.step.checkSafety.useMutation();
   const generateScript = trpc.ai.generateScript.useMutation();
+  const importPexelsMedia = trpc.ai.importMedia.useMutation();
   const utils = trpc.useUtils();
 
   // Voiceover states
@@ -2002,6 +2098,55 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
 
 
+  /**
+   * Cut the crop out of the screenshot and replace it.
+   *
+   * The crop annotation is cleared afterwards because it has been carried out —
+   * leaving it set would crop the already-cropped image again at render time.
+   * Other annotations are cleared too: their coordinates are percentages of the
+   * old image, and silently reinterpreting them against a differently-shaped one
+   * would move every box without the user touching anything.
+   */
+  const handleApplyCrop = async () => {
+    if (!currentStep?.screenshotPath || !cropRect) return;
+    const { x, y, w, h } = cropRect;
+    if (x == null || y == null || w == null || h == null || w <= 0 || h <= 0) return;
+
+    setIsApplyingCrop(true);
+    try {
+      const { cropImageFile } = await import("@/lib/cropImage");
+      const file = await cropImageFile(currentStep.screenshotPath, { x, y, w, h }, "cropped.png");
+      const { key, url } = await uploadFile(file, "screenshots");
+
+      await updateStep.mutateAsync({ id: currentStep.id, screenshotPath: key });
+
+      const cleared: StepAnnotation = {
+        ...(annotations[currentStep.id] || {}),
+        editorCropX: null,
+        editorCropY: null,
+        editorCropW: null,
+        editorCropH: null,
+        editorHighlights: [],
+        editorBlurs: [],
+        editorPixelates: [],
+        editorSpotlights: [],
+        editorMultiZooms: [],
+      };
+      pushHistory({ ...annotations, [currentStep.id]: cleared });
+
+      // Keep the canvas showing the new image without waiting for a refetch.
+      void url;
+      await utils.project.getById.invalidate({ id: projectIdNum });
+      setMode("select");
+      toast.success("Crop applied. The canvas now matches the exported frame.");
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Could not apply the crop";
+      toast.error(message);
+    } finally {
+      setIsApplyingCrop(false);
+    }
+  };
+
   const handleClear = (field: keyof StepAnnotation) => {
     if (!currentStep) return;
     const nextState = {
@@ -2403,6 +2548,38 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           {/* Crop Properties */}
           {activeTab === "crop" && (
             <div className="space-y-3">
+              {/* Applying the crop cuts it out of the screenshot for real,
+                  instead of leaving it as an instruction FFmpeg carries out at
+                  render time. That is what makes the canvas and the export
+                  agree: once there is no crop pending, watermarks and captions
+                  preview against the same frame the renderer will use. */}
+              {cropRect?.w != null && cropRect.w > 0 && cropRect?.h != null && cropRect.h > 0 && (
+                <button
+                  onClick={handleApplyCrop}
+                  disabled={isApplyingCrop}
+                  title="Cut the crop out of the screenshot now"
+                  aria-label="Apply crop to the screenshot"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#00E676]/40 bg-[#00E676]/10 py-2 text-[11px] font-bold text-[#00A854] hover:bg-[#00E676]/20 disabled:opacity-50 dark:text-[#00E676]"
+                >
+                  {isApplyingCrop ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Applying…
+                    </>
+                  ) : (
+                    <>
+                      <Crop className="h-3.5 w-3.5" />
+                      Apply crop to screenshot
+                    </>
+                  )}
+                </button>
+              )}
+              <p className="text-[10px] leading-relaxed text-[var(--sketch-fg-subtle)]">
+                Until you apply it, the crop happens at render time — so the
+                watermark and captions preview against the whole screenshot
+                rather than the cropped frame.
+              </p>
+
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label className="text-xs font-mono">X (%)</Label>
@@ -3410,7 +3587,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           {activeTab === "multizoom" && (
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <Label className="text-xs font-mono">Zoom Points ({currentAnn?.editorMultiZooms?.length || 0})</Label>
+                <Label className="text-xs font-mono">
+                  {timelineClips[currentStepIndex]?.isVideo ? "Keyframes" : "Zoom Points"} (
+                  {currentAnn?.editorMultiZooms?.length || 0})
+                </Label>
                 <button
                   onClick={() => {
                     const nextState = {
@@ -3428,7 +3608,59 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 </button>
               </div>
 
-              {(currentAnn?.editorMultiZooms?.length ?? 0) > 0 && currentStep?.screenshotPath && (
+              {/* Zoom on video is not implemented yet: renderVideoSegment plays
+                  the footage without a camera move, so points placed here would
+                  silently do nothing at export. Say so rather than let someone
+                  spend a credit finding out. */}
+              {/* Video scenes use time-anchored keyframes instead of sequenced
+                  zoom points: footage already has a timeline, so the camera is
+                  pinned to moments in it rather than dictating its length. */}
+              {timelineClips[currentStepIndex]?.isVideo && (
+                <div className="space-y-2 rounded-lg border border-[var(--sketch-border-color)]/30 bg-[var(--sketch-fg-subtle)]/5 p-2.5">
+                  <p className="text-[10px] leading-relaxed text-[var(--sketch-fg-subtle)]">
+                    Play the clip, pause where you want the camera, click the
+                    canvas to set the target, then add a keyframe.
+                  </p>
+                  <button
+                    onClick={() => {
+                      const v = imageRef.current as HTMLVideoElement | null;
+                      if (!v || !currentStep) return;
+                      const atSec = Number(v.currentTime.toFixed(2));
+                      const existing = currentAnn?.editorMultiZooms ?? [];
+                      const next = {
+                        ...annotations,
+                        [currentStep.id]: {
+                          ...(annotations[currentStep.id] || {}),
+                          editorMultiZooms: [
+                            ...existing.filter((k) => Math.abs((k.atSec ?? -1) - atSec) > 0.05),
+                            {
+                              id: `kf_${Date.now().toString(36)}`,
+                              atSec,
+                              targetX: currentAnn?.zoomTargetX ?? 50,
+                              targetY: currentAnn?.zoomTargetY ?? 50,
+                              zoomScale: currentAnn?.editorZoomScale && currentAnn.editorZoomScale > 1
+                                ? currentAnn.editorZoomScale
+                                : 2,
+                            },
+                          ].sort((a, b) => (a.atSec ?? 0) - (b.atSec ?? 0)),
+                        },
+                      };
+                      pushHistory(next);
+                      toast.success(`Keyframe added at ${atSec.toFixed(1)}s`);
+                    }}
+                    title="Add a camera keyframe at the clip's current time"
+                    aria-label="Add a camera keyframe at the current time"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--sketch-accent)]/40 bg-[var(--sketch-accent)]/10 py-2 text-[11px] font-bold text-[var(--sketch-accent)] hover:bg-[var(--sketch-accent)]/20"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add keyframe at current time
+                  </button>
+                </div>
+              )}
+
+              {(currentAnn?.editorMultiZooms?.length ?? 0) > 0 &&
+                currentStep?.screenshotPath &&
+                !timelineClips[currentStepIndex]?.isVideo && (
                 <button
                   onClick={() => setShowScenePreview(true)}
                   title="Play this scene's camera move without rendering"
@@ -4860,6 +5092,21 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               </div>
             </div>
 
+            {/* Custom intro upload.
+                The "custom-video" template existed and the renderer read
+                project.introVideoPath, but nothing ever set it — so choosing
+                this option quietly did nothing. Images are accepted too; the
+                renderer holds a still for the chosen duration. */}
+            {introTemplate === "custom-video" && (
+              <BumperUpload
+                kind="intro"
+                currentPath={project?.introVideoPath || null}
+                busy={bumperUploading === "intro"}
+                onPick={(file) => handleBumperUpload("intro", file)}
+                onClear={() => handleBumperClear("intro")}
+              />
+            )}
+
             {/* Text input */}
             {introTemplate && introTemplate !== "none" && introTemplate !== "custom-video" && (
               <div>
@@ -4873,8 +5120,21 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               </div>
             )}
 
-            {/* Duration slider */}
-            {introTemplate && introTemplate !== "none" && (
+            {/* Duration slider.
+                Hidden when a custom VIDEO is attached: the clip already has its
+                own length, and the slider was not merely decorative — its 3s
+                default was being applied as a hard trim, so a 20-second intro
+                came out three seconds long. A custom IMAGE still needs one,
+                since a still has no duration of its own. */}
+            {introTemplate === "custom-video" && isVideoPath(project?.introVideoPath) && (
+              <p className="rounded-lg border border-[var(--sketch-border-color)]/30 px-2.5 py-2 text-[10px] leading-relaxed text-[var(--sketch-fg-subtle)]">
+                Your intro clip plays at its full length. Trim it before
+                uploading if you want it shorter.
+              </p>
+            )}
+
+            {introTemplate && introTemplate !== "none" &&
+              !(introTemplate === "custom-video" && isVideoPath(project?.introVideoPath)) && (
               <div>
                 <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] flex justify-between mb-1">
                   <span>Duration</span>
@@ -4892,21 +5152,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               </div>
             )}
 
-            {/* Custom video upload */}
-            {introTemplate === "custom-video" && (
-              <div className="p-3 bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/20 rounded-lg">
-                <p className="text-[10px] text-[var(--sketch-fg-muted)] mb-2">
-                  Upload a custom video or image for your intro screen.
-                </p>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-[var(--sketch-accent)]/10 hover:bg-[var(--sketch-accent)]/20 text-[var(--sketch-fg)] text-xs font-semibold rounded-lg border border-[var(--sketch-accent)]/20 cursor-pointer transition-all"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  Upload Video/Image
-                </button>
-              </div>
-            )}
 
             {/* Preview */}
             {introTemplate && introTemplate !== "none" && introText && (
@@ -4964,6 +5209,16 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
             </div>
 
             {/* Outro text */}
+            {outroTemplate === "custom-video" && (
+              <BumperUpload
+                kind="outro"
+                currentPath={project?.outroVideoPath || null}
+                busy={bumperUploading === "outro"}
+                onPick={(file) => handleBumperUpload("outro", file)}
+                onClear={() => handleBumperClear("outro")}
+              />
+            )}
+
             {outroTemplate && outroTemplate !== "none" && outroTemplate !== "custom-video" && (
               <div>
                 <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block mb-1">Outro Text</Label>
@@ -4977,7 +5232,16 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
             )}
 
             {/* Duration */}
-            {outroTemplate && outroTemplate !== "none" && (
+            {/* See the intro slider above for why this hides on custom video. */}
+            {outroTemplate === "custom-video" && isVideoPath(project?.outroVideoPath) && (
+              <p className="rounded-lg border border-[var(--sketch-border-color)]/30 px-2.5 py-2 text-[10px] leading-relaxed text-[var(--sketch-fg-subtle)]">
+                Your outro clip plays at its full length. Trim it before
+                uploading if you want it shorter.
+              </p>
+            )}
+
+            {outroTemplate && outroTemplate !== "none" &&
+              !(outroTemplate === "custom-video" && isVideoPath(project?.outroVideoPath)) && (
               <div>
                 <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] flex justify-between mb-1">
                   <span>Duration</span>
@@ -4995,21 +5259,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               </div>
             )}
 
-            {/* Custom video upload */}
-            {outroTemplate === "custom-video" && (
-              <div className="p-3 bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/20 rounded-lg">
-                <p className="text-[10px] text-[var(--sketch-fg-muted)] mb-2">
-                  Upload a custom video or image for your outro screen.
-                </p>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-[var(--sketch-accent)]/10 hover:bg-[var(--sketch-accent)]/20 text-[var(--sketch-fg)] text-xs font-semibold rounded-lg border border-[var(--sketch-accent)]/20 cursor-pointer transition-all"
-                >
-                  <Upload className="w-3.5 h-3.5" />
-                  Upload Video/Image
-                </button>
-              </div>
-            )}
 
             {/* Preview */}
             {outroTemplate && outroTemplate !== "none" && outroText && (
@@ -5047,27 +5296,33 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const handleImportPexelsMedia = async (media: { id: number; src: string; type: string; photographer?: string; thumbnail?: string }) => {
     setImportingPexelsId(media.id);
     try {
-      // Fetch the media from Pexels
-      const response = await fetch(media.src, { mode: "cors" });
-      if (!response.ok) throw new Error(`Failed to download media (${response.status})`);
-      const blob = await response.blob();
+      // Downloaded by the server, not here.
+      //
+      // Fetching straight from the browser worked for photos and always failed
+      // for videos: Pexels' image CDN sends permissive CORS headers, its video
+      // files do not. The browser rejected those requests before they hit the
+      // network, which is why it reported "NetworkError when attempting to
+      // fetch resource" rather than an HTTP status.
+      const imported = await importPexelsMedia.mutateAsync({
+        url: media.src,
+        type: media.type === "video" ? "video" : "image",
+      });
 
-      // Determine file extension from content type
-      const contentType = blob.type || (media.type === "video" ? "video/mp4" : "image/jpeg");
-      const ext = contentType.includes("video") ? ".mp4" : contentType.includes("png") ? ".png" : ".jpg";
-      const filename = `pexels_${media.id}_${(media.photographer || "media").replace(/[^a-zA-Z0-9]/g, "")}${ext}`;
+      const isVideo = imported.type === "video";
+      const created = await createStep.mutateAsync({
+        projectId: projectIdNum,
+        order: (steps.length || (props.parentSteps || []).length) + 1,
+        description: media.photographer ? `Stock media by ${media.photographer}` : "",
+        // The "#video" marker is how the rest of the editor recognises a clip.
+        screenshotPath: isVideo ? `${imported.key}#video` : imported.key,
+      });
+      void created;
 
-      // Create a File object from the blob
-      const file = new File([blob], filename, { type: contentType });
-
-      // Use the existing handleUploadFiles to create a step with this media
-      const fileList = { 0: file, length: 1, item: () => file } as unknown as FileList;
-      await handleUploadFiles(fileList);
-
-      toast.success(`Imported ${media.type === "video" ? "video" : "photo"} from Pexels into timeline`);
-    } catch (err: any) {
-      console.error("Failed to import Pexels media:", err);
-      toast.error(`Failed to import: ${err.message || "Download failed"}`);
+      await utils.project.getById.invalidate({ id: projectIdNum });
+      toast.success(`Imported ${isVideo ? "video" : "photo"} from Pexels into timeline`);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : "Download failed";
+      toast.error(`Failed to import: ${message}`);
     } finally {
       setImportingPexelsId(null);
     }
@@ -6211,6 +6466,15 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                             }}
                             muted
                             playsInline
+                            // Native controls only in select mode — while a
+                            // drawing tool is active they would swallow the
+                            // clicks meant for annotating. The floating play
+                            // button below works in every mode.
+                            controls={mode === "select"}
+                            controlsList="nodownload noplaybackrate"
+                            onPlay={() => setVideoPlaying(true)}
+                            onPause={() => setVideoPlaying(false)}
+                            onEnded={() => setVideoPlaying(false)}
                             draggable={false}
                             onLoadedData={updateBounds}
                           />
@@ -6366,6 +6630,34 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                   boxShadow: "0 0 0 1px rgba(255,255,255,0.7)",
                                 }}
                               />
+                            )}
+
+                            {/* Play control for video scenes.
+                                Native controls are hidden outside select mode
+                                so they cannot eat annotation clicks, which left
+                                no way to watch a clip at all. This stays put in
+                                every mode and is small enough not to obstruct
+                                the canvas. */}
+                            {timelineClips[currentStepIndex]?.isVideo && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const v = imageRef.current as HTMLVideoElement | null;
+                                  if (!v) return;
+                                  if (v.paused) void v.play().catch(() => {});
+                                  else v.pause();
+                                }}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                title={videoPlaying ? "Pause clip" : "Play clip"}
+                                aria-label={videoPlaying ? "Pause clip" : "Play clip"}
+                                className="absolute bottom-2 left-2 z-30 flex h-9 w-9 items-center justify-center rounded-full bg-black/65 text-white shadow-lg backdrop-blur-sm transition hover:bg-black/80"
+                              >
+                                {videoPlaying ? (
+                                  <Pause className="h-4 w-4" />
+                                ) : (
+                                  <Play className="ml-0.5 h-4 w-4 fill-current" />
+                                )}
+                              </button>
                             )}
 
                             {/* Crop overlay — Canva style with dimmed outside + edge handles */}
@@ -7117,6 +7409,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           {/* Timeline sits under canvas, not full width */}
           <Timeline
             clips={timelineClips}
+            onCapture={(m) => setCaptureMode(m)}
             currentIndex={currentStepIndex}
             onClipSelect={setCurrentStepIndex}
             onClipReorder={handleTimelineReorder}
@@ -7133,9 +7426,11 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
             }}
             introTemplate={introTemplate}
             introText={introText}
+            introVideoPath={project?.introVideoPath || null}
             introDuration={introDuration}
             outroTemplate={outroTemplate}
             outroText={outroText}
+            outroVideoPath={project?.outroVideoPath || null}
             outroDuration={outroDuration}
             onIntroClick={() => { setIntroOutroMode("intro"); toggleRightTab("introoutro"); }}
             onOutroClick={() => { setIntroOutroMode("outro"); toggleRightTab("introoutro"); }}
@@ -7284,6 +7579,14 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         onContinueSilently={handleContinueSilently}
         onCancel={() => setShowRenderPreflight(false)}
       />
+
+      {captureMode && (
+        <CaptureDialog
+          mode={captureMode}
+          onCapture={handleCaptured}
+          onClose={() => setCaptureMode(null)}
+        />
+      )}
 
       {showScenePreview && currentStep?.screenshotPath && (
         <ScenePreview
@@ -7755,6 +8058,90 @@ function RightTabButton({
         {label}
       </span>
     </button>
+  );
+}
+
+/**
+ * File picker for a custom intro/outro clip.
+ *
+ * Accepts images as well as video: a still bumper is a common case (a title
+ * card, a logo) and the renderer holds it for the configured duration, so
+ * refusing images would be an arbitrary limitation.
+ */
+function BumperUpload({
+  kind,
+  currentPath,
+  busy,
+  onPick,
+  onClear,
+}: {
+  kind: "intro" | "outro";
+  currentPath: string | null;
+  busy: boolean;
+  onPick: (file: File) => void;
+  onClear: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const label = kind === "intro" ? "Intro" : "Outro";
+
+  return (
+    <div className="rounded-lg border border-[var(--sketch-border-color)]/30 p-2.5">
+      <Label className="mb-1.5 block text-xs font-semibold text-[var(--sketch-fg-muted)]">
+        Custom {label.toLowerCase()} file
+      </Label>
+
+      {currentPath ? (
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate font-mono text-[10px] text-[var(--sketch-fg-subtle)]">
+            {isVideoPath(currentPath)
+              ? "Video attached — plays in full"
+              : "Image attached"}
+          </span>
+          <button
+            onClick={onClear}
+            title={`Remove the custom ${label.toLowerCase()}`}
+            aria-label={`Remove the custom ${label.toLowerCase()}`}
+            className="rounded px-2 py-1 text-[10px] font-semibold text-red-500 hover:bg-red-500/10"
+          >
+            Remove
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          title={`Upload a custom ${label.toLowerCase()}`}
+          aria-label={`Upload a custom ${label.toLowerCase()}`}
+          className="flex w-full items-center justify-center gap-1.5 rounded border border-dashed border-[var(--sketch-border-color)]/50 py-2 text-[11px] font-semibold text-[var(--sketch-fg-muted)] hover:border-[var(--sketch-accent)]/50 hover:text-[var(--sketch-fg)] disabled:opacity-50"
+        >
+          {busy ? (
+            <>
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Uploading…
+            </>
+          ) : (
+            <>
+              <Upload className="h-3.5 w-3.5" /> Choose video or image
+            </>
+          )}
+        </button>
+      )}
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="video/mp4,video/webm,video/quicktime,image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onPick(f);
+          e.target.value = "";
+        }}
+      />
+      <p className="mt-1.5 text-[10px] leading-relaxed text-[var(--sketch-fg-subtle)]">
+        Resized and re-encoded to match your video on render, so any size or
+        frame rate works.
+      </p>
+    </div>
   );
 }
 

@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useMemo } from "react";
+import { isVideoPath } from "@/lib/mediaPath";
 import {
   Trash2,
   Plus,
@@ -15,6 +16,7 @@ import {
   Upload,
   Clapperboard,
   Flag,
+  Camera,
 } from "lucide-react";
 
 export interface TimelineClip {
@@ -36,6 +38,8 @@ export interface TimelineProps {
   onClipDelete: (index: number) => void;
   onClipTrim: (index: number, newDuration: number) => void;
   onAddClip: () => void;
+  /** Capture a photo from the webcam as a new scene. */
+  onCapture?: (mode: "camera") => void;
   onDropFiles?: (files: FileList) => void;
   onDropPexels?: (media: { id: number; src: string; type: string; photographer?: string; thumbnail?: string }) => void;
   uploadingCount?: number;
@@ -65,18 +69,26 @@ export default function Timeline({
   onClipDelete,
   onClipTrim,
   onAddClip,
+  onCapture,
   onDropFiles,
   onDropPexels,
   uploadingCount = 0,
   transitions,
   onTransitionClick,
   introTemplate,
+  introVideoPath,
   introDuration,
   outroTemplate,
+  outroVideoPath,
   outroDuration,
   onIntroClick,
   onOutroClick,
 }: TimelineProps) {
+  // A custom video bumper runs for its own length, which the editor never
+  // knows. Printing the project's duration field under it showed "3.0s" beside
+  // a 20-second clip, so these chips stay silent about length instead.
+  const introIsClip = introTemplate === "custom-video" && isVideoPath(introVideoPath);
+  const outroIsClip = outroTemplate === "custom-video" && isVideoPath(outroVideoPath);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -218,8 +230,10 @@ export default function Timeline({
               <span className={`text-[7px] font-bold ${introTemplate && introTemplate !== "none" ? "text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-subtle)]"}`}>
                 {introTemplate && introTemplate !== "none" ? "INTRO" : "+ Intro"}
               </span>
-              {introDuration && introTemplate && introTemplate !== "none" && (
-                <span className="text-[6px] font-mono text-[var(--sketch-fg-subtle)]">{introDuration.toFixed(1)}s</span>
+              {introTemplate && introTemplate !== "none" && (introIsClip || introDuration) && (
+                <span className="text-[6px] font-mono text-[var(--sketch-fg-subtle)]">
+                  {introIsClip ? "clip" : `${introDuration!.toFixed(1)}s`}
+                </span>
               )}
             </button>
 
@@ -335,10 +349,25 @@ export default function Timeline({
               onClick={onAddClip}
               className="flex-shrink-0 w-24 aspect-video rounded-md bg-[var(--sketch-fg-subtle)]/5 hover:bg-[var(--sketch-fg-subtle)]/10 border-2 border-dashed border-[var(--sketch-border-color)]/30 hover:border-[var(--sketch-accent)]/50 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all"
               title="Add Scene"
+              aria-label="Add a scene"
             >
               <Plus className="w-4 h-4 text-[var(--sketch-fg-muted)]" />
               <span className="text-[8px] font-semibold text-[var(--sketch-fg-subtle)]">Add Scene</span>
             </button>
+
+            {/* Capture straight into the timeline, rather than making the user
+                take a photo elsewhere and come back to upload it. */}
+            {onCapture && (
+              <button
+                onClick={() => onCapture("camera")}
+                title="Take a photo with your camera as a new scene"
+                aria-label="Take a photo with your camera"
+                className="flex aspect-video w-24 flex-shrink-0 flex-col items-center justify-center gap-1 rounded-md border-2 border-dashed border-[var(--sketch-border-color)]/30 bg-[var(--sketch-fg-subtle)]/5 transition-all hover:border-[var(--sketch-accent)]/50 hover:bg-[var(--sketch-accent)]/10"
+              >
+                <Camera className="h-4 w-4 text-[var(--sketch-fg-muted)]" />
+                <span className="text-[8px] font-semibold text-[var(--sketch-fg-subtle)]">Camera</span>
+              </button>
+            )}
 
             {/* Transition between last scene and outro */}
             {outroTemplate && outroTemplate !== "none" && clips.length > 0 && (
@@ -364,8 +393,10 @@ export default function Timeline({
               <span className={`text-[7px] font-bold ${outroTemplate && outroTemplate !== "none" ? "text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-subtle)]"}`}>
                 {outroTemplate && outroTemplate !== "none" ? "OUTRO" : "+ Outro"}
               </span>
-              {outroDuration && outroTemplate && outroTemplate !== "none" && (
-                <span className="text-[6px] font-mono text-[var(--sketch-fg-subtle)]">{outroDuration.toFixed(1)}s</span>
+              {outroTemplate && outroTemplate !== "none" && (outroIsClip || outroDuration) && (
+                <span className="text-[6px] font-mono text-[var(--sketch-fg-subtle)]">
+                  {outroIsClip ? "clip" : `${outroDuration!.toFixed(1)}s`}
+                </span>
               )}
             </button>
           </>

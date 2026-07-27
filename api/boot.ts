@@ -115,8 +115,20 @@ app.post("/api/upload", async (c) => {
     }
 
     // Validate file size (10MB max)
-    if (file.size > 10 * 1024 * 1024) {
-      return c.json({ error: "File too large. Maximum size is 10MB." }, 400);
+    // Screenshots are small; a custom intro/outro clip is not. A flat 10MB cap
+    // rejected most real video bumpers with a message that read like a bug.
+    // The ceiling is the 50MB body limit configured above.
+    const isVideoUpload = file.type.startsWith("video/");
+    const maxBytes = isVideoUpload ? 45 * 1024 * 1024 : 10 * 1024 * 1024;
+    if (file.size > maxBytes) {
+      return c.json(
+        {
+          error: `File too large. Maximum size is ${Math.round(maxBytes / 1024 / 1024)}MB for ${
+            isVideoUpload ? "video" : "images"
+          }.`,
+        },
+        400
+      );
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -227,9 +239,43 @@ app.get("/api/file", async (c) => {
 
   try {
     const buf = await readLocalFile(key);
-    c.header("Content-Type", localContentType(key));
+    const contentType = localContentType(key);
+
     // Keys embed a nanoid and are never rewritten, so the bytes are immutable.
+    c.header("Content-Type", contentType);
     c.header("Cache-Control", "private, max-age=31536000, immutable");
+    // Range support is what makes <video> work. Browsers request byte ranges
+    // for media and will refuse to play — or refuse to seek — against a server
+    // that only ever returns 200 with the whole file. Imported Pexels clips
+    // showed a player that did nothing when pressed for exactly this reason.
+    c.header("Accept-Ranges", "bytes");
+
+    const range = c.req.header("range");
+    const match = range ? /^bytes=(\d*)-(\d*)$/.exec(range.trim()) : null;
+
+    if (match) {
+      const size = buf.byteLength;
+      const startRaw = match[1];
+      const endRaw = match[2];
+
+      // "bytes=-500" means the LAST 500 bytes, not the first 500.
+      let start = startRaw ? Number(startRaw) : size - Number(endRaw || 0);
+      let end = endRaw && startRaw ? Number(endRaw) : size - 1;
+
+      start = Math.max(0, Math.min(start, size - 1));
+      end = Math.max(start, Math.min(end, size - 1));
+
+      if (!Number.isFinite(start) || !Number.isFinite(end)) {
+        c.header("Content-Range", `bytes */${size}`);
+        return c.body(null, 416);
+      }
+
+      c.header("Content-Range", `bytes ${start}-${end}/${size}`);
+      c.header("Content-Length", String(end - start + 1));
+      return c.body(new Uint8Array(buf.subarray(start, end + 1)), 206);
+    }
+
+    c.header("Content-Length", String(buf.byteLength));
     return c.body(new Uint8Array(buf));
   } catch (err) {
     log.error("Local file read failed", err, { userId: user.id });

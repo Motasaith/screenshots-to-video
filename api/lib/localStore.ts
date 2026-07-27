@@ -18,6 +18,7 @@
 
 import fs from "fs/promises";
 import path from "path";
+import os from "os";
 import { nanoid } from "nanoid";
 import { createLogger } from "./logger";
 
@@ -29,9 +30,15 @@ export const LOCAL_KEY_PREFIX = "local:";
  * Storage root. Override with LOCAL_STORAGE_DIR in production — on a
  * containerised host this must point at a persistent volume, or a restart
  * takes every in-progress project's screenshots with it.
+ *
+ * The default sits OUTSIDE the repository on purpose. It previously defaulted
+ * to ./storage, which put irreplaceable user uploads in the middle of a working
+ * tree where `rm -rf storage`, `git clean -fdx` or a stray build script would
+ * destroy them — and exactly that happened. Nothing here is backed up, so the
+ * data directory should never share a path with disposable build output.
  */
 export const STORAGE_ROOT = path.resolve(
-  process.env.LOCAL_STORAGE_DIR || path.join(process.cwd(), "storage")
+  process.env.LOCAL_STORAGE_DIR || path.join(os.homedir(), ".aivideo-storage")
 );
 
 export function isLocalKey(key: string | null | undefined): boolean {

@@ -11,6 +11,8 @@ import {
   resolutionToSize,
   cleanupTempFiles,
   mixBackgroundMusic,
+  prepareBumperClip,
+  renderVideoSegment,
   probeMediaDuration
 } from "./ffmpeg";
 import { cleanupExpiredProjects } from "./cleanup";
@@ -102,6 +104,56 @@ function schedulePoll(delayMs: number): void {
 export function notifyRenderJobQueued(): void {
   if (polling || !activeWorkerPoll) return;
   schedulePoll(0);
+}
+
+/**
+ * Turn a render failure into something worth showing a user.
+ *
+ * Raw errors were being written straight into the job message, so people read
+ * things like "ENOENT: no such file or directory, open 'D:\\try\\...\\qohz_HK.webp'"
+ * or a page of FFmpeg filter syntax. That is log material: it tells the user
+ * nothing they can act on and looks like the product is broken.
+ *
+ * The original error is still logged in full immediately before this is called —
+ * nothing is lost, it just stops being the user's problem.
+ */
+function toUserMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err ?? "");
+
+  // Missing source file — the actionable case, so name the fix.
+  if (/ENOENT|no such file|missing from storage/i.test(raw)) {
+    const scene = /scene (\d+)/i.exec(raw)?.[1];
+    return scene
+      ? `The image for scene ${scene} is missing. Re-upload it on that scene, then render again.`
+      : "One of this project's images or clips is missing. Re-upload it, then render again.";
+  }
+
+  // Preconditions the user controls. These messages are already written for
+  // people, so they pass through.
+  if (/no script|has no uploaded screenshot|No voice is selected|no steps in project/i.test(raw)) {
+    return raw;
+  }
+
+  if (/timed out|ETIMEDOUT/i.test(raw)) {
+    return "The render took too long and was stopped. Try fewer or shorter scenes.";
+  }
+  if (/ENOSPC|no space left/i.test(raw)) {
+    return "The server ran out of space while rendering. Please try again shortly.";
+  }
+  if (/ENOTFOUND|ECONNREFUSED|ECONNRESET|fetch failed|socket hang up/i.test(raw)) {
+    return "A service we depend on could not be reached. Please try again in a few minutes.";
+  }
+  if (/elevenlabs|tts|voice|audio/i.test(raw) && /fail|error|invalid|quota|limit/i.test(raw)) {
+    return "The voiceover could not be generated. Check your voice selection, or try again shortly.";
+  }
+  if (/ffmpeg|filter|codec|Invalid argument|Conversion failed/i.test(raw)) {
+    return "Something went wrong while building the video. Our team has been notified — please try again.";
+  }
+  if (/credit|quota|limit/i.test(raw)) {
+    return raw;
+  }
+
+  return "The render did not finish. Please try again — if it keeps happening, contact support.";
 }
 
 class RenderJobInactiveError extends Error {
@@ -308,7 +360,7 @@ async function processNextJob(): Promise<boolean> {
       .set({
         status: "error",
         stage: "error",
-        message: `Render failed: ${err.message}`,
+        message: toUserMessage(err),
       })
       .where(eq(renderJobs.id, job.id));
 
@@ -386,6 +438,64 @@ function startJobHeartbeat(jobId: number): () => void {
  * 3. Concatenate into final video
  * 4. Upload to R2
  */
+/** Whether an absolute path exists on disk. */
+async function fileExists(p: string): Promise<boolean> {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolve a custom intro/outro upload into a concat-ready clip.
+ *
+ * Handles images as well as videos — the previous code assumed a video, wrote
+ * whatever it downloaded to a `.mp4` path and probed it for a duration, so an
+ * uploaded image produced a nonsense length or failed outright.
+ *
+ * @param durationSec applies to stills only; an uploaded video keeps its own
+ *                    length. The returned duration is the real one either way.
+ */
+async function prepareBumper(
+  storageKey: string,
+  outputRes: string,
+  durationSec: number | null,
+  transitionDurationSec: number
+): Promise<{ path: string; duration: number }> {
+  const cleanKey = storageKey.split("#")[0].split("?")[0];
+  const isImage = /\.(png|jpe?g|webp|gif)$/i.test(cleanKey);
+
+  // Read local uploads in place; stage remote ones.
+  let sourcePath = await localFilePath(cleanKey);
+  const staged: string[] = [];
+  if (!sourcePath) {
+    const buf = await downloadFromR2(cleanKey);
+    sourcePath = path.join(
+      os.tmpdir(),
+      "aivideo-render",
+      `bumper_src_${nanoid(8)}${path.extname(cleanKey) || (isImage ? ".png" : ".mp4")}`
+    );
+    await fs.mkdir(path.dirname(sourcePath), { recursive: true });
+    await fs.writeFile(sourcePath, buf);
+    staged.push(sourcePath);
+  }
+
+  try {
+    return await prepareBumperClip(sourcePath, outputRes, {
+      // Only a still needs a length imposed on it. A video keeps its own: the
+      // project's intro/outro duration exists for the text templates and
+      // defaults to 3s, so honouring it here truncated uploaded clips.
+      isImage,
+      durationSec: isImage ? durationSec || 3 : undefined,
+      transitionDurationSec,
+    });
+  } finally {
+    await cleanupTempFiles(staged);
+  }
+}
+
 async function processRenderJob(
   jobId: number,
   projectId: number,
@@ -572,6 +682,15 @@ async function processRenderJob(
         throw new Error(`Step ${step.order} has no uploaded screenshot`);
       }
 
+      // Fail with something the user can act on. A missing file otherwise
+      // surfaced as a raw ENOENT from deep inside FFmpeg, naming a path that
+      // means nothing to them.
+      if (!(await localFilePath(screenshotLocalPath)) && !(await fileExists(screenshotLocalPath))) {
+        throw new Error(
+          `The image for scene ${step.order} is missing from storage. Re-upload it on that scene, then render again.`
+        );
+      }
+
       const audioLocalPath = (step as any)._audioLocalPath;
       let audioDuration = (step as any)._audioDuration;
 
@@ -591,6 +710,65 @@ async function processRenderJob(
       if (project.randomize && zoomX !== undefined && zoomY !== undefined) {
         zoomX = Math.max(0, Math.min(100, zoomX + (Math.random() * 20 - 10)));
         zoomY = Math.max(0, Math.min(100, zoomY + (Math.random() * 20 - 10)));
+      }
+
+      // ── Video sources take a different path entirely ──
+      //
+      // The still pipeline composites one frame and animates it, which turns a
+      // clip into a frozen frame. Anything marked "#video" (a Pexels import, a
+      // screen recording) is rendered as footage instead.
+      const stepIsVideo =
+        (step.screenshotPath || "").includes("#video") ||
+        /\.(mp4|webm|mov)(\?|#|$)/i.test(step.screenshotPath || "");
+
+      if (stepIsVideo) {
+        const videoSegment = await renderVideoSegment({
+          videoPath: screenshotLocalPath,
+          audioPath: audioLocalPath,
+          audioDuration,
+          outputRes,
+          normalizeAudio: !renderSilently,
+          transitionDurationSec: project.transitionDuration || 0.5,
+          editorColorFilter: step.editorColorFilter ?? undefined,
+          editorWatermarkText: step.editorWatermarkText ?? undefined,
+          editorWatermarkPosition: step.editorWatermarkPosition ?? undefined,
+          editorWatermarkSize: step.editorWatermarkSize ?? undefined,
+          editorWatermarkColor: step.editorWatermarkColor ?? undefined,
+          editorWatermarkOpacity: step.editorWatermarkOpacity ?? undefined,
+          // Only entries carrying a timestamp are keyframes; anything without
+          // one came from the screenshot model and does not apply to footage.
+          keyframes: (((step as any).editorMultiZooms ?? []) as any[])
+            .filter((mz) => typeof mz?.atSec === "number")
+            .map((mz) => ({
+              atSec: mz.atSec as number,
+              targetX: mz.targetX ?? 50,
+              targetY: mz.targetY ?? 50,
+              zoomScale: mz.zoomScale ?? 2,
+            })),
+          captions: {
+            enabled: !renderSilently && project.captionsEnabled === 1,
+            style: project.captionStyle || "standard",
+            size: project.captionSize || "medium",
+            position: project.captionPosition || "bottom",
+            color: project.captionColor || "#FFFFFF",
+            text: renderSilently ? "" : (step as any)._narrationScript || "",
+          },
+        });
+
+        stepSegmentPaths[i] = [videoSegment];
+        stepSegmentDurations[i] = [await probeMediaDuration(videoSegment)];
+        tempFiles.push(videoSegment);
+
+        await getDb().update(steps).set({ status: "done" }).where(eq(steps.id, step.id));
+
+        segmentsDone++;
+        await updateJob(jobId, {
+          stage: "rendering_segments",
+          currentStep: segmentsDone,
+          message: `Rendering video segments (${segmentsDone} of ${totalSteps})...`,
+        });
+        logger.info(`Step ${i + 1}/${totalSteps}: video clip rendered`);
+        return;
       }
 
       // ── Multi-zoom: render multiple segments from one screenshot ──
@@ -864,15 +1042,18 @@ async function processRenderJob(
     }
 
     if (project.introVideoPath) {
-      // Use custom uploaded intro video
-      const introBuffer = await downloadFromR2(project.introVideoPath);
-      const introPath = path.join(os.tmpdir(), "aivideo-render", `intro_${nanoid(8)}.mp4`);
-      await fs.mkdir(path.dirname(introPath), { recursive: true });
-      await fs.writeFile(introPath, introBuffer);
-      tempFiles.push(introPath);
-      const introDuration = await probeMediaDuration(introPath);
-      segmentPaths.unshift(introPath);
-      segmentDurations.unshift(introDuration);
+      // Custom intro. Normalised rather than used as-is: an arbitrary upload
+      // shares none of the codec parameters the concat assumes, and may have no
+      // audio track at all.
+      const intro = await prepareBumper(
+        project.introVideoPath,
+        outputRes,
+        project.introDuration,
+        project.transitionDuration || 0.5
+      );
+      tempFiles.push(intro.path);
+      segmentPaths.unshift(intro.path);
+      segmentDurations.unshift(intro.duration);
       transitions.unshift("fade");
     } else if (project.introTemplate && project.introTemplate !== "none") {
       const introDuration = project.introDuration || 3.0;
@@ -884,15 +1065,15 @@ async function processRenderJob(
       tempFiles.push(introPath);
     }
     if (project.outroVideoPath) {
-      // Use custom uploaded outro video
-      const outroBuffer = await downloadFromR2(project.outroVideoPath);
-      const outroPath = path.join(os.tmpdir(), "aivideo-render", `outro_${nanoid(8)}.mp4`);
-      await fs.mkdir(path.dirname(outroPath), { recursive: true });
-      await fs.writeFile(outroPath, outroBuffer);
-      tempFiles.push(outroPath);
-      const outroDuration = await probeMediaDuration(outroPath);
-      segmentPaths.push(outroPath);
-      segmentDurations.push(outroDuration);
+      const outro = await prepareBumper(
+        project.outroVideoPath,
+        outputRes,
+        project.outroDuration,
+        project.transitionDuration || 0.5
+      );
+      tempFiles.push(outro.path);
+      segmentPaths.push(outro.path);
+      segmentDurations.push(outro.duration);
       transitions.push("fade");
     } else if (project.outroTemplate && project.outroTemplate !== "none") {
       const outroDuration = project.outroDuration || 3.0;

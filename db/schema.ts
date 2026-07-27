@@ -220,6 +220,14 @@ export const steps = mysqlTable("steps", {
        * three zoom points on a 6s script produce 6.5s of dead air.
        */
       script?: string;
+      /**
+       * For VIDEO scenes: the moment in the clip this keyframe applies to.
+       *
+       * Screenshots have no timeline of their own, so their zoom points are
+       * sequenced by `duration`. Footage does, so its keyframes are anchored to
+       * a timestamp instead. Absent on screenshot scenes.
+       */
+      atSec?: number;
     }>
   >(),
   audioPath: text("audioPath"),

@@ -767,6 +767,89 @@ Instruction: ${input.instruction}`,
       return result.data;
     }),
 
+  /**
+   * Download a Pexels asset server-side and store it.
+   *
+   * The editor used to fetch the file straight from the browser. That works for
+   * photos, because Pexels' image CDN sends permissive CORS headers — but the
+   * video files do not, so `fetch` was rejected before it ever reached the
+   * network and surfaced as "NetworkError when attempting to fetch resource".
+   * No amount of client-side retrying fixes that; the request has to originate
+   * from somewhere without a same-origin policy.
+   *
+   * Host-allowlisted so this cannot be used as a general-purpose fetch proxy.
+   */
+  importMedia: authedQuery
+    .use(rateLimitByUser(60_000, 20))
+    .input(
+      z.object({
+        url: z.string().url(),
+        type: z.enum(["image", "video"]),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const ALLOWED_HOSTS = [
+        "images.pexels.com",
+        "videos.pexels.com",
+        "player.vimeo.com",
+        "www.pexels.com",
+      ];
+
+      let host: string;
+      try {
+        const parsed = new URL(input.url);
+        if (parsed.protocol !== "https:") throw new Error("not https");
+        host = parsed.hostname.toLowerCase();
+      } catch {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid media URL" });
+      }
+
+      if (!ALLOWED_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))) {
+        log.warn("Blocked media import from unexpected host", { host });
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Unsupported media source" });
+      }
+
+      const res = await fetch(input.url, { signal: AbortSignal.timeout(60_000) });
+      if (!res.ok) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `Could not download the media (${res.status})`,
+        });
+      }
+
+      // Videos in particular can be large; refuse rather than fill the disk.
+      const MAX_BYTES = 60 * 1024 * 1024;
+      const declared = Number(res.headers.get("content-length") || 0);
+      if (declared > MAX_BYTES) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "That file is too large to import" });
+      }
+
+      const bytes = Buffer.from(await res.arrayBuffer());
+      if (bytes.byteLength > MAX_BYTES) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "That file is too large to import" });
+      }
+
+      const contentType = res.headers.get("content-type") || "";
+      const ext =
+        input.type === "video"
+          ? contentType.includes("webm") ? ".webm" : ".mp4"
+          : contentType.includes("png") ? ".png" : ".jpg";
+
+      const key = await saveLocalFile(bytes, {
+        userId: ctx.user!.id,
+        folder: "screenshots",
+        filename: `pexels${ext}`,
+      });
+
+      log.info("Imported media from Pexels", {
+        userId: ctx.user!.id,
+        host,
+        bytes: bytes.byteLength,
+      });
+
+      return { key, type: input.type };
+    }),
+
   // ── Search Pexels stock media (used by editor) ──
   searchMedia: authedQuery
     .use(rateLimitByUser(60_000, 20))

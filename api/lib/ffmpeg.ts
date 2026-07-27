@@ -580,8 +580,12 @@ function fitGeometry(
  *  - lead-in silence (narration never starts abruptly at frame 0)
  *  - tail silence (breathing room before the cut)
  *  - loudness normalization so every step sounds consistent
+ *
+ * @param normalize pass false for a silent render: loudnorm on a silent track
+ *                  costs a filter pass to accomplish nothing, and pushes up
+ *                  whatever noise floor the placeholder has.
  */
-function buildAudioFilter(fillToDurationSec?: number): string {
+function buildAudioFilter(fillToDurationSec?: number, normalize = true): string {
   const delayMs = Math.round(AUDIO_LEAD_IN * 1000);
   // When the clip is extended past the narration (multi-waypoint holds), pad the
   // audio with silence up to the whole clip length so it never ends early.
@@ -589,7 +593,10 @@ function buildAudioFilter(fillToDurationSec?: number): string {
     fillToDurationSec && fillToDurationSec > 0
       ? `apad=whole_dur=${fillToDurationSec.toFixed(3)}`
       : `apad=pad_dur=${AUDIO_TAIL}`;
-  return `adelay=${delayMs}:all=1,${pad},loudnorm=I=-16:TP=-1.5:LRA=11`;
+  return (
+    `adelay=${delayMs}:all=1,${pad}` +
+    (normalize ? ",loudnorm=I=-16:TP=-1.5:LRA=11" : "")
+  );
 }
 
 /* ------------------------------------------------------------------ */
@@ -776,6 +783,8 @@ export async function renderStepVideo(opts: {
     color?: string;
   }>;
   outputRes?: string;
+  /** False on a silent render, which skips loudnorm on the placeholder track. */
+  normalizeAudio?: boolean;
   captions?: { text: string; style: string; size: string; position: string; color: string; enabled: boolean };
   // ── Canvas editor fields ──
   editorCropX?: number;
@@ -1277,7 +1286,8 @@ export async function renderStepVideo(opts: {
   const cursorIdx = opts.cursor ? 2 + extraInputs.push(opts.cursor.pngPath) - 1 : -1;
 
   const audioChain = `[1:a]${buildAudioFilter(
-    opts.clipDurationOverride && opts.clipDurationOverride > 0 ? paddedDuration : undefined
+    opts.clipDurationOverride && opts.clipDurationOverride > 0 ? paddedDuration : undefined,
+    opts.normalizeAudio !== false
   )}[a]`;
 
   // Compositing order after the camera move: magnifier inset, then cursor on
@@ -2218,6 +2228,296 @@ async function concatViaSinglePassXfade(
   if (stat.size === 0) throw new Error("FFmpeg produced an empty final video");
 
   return outputPath;
+}
+
+/**
+ * Camera keyframes for a video clip.
+ *
+ * Screenshots and footage need different models. A still has no timeline of its
+ * own, so its zoom points are *sequenced* — hold here, pan, hold there — and the
+ * choreography decides how long the scene runs. A clip already has a timeline,
+ * so its keyframes are *anchored*: "be zoomed here at 4.2 seconds". Trying to
+ * reuse the screenshot model would mean the camera dictating the length of
+ * footage that already has one.
+ *
+ * Interpolation is the same additive smoothstep the still path uses, so motion
+ * matches across both kinds of scene.
+ */
+export function buildVideoKeyframeZoom(
+  keyframes: Array<{ atSec: number; targetX: number; targetY: number; zoomScale: number }>,
+  outW: number,
+  outH: number
+): string {
+  if (keyframes.length === 0) return "";
+
+  // Anchored in time, so order matters and duplicates would break the ramps.
+  const kfs = [...keyframes]
+    .map((k) => ({ ...k, frame: Math.max(0, Math.round(k.atSec * RENDER_FPS)) }))
+    .sort((a, b) => a.frame - b.frame)
+    .filter((k, i, arr) => i === 0 || k.frame > arr[i - 1].frame);
+
+  const first = kfs[0];
+
+  // Start wide and ease into the first keyframe, so a clip never opens
+  // mid-zoom. Ends by easing back out, matching the still path's grammar.
+  const build = (pick: (k: (typeof kfs)[number]) => number, from: number): string => {
+    const terms: string[] = [from.toFixed(4)];
+    let prevFrame = 0;
+    let prevVal = from;
+
+    for (const k of kfs) {
+      const span = Math.max(1, k.frame - prevFrame);
+      const ramp = smoothstepExpr("on", prevFrame, span);
+      const delta = pick(k) - prevVal;
+      if (Math.abs(delta) > 1e-6) terms.push(`(${delta.toFixed(4)})*${ramp}`);
+      prevFrame = k.frame;
+      prevVal = pick(k);
+    }
+    return terms.join("+");
+  };
+
+  // Zoom starts at 1 (wide); position starts at the first keyframe's target so
+  // the opening wide shot is already centred on what matters.
+  const zExpr = build((k) => k.zoomScale, 1);
+  const cxExpr = build((k) => (k.targetX / 100) * outW, (first.targetX / 100) * outW);
+  const cyExpr = build((k) => (k.targetY / 100) * outH, (first.targetY / 100) * outH);
+
+  const xExpr = `max(0,min(iw-iw/zoom,(${cxExpr})-iw/(2*zoom)))`;
+  const yExpr = `max(0,min(ih-ih/zoom,(${cyExpr})-ih/(2*zoom)))`;
+
+  // d=1: one output frame per input frame, which is what turns zoompan from a
+  // still-image animator into a per-frame camera over footage.
+  return `zoompan=z='max(1,${zExpr})':x='${xExpr}':y='${yExpr}':d=1:s=${outW}x${outH}:fps=${RENDER_FPS}`;
+}
+
+/**
+ * Render a scene whose source is a video rather than a screenshot.
+ *
+ * The still-image path cannot serve here: it composites one frame in a pre-pass
+ * and then animates that frame, which is exactly right for a screenshot and
+ * exactly wrong for footage. Video steps were silently going through it, so a
+ * Pexels clip or a screen recording became a single frozen frame in the export.
+ *
+ * Narration is mixed over the clip's own audio rather than replacing it, so a
+ * recording keeps its original sound with the voiceover on top. The clip is
+ * trimmed or held to the narration length so scenes stay in step with the
+ * script the user wrote.
+ */
+export async function renderVideoSegment(opts: {
+  videoPath: string;
+  audioPath: string;
+  audioDuration: number;
+  outputRes?: string;
+  /** Keep the source's own audio underneath the narration. */
+  keepSourceAudio?: boolean;
+  normalizeAudio?: boolean;
+  transitionDurationSec?: number;
+  captions?: { text: string; style: string; size: string; position: string; color: string; enabled: boolean };
+  editorWatermarkText?: string;
+  editorWatermarkPosition?: string;
+  editorWatermarkSize?: string;
+  editorWatermarkColor?: string;
+  editorWatermarkOpacity?: number;
+  editorColorFilter?: string;
+  /** Time-anchored camera keyframes over the footage. */
+  keyframes?: Array<{ atSec: number; targetX: number; targetY: number; zoomScale: number }>;
+}): Promise<string> {
+  if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
+  await ensureWorkDir();
+
+  const outputRes = opts.outputRes || "1920x1080";
+  const [outW, outH] = outputRes.split("x").map(Number);
+  const outputPath = path.join(WORK_DIR, `vseg_${nanoid(12)}.mp4`);
+
+  const sourceDuration = await probeMediaDuration(opts.videoPath);
+  const narrationDuration = opts.audioDuration + AUDIO_LEAD_IN + AUDIO_TAIL;
+  // Hold the last frame if the narration outlasts the footage, rather than
+  // cutting the voiceover off mid-sentence.
+  const clipDuration = Math.max(sourceDuration, narrationDuration);
+  const needsHold = narrationDuration > sourceDuration;
+
+  const hasSourceAudio = opts.keepSourceAudio !== false && (await hasAudioStream(opts.videoPath));
+
+  let colorFilter = "";
+  switch (opts.editorColorFilter) {
+    case "grayscale": colorFilter = ",hue=s=0"; break;
+    case "sepia": colorFilter = ",colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131"; break;
+    case "warm": colorFilter = ",colorbalance=rs=0.1:gs=-0.05:bs=-0.1"; break;
+    case "cool": colorFilter = ",colorbalance=rs=-0.1:gs=0.05:bs=0.1"; break;
+    case "contrast": colorFilter = ",eq=contrast=1.5:saturation=1.2"; break;
+  }
+
+  // Frame furniture, in output space — same rules as the still path.
+  const furniture: string[] = [];
+  if (opts.editorWatermarkText) {
+    const fontFile = getFontPath();
+    const wmSize = opts.editorWatermarkSize === "small" ? Math.round(outH * 0.03)
+      : opts.editorWatermarkSize === "large" ? Math.round(outH * 0.06)
+      : Math.round(outH * 0.045);
+    const wmColor = (opts.editorWatermarkColor || "#FFFFFF").replace("#", "0x");
+    const wmOpacity = Math.max(0.1, Math.min(1, opts.editorWatermarkOpacity ?? 0.5));
+    const txt = opts.editorWatermarkText.replace(/'/g, "\u2019").replace(/:/g, "\\:").replace(/%/g, "\\%");
+    let wmX = "w-text_w-20";
+    let wmY = "h-text_h-20";
+    if (opts.editorWatermarkPosition?.includes("left")) wmX = "20";
+    if (opts.editorWatermarkPosition?.includes("top")) wmY = "20";
+    if (opts.editorWatermarkPosition === "center") { wmX = "(w-text_w)/2"; wmY = "(h-text_h)/2"; }
+    furniture.push(
+      `drawtext=fontfile='${fontFile}':text='${txt}':fontcolor=${wmColor}@${wmOpacity.toFixed(2)}:` +
+      `fontsize=${wmSize}:x=${wmX}:y=${wmY}:shadowcolor=0x000000:shadowx=1:shadowy=1`
+    );
+  }
+
+  if (opts.captions?.enabled && opts.captions.text) {
+    const caps = await buildCaptionsFilter(
+      opts.captions.text, opts.captions.style, opts.captions.size,
+      opts.captions.position, opts.captions.color, outW, outH, opts.audioDuration
+    );
+    if (caps) furniture.push(caps);
+  }
+
+  // Camera keyframes run after the hold, so a held final frame keeps moving
+  // with the camera rather than freezing the motion too.
+  const keyframeZoom = opts.keyframes?.length
+    ? "," + buildVideoKeyframeZoom(opts.keyframes, outW, outH)
+    : "";
+
+  const videoChain =
+    `[0:v]scale=${outW}:${outH}:force_original_aspect_ratio=decrease:flags=lanczos,` +
+    `pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${RENDER_FPS}${colorFilter}` +
+    (needsHold ? `,tpad=stop_mode=clone:stop_duration=${(narrationDuration - sourceDuration).toFixed(3)}` : "") +
+    keyframeZoom +
+    // Furniture last: a watermark must not be dragged around by the camera.
+    (furniture.length ? `,${furniture.join(",")}` : "") +
+    `,format=yuv420p[v]`;
+
+  const narration = `[1:a]${buildAudioFilter()}[narr]`;
+  const audioChain = hasSourceAudio
+    // Duck the source under the voiceover rather than letting them fight.
+    ? `${narration};[0:a]volume=0.25,apad[bed];[bed][narr]amix=inputs=2:normalize=0:duration=longest,apad=whole_dur=${clipDuration.toFixed(3)}[a]`
+    : `${narration};[narr]apad=whole_dur=${clipDuration.toFixed(3)}[a]`;
+
+  await execFileAsync(ffmpegPath, [
+    "-y",
+    "-i", opts.videoPath,
+    "-i", opts.audioPath,
+    "-filter_complex", `${videoChain};${audioChain}`,
+    "-map", "[v]", "-map", "[a]",
+    "-c:v", "libx264",
+    "-preset", X264_PRESET,
+    "-crf", "20",
+    ...cutPointArgs(opts.transitionDurationSec),
+    "-c:a", "aac", "-b:a", "160k", "-ar", "44100",
+    "-pix_fmt", "yuv420p",
+    "-t", clipDuration.toFixed(3),
+    "-movflags", "+faststart",
+    outputPath,
+  ], { timeout: 600000 });
+
+  const stat = await fs.stat(outputPath);
+  if (stat.size === 0) throw new Error("FFmpeg produced an empty video segment");
+  return outputPath;
+}
+
+/** Whether a file carries a decodable audio stream. */
+async function hasAudioStream(filePath: string): Promise<boolean> {
+  if (!ffprobeStatic.path) return false;
+  try {
+    const { stdout } = await execFileAsync(ffprobeStatic.path, [
+      "-v", "error",
+      "-select_streams", "a:0",
+      "-show_entries", "stream=codec_type",
+      "-of", "csv=p=0",
+      filePath,
+    ], { timeout: 10000 });
+    return stdout.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Turn an arbitrary user-supplied image or video into a clip the concat can use.
+ *
+ * Custom intros and outros used to be written to disk and pushed straight into
+ * the segment list. Nothing forced them to match the rendered segments, so a
+ * phone clip at 60fps in a different resolution — or an image, or a video with
+ * no audio track at all — went into a concat that assumes every input shares
+ * codec parameters. Best case that fell back to the slow re-encode path; worst
+ * case the audio chain referenced a stream that did not exist and the whole
+ * concat failed.
+ *
+ * This normalises everything: output resolution, frame rate, pixel format, an
+ * AAC track (silent if the source has none), and the keyframe grid the
+ * split-encode concat needs.
+ *
+ * @param isImage still images are held for `durationSec`; videos always keep
+ *                their own length, and `durationSec` is ignored for them
+ */
+export async function prepareBumperClip(
+  sourcePath: string,
+  outputRes: string,
+  opts: { isImage: boolean; durationSec?: number; transitionDurationSec?: number }
+): Promise<{ path: string; duration: number }> {
+  if (!ffmpegPath) throw new Error("ffmpeg-static path is undefined");
+  await ensureWorkDir();
+
+  const [outW, outH] = outputRes.split("x").map(Number);
+  const outPath = path.join(WORK_DIR, `bumper_${nanoid(10)}.mp4`);
+
+  // A still has no length of its own, so one has to be supplied. A video does,
+  // and it wins: the editor's duration field defaults to 3s, which was being
+  // applied as `-t` and silently cutting a 20-second intro down to three.
+  const holdDuration = opts.isImage ? (opts.durationSec ?? 3) : null;
+
+  // Letterbox rather than crop: a bumper is usually branding, and silently
+  // cutting someone's logo off is worse than bars.
+  const vf =
+    `scale=${outW}:${outH}:force_original_aspect_ratio=decrease:flags=lanczos,` +
+    `pad=${outW}:${outH}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=${RENDER_FPS},format=yuv420p`;
+
+  // Exactly one audio stream has to come out. The concat demuxer requires every
+  // input to agree on stream layout, and mapping the source track *and* the
+  // silent filler produced two whenever the upload had sound — which a real
+  // intro clip usually does.
+  const sourceHasAudio = !opts.isImage && (await hasAudioStream(sourcePath));
+
+  const encodeArgs = (useSilentAudio: boolean): string[] => [
+    "-y",
+    ...(opts.isImage ? ["-loop", "1"] : []),
+    "-i", sourcePath,
+    ...(useSilentAudio ? ["-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo"] : []),
+    "-filter_complex", `[0:v]${vf}[v]`,
+    "-map", "[v]",
+    "-map", useSilentAudio ? "1:a" : "0:a:0",
+    "-c:v", "libx264",
+    "-preset", X264_PRESET,
+    "-crf", "20",
+    ...cutPointArgs(opts.transitionDurationSec),
+    "-c:a", "aac", "-b:a", "160k", "-ar", "44100", "-ac", "2",
+    ...(holdDuration !== null ? ["-t", holdDuration.toFixed(3)] : []),
+    // anullsrc and a looped still both run forever; this bounds them to the
+    // real content. Omitted when the source supplies its own audio, where the
+    // natural end of the file is already the right answer.
+    ...(useSilentAudio ? ["-shortest"] : []),
+    "-movflags", "+faststart",
+    outPath,
+  ];
+
+  try {
+    await execFileAsync(ffmpegPath, encodeArgs(!sourceHasAudio), { timeout: 180000 });
+  } catch (err) {
+    if (!sourceHasAudio) throw err;
+    // The source claimed an audio stream ffmpeg then could not decode. Falling
+    // back to silence loses the sound but still produces a concat-safe clip,
+    // which beats failing the whole render over a bumper.
+    log.warn("Bumper audio could not be decoded, substituting silence", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    await execFileAsync(ffmpegPath, encodeArgs(true), { timeout: 180000 });
+  }
+
+  return { path: outPath, duration: await probeMediaDuration(outPath) };
 }
 
 /**
