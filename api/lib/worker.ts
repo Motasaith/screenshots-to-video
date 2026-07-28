@@ -16,6 +16,7 @@ import {
   probeMediaDuration
 } from "./ffmpeg";
 import { cleanupExpiredProjects } from "./cleanup";
+import { getUserElevenLabsKey } from "../queries/users";
 import { localFilePath, saveLocalFile } from "./localStore";
 import { logger } from "./logger";
 import { RETENTION_DAYS, RENDER_TIMEOUT_MS, STUCK_JOB_CHECK_INTERVAL_POLLS, CREDIT_COST, SEGMENT_CONCURRENCY } from "./render-config";
@@ -513,6 +514,10 @@ async function processRenderJob(
 
     if (!project) throw new Error("Project not found");
 
+    // Premium ("elevenlabs:") voices are bring-your-own-key. Load the project
+    // owner's key once; generateTTSAudio falls back to free Edge TTS if absent.
+    const userElevenLabsKey = (await getUserElevenLabsKey(project.userId)) ?? undefined;
+
     const renderSilently = queuedAsSilent || isExplicitSilentVoice(project.voice);
     if (!renderSilently && !hasSelectedVoice(project.voice)) {
       throw new Error(
@@ -576,6 +581,7 @@ async function processRenderJob(
         await generateTTSAudio(renderSilently ? "" : (step as any)._narrationScript, {
           voice: renderSilently ? "none" : project.voice!,
           rate: speedToRate(project.speed || 1.0),
+          elevenlabsApiKey: userElevenLabsKey,
           silenceDuration:
             typeof step.editorDuration === "number" && step.editorDuration > 0
               ? step.editorDuration
@@ -807,6 +813,7 @@ async function processRenderJob(
             const { filePath, duration } = await generateTTSAudio(script, {
               voice: project.voice!,
               rate: speedToRate(project.speed || 1.0),
+              elevenlabsApiKey: userElevenLabsKey,
             });
             tempFiles.push(filePath);
             clips[wi] = { path: filePath, duration };

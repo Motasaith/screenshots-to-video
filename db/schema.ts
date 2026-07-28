@@ -22,6 +22,10 @@ export const users = mysqlTable("users", {
   credits: int("credits").default(14).notNull(),
   videosCreatedThisMonth: int("videosCreatedThisMonth").default(0).notNull(),
   monthlyResetAt: timestamp("monthlyResetAt").defaultNow().notNull(),
+  // ── Bring-your-own-key: ElevenLabs (encrypted at rest, never sent to client) ──
+  elevenlabsApiKey: text("elevenlabsApiKey"),
+  // Last 4 chars of the key for display only (e.g. "••••1a2b"). Not sensitive.
+  elevenlabsKeyHint: varchar("elevenlabsKeyHint", { length: 12 }),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
   updatedAt: timestamp("updatedAt")
     .defaultNow()

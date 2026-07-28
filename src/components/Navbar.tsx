@@ -185,7 +185,7 @@ export default function Navbar() {
                 >
                   Sign In
                 </Link>
-                <Link to="/dashboard" className="glass-btn glass-btn-primary text-xs py-2 px-4">
+                <Link to="/signup" className="glass-btn glass-btn-primary text-xs py-2 px-4">
                   Start Free
                 </Link>
               </>
@@ -278,7 +278,7 @@ export default function Navbar() {
                     Sign In
                   </Link>
                   <Link
-                    to="/dashboard"
+                    to="/signup"
                     className="glass-btn glass-btn-primary text-xs py-2.5 w-full text-center"
                     onClick={() => setMobileOpen(false)}
                   >

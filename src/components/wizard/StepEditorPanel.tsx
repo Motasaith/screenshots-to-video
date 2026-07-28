@@ -635,11 +635,56 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     refetchInterval: 30_000,
   });
 
+  // ── Bring-your-own-key (ElevenLabs premium voices) ──
+  const elevenLabsKeyStatus = trpc.settings.elevenLabsKeyStatus.useQuery(undefined, {
+    enabled: activeRightTab === "elevenlabs",
+  });
+  const hasElevenLabsKey = elevenLabsKeyStatus.data?.hasKey ?? false;
+  const [elevenLabsKeyInput, setElevenLabsKeyInput] = useState("");
+  const saveElevenLabsKey = trpc.settings.setElevenLabsKey.useMutation();
+  const removeElevenLabsKey = trpc.settings.removeElevenLabsKey.useMutation();
+
+  const handleSaveElevenLabsKey = () => {
+    const apiKey = elevenLabsKeyInput.trim();
+    if (apiKey.length < 8) {
+      toast.error("Paste your full ElevenLabs API key.");
+      return;
+    }
+    saveElevenLabsKey.mutate(
+      { apiKey },
+      {
+        onSuccess: () => {
+          setElevenLabsKeyInput("");
+          elevenLabsKeyStatus.refetch();
+          credits.refetch();
+          toast.success("ElevenLabs key saved — premium voices unlocked.");
+        },
+        onError: (err) => toast.error(err.message || "Could not validate that key."),
+      },
+    );
+  };
+
+  const handleRemoveElevenLabsKey = () => {
+    removeElevenLabsKey.mutate(undefined, {
+      onSuccess: () => {
+        elevenLabsKeyStatus.refetch();
+        credits.refetch();
+        toast.info("ElevenLabs key removed. Premium voices will use free Edge TTS.");
+      },
+      onError: (err) => toast.error(err.message || "Could not remove key."),
+    });
+  };
+
   const handlePlayPreview = async (e: React.MouseEvent, voiceId: string) => {
     e.stopPropagation();
 
     if (voiceId === "none") {
       toast.info("No audio preview for 'None (No Voiceover)' option.");
+      return;
+    }
+
+    if (voiceId.startsWith("elevenlabs:") && !hasElevenLabsKey) {
+      toast.info("Add your ElevenLabs API key above to preview premium voices.");
       return;
     }
 
@@ -4727,26 +4772,74 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           <div className="space-y-2">
             <Label className="text-xs font-semibold text-[var(--sketch-fg-muted)] block">Select ElevenLabs Voice</Label>
 
-            {/* Credit Check Indicators */}
-            <div className="p-2 bg-[var(--sketch-fg-subtle)]/5 rounded-lg border border-[var(--sketch-border-color)]/15 text-[10px] leading-relaxed text-[var(--sketch-fg-muted)] mb-1">
-              {credits.isLoading ? (
-                <div className="flex items-center gap-1">
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                  <span>Checking ElevenLabs credits...</span>
+            {/* ── Bring your own key ── */}
+            {!hasElevenLabsKey ? (
+              <div className="p-3 rounded-xl border border-amber-500/30 bg-amber-500/5 space-y-2 mb-1">
+                <div className="flex items-center gap-1.5">
+                  <Crown className="w-3.5 h-3.5 text-amber-500" />
+                  <span className="text-xs font-bold text-[var(--sketch-fg)]">Bring your own ElevenLabs key</span>
                 </div>
-              ) : credits.data ? (
-                <div className="flex justify-between items-center">
-                  <span>API Credits: <strong className="text-[var(--sketch-fg)]">{credits.data.remaining} / {credits.data.limit}</strong></span>
-                  {credits.data.remaining > 0 ? (
-                    <span className="text-emerald-600 font-bold">✓ Active</span>
+                <p className="text-[10px] leading-relaxed text-[var(--sketch-fg-muted)]">
+                  Premium voices run on <strong>your own</strong> ElevenLabs API key (they have a free tier). Add it once and it's encrypted and reused for every render. Without a key, premium voices fall back to free built-in voices.
+                </p>
+                <div className="flex gap-1.5">
+                  <Input
+                    type="password"
+                    value={elevenLabsKeyInput}
+                    onChange={(e) => setElevenLabsKeyInput(e.target.value)}
+                    placeholder="Paste API key (sk_…)"
+                    className="flex-1 text-xs h-8"
+                    onKeyDown={(e) => { if (e.key === "Enter") handleSaveElevenLabsKey(); }}
+                  />
+                  <button
+                    onClick={handleSaveElevenLabsKey}
+                    disabled={saveElevenLabsKey.isPending}
+                    className="flex-shrink-0 px-3 h-8 bg-[#FBBF24] hover:bg-[#F59E0B] text-black font-bold text-xs rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                  >
+                    {saveElevenLabsKey.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
+                  </button>
+                </div>
+                <a
+                  href="/blog/elevenlabs-api-key-guide"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 hover:text-amber-500 hover:underline"
+                >
+                  How do I get an API key? Read the guide →
+                </a>
+              </div>
+            ) : (
+              <div className="p-2.5 rounded-xl border border-emerald-500/30 bg-emerald-500/5 space-y-1.5 mb-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                    <span className="text-xs font-semibold text-[var(--sketch-fg)]">
+                      Your key ••••{elevenLabsKeyStatus.data?.hint}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleRemoveElevenLabsKey}
+                    disabled={removeElevenLabsKey.isPending}
+                    className="text-[10px] font-semibold text-red-500 hover:text-red-600 flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                  >
+                    {removeElevenLabsKey.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : <Trash2 className="w-3 h-3" />}
+                    Remove
+                  </button>
+                </div>
+                <div className="text-[10px] text-[var(--sketch-fg-muted)]">
+                  {credits.isLoading ? (
+                    <span className="flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Checking credits…</span>
+                  ) : credits.data ? (
+                    <span>
+                      Credits: <strong className="text-[var(--sketch-fg)]">{credits.data.remaining.toLocaleString()} / {credits.data.limit.toLocaleString()}</strong>
+                      {credits.data.tier ? ` · ${credits.data.tier}` : ""}
+                    </span>
                   ) : (
-                    <span className="text-red-500 font-bold">Exhausted</span>
+                    <span>Key saved. Couldn't fetch live credits right now.</span>
                   )}
                 </div>
-              ) : (
-                <span>Could not load ElevenLabs credits</span>
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Tester for preview */}
             <div className="p-3 rounded-xl border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)]/50 mb-2">
@@ -4781,8 +4874,9 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                       }
                     });
                   }}
-                  disabled={previewVoice.isPending}
-                  className="flex-shrink-0 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-colors flex items-center justify-center cursor-pointer"
+                  disabled={previewVoice.isPending || !hasElevenLabsKey}
+                  title={!hasElevenLabsKey ? "Add your ElevenLabs key to preview premium voices" : undefined}
+                  className="flex-shrink-0 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg transition-colors flex items-center justify-center cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {previewVoice.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5 fill-current" />}
                 </button>
@@ -4851,11 +4945,12 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         <div className="pt-3 pb-1 border-t border-[var(--sketch-border-color)]/20 bg-[var(--sketch-panel-bg)] flex-shrink-0 sticky bottom-0 z-10">
           <button
             onClick={() => saveVoiceSelection(true)}
-            disabled={updateProject.isPending}
-            className="w-full py-2 bg-[#FBBF24] hover:bg-[#F59E0B] text-black disabled:opacity-50 text-xs font-bold rounded-lg shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-black/10"
+            disabled={updateProject.isPending || !hasElevenLabsKey}
+            title={!hasElevenLabsKey ? "Add your ElevenLabs API key above first" : undefined}
+            className="w-full py-2 bg-[#FBBF24] hover:bg-[#F59E0B] text-black disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold rounded-lg shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-black/10"
           >
             {updateProject.isPending && <Loader2 className="w-3 h-3 animate-spin text-black" />}
-            Set Premium Voice
+            {hasElevenLabsKey ? "Set Premium Voice" : "Add a key to use premium voices"}
           </button>
         </div>
       </div>

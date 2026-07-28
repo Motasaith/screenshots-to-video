@@ -82,7 +82,10 @@ export async function authenticateRequest(headers: Headers) {
   if (!user) {
     throw Errors.forbidden("User not found. Please re-login.");
   }
-  return user;
+  // Never let the encrypted secret ride along on ctx.user (which `auth.me`
+  // returns to the client). The plaintext key is fetched server-side only,
+  // on demand, via getUserElevenLabsKey(). The non-sensitive hint may stay.
+  return { ...user, elevenlabsApiKey: null };
 }
 
 export function createOAuthCallbackHandler() {

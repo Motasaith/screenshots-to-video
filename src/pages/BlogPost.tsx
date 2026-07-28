@@ -90,6 +90,44 @@ function RelatedPosts({ posts }: { posts: BlogPost[] }) {
   );
 }
 
+/**
+ * Render a responsive 16:9 YouTube embed. A "PLACEHOLDER" (or empty) id renders
+ * a tidy "coming soon" box instead of a broken player, so authors can ship the
+ * post before the video is ready.
+ */
+function renderYouTube(rawId: string, key: number): React.ReactElement {
+  const id = rawId.trim();
+  if (!id || id.toUpperCase() === "PLACEHOLDER") {
+    return (
+      <div
+        key={key}
+        className="my-8 rounded-2xl border border-dashed border-[var(--space-border)] bg-[var(--space-card)]/60 py-12 px-6 text-center"
+      >
+        <p className="text-sm font-semibold text-[var(--space-text)]">Walkthrough video coming soon</p>
+        <p className="text-xs text-[var(--space-text-muted)] mt-1 font-mono">
+          Replace "PLACEHOLDER" with a YouTube video ID to embed it here.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div
+      key={key}
+      className="relative w-full my-8 rounded-2xl overflow-hidden border border-[var(--space-border)]"
+      style={{ paddingBottom: "56.25%" }}
+    >
+      <iframe
+        className="absolute inset-0 w-full h-full"
+        src={`https://www.youtube.com/embed/${encodeURIComponent(id)}`}
+        title="YouTube video player"
+        loading="lazy"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowFullScreen
+      />
+    </div>
+  );
+}
+
 export default function BlogPost() {
   const { slug } = useParams<{ slug: string }>();
   const post = slug ? getPostBySlug(slug) : undefined;
@@ -177,6 +215,9 @@ export default function BlogPost() {
         );
       } else if (trimmed.startsWith("```")) {
         flushList();
+      } else if (trimmed.startsWith("@youtube[") && trimmed.endsWith("]")) {
+        flushList();
+        elements.push(renderYouTube(trimmed.slice("@youtube[".length, -1), key++));
       } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
         listItems.push(trimmed.replace(/^[-*] /, "").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>"));
       } else if (trimmed.startsWith("| ") && trimmed.endsWith(" |")) {
@@ -285,6 +326,11 @@ export default function BlogPost() {
             <div className="mb-12 pb-8 border-b border-[var(--space-border)]">
               <ShareButtons title={post.title} url={postUrl} />
             </div>
+
+            {/* Hero video embed (only if not already embedded inline via @youtube[…]) */}
+            {post.youtubeId && !post.content.includes("@youtube[") && (
+              <div className="mb-12">{renderYouTube(post.youtubeId, -1)}</div>
+            )}
 
             {/* Article Content */}
             <div className="prose prose-lg max-w-none mb-16">

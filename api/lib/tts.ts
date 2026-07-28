@@ -97,16 +97,20 @@ function humanVariation(text: string): { ratePct: number; pitchHz: number } {
 /**
  * ElevenLabs TTS generation (premium-quality voices via API).
  * Voice IDs are prefixed "elevenlabs:", e.g. "elevenlabs:pNInz6obpgDQGcFmaJgB".
- * Falls back to Edge TTS if the API key is missing or the request fails.
+ *
+ * Premium voices are BRING-YOUR-OWN-KEY: the caller must pass the user's own
+ * ElevenLabs API key. Throws if no key is supplied (the caller falls back to
+ * free Edge TTS).
  */
 async function generateElevenLabsAudio(
   text: string,
   voiceId: string,
   rate: string | undefined,
-  outDir: string
+  outDir: string,
+  apiKey: string
 ): Promise<{ filePath: string; duration: number }> {
-  if (!env.elevenlabsApiKey) {
-    throw new Error("ElevenLabs API key not configured");
+  if (!apiKey) {
+    throw new Error("No ElevenLabs API key provided (premium voices require your own key)");
   }
 
   // Map "+10%" style rate to ElevenLabs speed multiplier (0.7 - 1.2)
@@ -118,7 +122,7 @@ async function generateElevenLabsAudio(
   const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
     method: "POST",
     headers: {
-      "xi-api-key": env.elevenlabsApiKey,
+      "xi-api-key": apiKey,
       "Content-Type": "application/json",
       "Accept": "audio/mpeg",
     },
@@ -145,21 +149,27 @@ async function generateElevenLabsAudio(
   return { filePath: outputPath, duration };
 }
 
-/**
- * Get remaining ElevenLabs character credits for the configured API key.
- * Returns null if the key is not configured.
- */
-export async function getElevenLabsCredits(): Promise<{
+export interface ElevenLabsCredits {
   used: number;
   limit: number;
   remaining: number;
   tier: string;
-} | null> {
-  if (!env.elevenlabsApiKey) return null;
+}
+
+/**
+ * Get remaining ElevenLabs character credits for a given API key.
+ * Falls back to the server-configured key when none is passed (legacy/admin).
+ * Returns null if no key is available or the key is invalid.
+ */
+export async function getElevenLabsCredits(
+  apiKey?: string,
+): Promise<ElevenLabsCredits | null> {
+  const key = apiKey || env.elevenlabsApiKey;
+  if (!key) return null;
 
   try {
     const response = await fetch("https://api.elevenlabs.io/v1/user", {
-      headers: { "xi-api-key": env.elevenlabsApiKey },
+      headers: { "xi-api-key": key },
     });
     if (!response.ok) return null;
 
@@ -175,6 +185,18 @@ export async function getElevenLabsCredits(): Promise<{
   } catch {
     return null;
   }
+}
+
+/**
+ * Validate an ElevenLabs API key by calling the account endpoint. Returns the
+ * account's credits/tier on success, or null if the key is rejected/unreachable.
+ * Used when a user saves their own key so we never store an invalid one.
+ */
+export async function validateElevenLabsKey(
+  apiKey: string,
+): Promise<ElevenLabsCredits | null> {
+  if (!apiKey || apiKey.trim().length < 8) return null;
+  return getElevenLabsCredits(apiKey.trim());
 }
 
 /**
@@ -229,6 +251,12 @@ export async function generateTTSAudio(
     rate?: string; // e.g. "+10%", "-20%", "+0%"
     outputDir?: string;
     silenceDuration?: number;
+    /**
+     * The user's own ElevenLabs API key. Premium ("elevenlabs:") voices are
+     * bring-your-own-key: without it, we transparently fall back to free Edge
+     * TTS rather than billing a shared server key.
+     */
+    elevenlabsApiKey?: string;
   }
 ): Promise<{ filePath: string; duration: number }> {
   const voice = opts?.voice?.trim() || DEFAULT_EDGE_VOICE;
@@ -242,8 +270,13 @@ export async function generateTTSAudio(
   }
 
   if (voice.startsWith("elevenlabs:")) {
+    // BYOK: premium voices require the user's own key. No key → free Edge TTS.
+    if (!opts?.elevenlabsApiKey) {
+      log.warn("Premium voice requested without a user ElevenLabs key; using Edge TTS");
+      return generateEdgeAudio(cleanText, DEFAULT_EDGE_VOICE, opts?.rate, outDir);
+    }
     try {
-      return await generateElevenLabsAudio(cleanText, voice.slice("elevenlabs:".length), opts?.rate, outDir);
+      return await generateElevenLabsAudio(cleanText, voice.slice("elevenlabs:".length), opts?.rate, outDir, opts.elevenlabsApiKey);
     } catch (err: any) {
       log.warn("ElevenLabs failed, falling back to Edge TTS", { error: err.message });
       return generateEdgeAudio(cleanText, DEFAULT_EDGE_VOICE, opts?.rate, outDir);

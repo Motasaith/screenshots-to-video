@@ -14,6 +14,7 @@ import {
   checkMediaSafety,
 } from "./lib/llm";
 import { generateTTSAudio, speedToRate, getElevenLabsCredits } from "./lib/tts";
+import { getUserElevenLabsKey } from "./queries/users";
 import { saveLocalFile } from "./lib/localStore";
 import { detectGibberish } from "./lib/gibberish";
 import { createLogger } from "./lib/logger";
@@ -542,12 +543,16 @@ export const aiRouter = createRouter({
   previewVoice: authedQuery
     .use(rateLimitByUser(60_000, 5))
     .input(z.object({ voice: z.string(), speed: z.number().default(1.0), text: z.string().optional() }))
-    .mutation(async ({ input }) => {
+    .mutation(async ({ ctx, input }) => {
       try {
         const text = input.text || "Hi, I'm your AI guide. This is how your video will sound.";
+        const elevenlabsApiKey = input.voice.startsWith("elevenlabs:")
+          ? (await getUserElevenLabsKey(ctx.user!.id)) ?? undefined
+          : undefined;
         const { filePath } = await generateTTSAudio(text, {
           voice: input.voice,
           rate: speedToRate(input.speed),
+          elevenlabsApiKey,
         });
 
         // Read file as base64
@@ -568,8 +573,11 @@ export const aiRouter = createRouter({
   elevenLabsCredits: authedQuery
     .use(rateLimitByUser(60_000, 30))
     .input(z.object({}).optional())
-    .query(async () => {
-      return await getElevenLabsCredits();
+    .query(async ({ ctx }) => {
+      // Report the user's own key credits (BYOK). Falls back to the server key
+      // only if configured (legacy/admin) — see getElevenLabsCredits.
+      const userKey = (await getUserElevenLabsKey(ctx.user!.id)) ?? undefined;
+      return await getElevenLabsCredits(userKey);
     }),
 
   generateVoiceForStep: authedQuery
@@ -595,9 +603,13 @@ export const aiRouter = createRouter({
       if (!project) throw new Error("Not authorized");
 
       const script = step.userEditedScript || step.aiScript || step.description;
+      const elevenlabsApiKey = input.voice.startsWith("elevenlabs:")
+        ? (await getUserElevenLabsKey(ctx.user!.id)) ?? undefined
+        : undefined;
       const { filePath, duration } = await generateTTSAudio(script, {
         voice: input.voice,
         rate: speedToRate(input.speed),
+        elevenlabsApiKey,
       });
 
       try {
@@ -645,11 +657,16 @@ export const aiRouter = createRouter({
         .where(eq(steps.projectId, input.projectId))
         .orderBy(steps.order);
 
+      const elevenlabsApiKey = input.voice.startsWith("elevenlabs:")
+        ? (await getUserElevenLabsKey(ctx.user!.id)) ?? undefined
+        : undefined;
+
       for (const step of projectSteps) {
         const script = step.userEditedScript || step.aiScript || step.description;
         const { filePath, duration } = await generateTTSAudio(script, {
           voice: input.voice,
           rate: speedToRate(input.speed),
+          elevenlabsApiKey,
         });
 
         try {

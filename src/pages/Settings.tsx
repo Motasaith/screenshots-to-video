@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
+import { trpc } from "@/providers/trpc";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -10,15 +11,48 @@ import {
   Monitor,
   Moon,
   Sun,
+  Crown,
+  CheckCircle,
+  Trash2,
+  Loader2,
+  LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useTheme } from "next-themes";
 import { SpaceBackground } from "@/components/shared/SpaceBackground";
+import { toast } from "sonner";
+
+const PLAN_LABEL: Record<string, string> = {
+  free: "Free Plan",
+  pro: "Pro Plan",
+  team: "Team Plan",
+};
 
 export default function Settings() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, logout, refresh } = useAuth();
   const navigate = useNavigate();
   const { theme, setTheme, resolvedTheme } = useTheme();
+
+  // ── ElevenLabs bring-your-own-key ──
+  const keyStatus = trpc.settings.elevenLabsKeyStatus.useQuery(undefined, { enabled: !!user });
+  const keyCredits = trpc.settings.elevenLabsCredits.useQuery(undefined, { enabled: !!user });
+  const hasKey = keyStatus.data?.hasKey ?? false;
+  const [keyInput, setKeyInput] = useState("");
+  const saveKey = trpc.settings.setElevenLabsKey.useMutation();
+  const removeKey = trpc.settings.removeElevenLabsKey.useMutation();
+  const deleteAccount = trpc.settings.deleteAccount.useMutation();
 
   useEffect(() => {
     if (!isLoading && !user) {
@@ -37,6 +71,51 @@ export default function Settings() {
 
   if (!user) return null;
 
+  const handleSaveKey = () => {
+    const apiKey = keyInput.trim();
+    if (apiKey.length < 8) {
+      toast.error("Paste your full ElevenLabs API key.");
+      return;
+    }
+    saveKey.mutate(
+      { apiKey },
+      {
+        onSuccess: () => {
+          setKeyInput("");
+          keyStatus.refetch();
+          keyCredits.refetch();
+          toast.success("ElevenLabs key saved — premium voices unlocked.");
+        },
+        onError: (err) => toast.error(err.message || "Could not validate that key."),
+      },
+    );
+  };
+
+  const handleRemoveKey = () => {
+    removeKey.mutate(undefined, {
+      onSuccess: () => {
+        keyStatus.refetch();
+        keyCredits.refetch();
+        toast.info("ElevenLabs key removed.");
+      },
+      onError: (err) => toast.error(err.message || "Could not remove key."),
+    });
+  };
+
+  const handleDeleteAccount = () => {
+    deleteAccount.mutate(
+      { confirm: true },
+      {
+        onSuccess: async () => {
+          toast.success("Your account and all projects have been deleted.");
+          await refresh();
+          navigate("/");
+        },
+        onError: (err) => toast.error(err.message || "Could not delete account."),
+      },
+    );
+  };
+
   return (
     <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
       <SpaceBackground />
@@ -52,7 +131,13 @@ export default function Settings() {
                 <span className="text-sm font-mono">Dashboard</span>
               </button>
               <h1 className="font-bold text-lg text-[var(--space-text)]">Account Settings</h1>
-              <div className="w-20" />
+              <button
+                onClick={logout}
+                className="flex items-center gap-2 text-[var(--space-text-subtle)] hover:text-[var(--space-text)] transition-colors text-sm font-mono"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign out
+              </button>
             </div>
           </div>
         </header>
@@ -63,12 +148,13 @@ export default function Settings() {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
           >
+            {/* ── Profile (managed by Google) ── */}
             <div className="glass-panel p-6 border border-[var(--space-border)] bg-[var(--space-card)]/80 rounded-2xl">
               <h2 className="font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--space-text)]">
                 <User className="w-5 h-5 text-teal-500" />
                 Profile
               </h2>
-              <div className="flex items-center gap-4 mb-6">
+              <div className="flex items-center gap-4">
                 {user.avatar ? (
                   <img
                     src={user.avatar}
@@ -82,149 +168,218 @@ export default function Settings() {
                     </span>
                   </div>
                 )}
-                <div>
-                  <p className="font-semibold text-[var(--space-text)]">{user.name || "User"}</p>
-                  <p className="text-sm text-[var(--space-text-muted)]">
-                    {user.email}
+                <div className="min-w-0">
+                  <p className="font-semibold text-[var(--space-text)] truncate">{user.name || "User"}</p>
+                  <p className="text-sm text-[var(--space-text-muted)] truncate">{user.email}</p>
+                  <p className="text-[11px] text-[var(--space-text-subtle)] mt-1 font-mono">
+                    Managed by your Google account
+                    {user.role === "admin" ? " · Admin" : ""}
                   </p>
-                </div>
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm font-medium mb-2 block text-[var(--space-text)]">
-                    Display Name
-                  </label>
-                  <input
-                    type="text"
-                    defaultValue={user.name || ""}
-                    className="w-full bg-[var(--space-card)] border-[var(--space-border)] text-[var(--space-text)] rounded-xl py-3 px-4 focus:ring-teal-500 focus:border-teal-500 font-sans"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium mb-2 block text-[var(--space-text)]">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    defaultValue={user.email || ""}
-                    disabled
-                    className="w-full bg-[var(--space-card)] border-[var(--space-border)] text-[var(--space-text)] rounded-xl py-3 px-4 opacity-50 cursor-not-allowed font-sans"
-                  />
                 </div>
               </div>
             </div>
 
+            {/* ── Plan & usage ── */}
             <div className="glass-panel p-6 border border-[var(--space-border)] bg-[var(--space-card)]/80 rounded-2xl">
               <h2 className="font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--space-text)]">
                 <CreditCard className="w-5 h-5 text-teal-500" />
-                Billing
+                Plan &amp; Usage
               </h2>
               <div className="flex items-center justify-between p-4 bg-[var(--space-card)] border border-[var(--space-border)] rounded-2xl">
                 <div>
-                  <p className="font-semibold text-sm text-[var(--space-text)]">Free Plan</p>
+                  <p className="font-semibold text-sm text-[var(--space-text)]">
+                    {PLAN_LABEL[user.plan] ?? user.plan}
+                  </p>
                   <p className="text-xs text-[var(--space-text-muted)]">
-                    5 videos per month · 720p export
+                    {user.plan === "free" ? "Upgrade for higher limits and resolutions" : "Thanks for your support"}
                   </p>
                 </div>
-                <Button variant="ghost" className="glass-btn glass-btn-secondary px-4 py-2 font-semibold text-xs rounded-xl" onClick={() => navigate("/pricing")}>
-                  Upgrade
-                </Button>
+                {user.plan === "free" && (
+                  <Button
+                    variant="ghost"
+                    className="glass-btn glass-btn-secondary px-4 py-2 font-semibold text-xs rounded-xl"
+                    onClick={() => navigate("/pricing")}
+                  >
+                    Upgrade
+                  </Button>
+                )}
               </div>
-              <div className="mt-4 grid grid-cols-3 gap-4">
+              <div className="mt-4 grid grid-cols-2 gap-4">
                 <div className="text-center p-3 bg-[var(--space-card)] border border-[var(--space-border)] rounded-2xl">
-                  <p className="font-bold text-lg text-[var(--space-text)]">0</p>
-                  <p className="text-xs text-[var(--space-text-muted)]">Videos</p>
+                  <p className="font-bold text-lg text-[var(--space-text)]">{user.credits}</p>
+                  <p className="text-xs text-[var(--space-text-muted)]">Credits left</p>
                 </div>
                 <div className="text-center p-3 bg-[var(--space-card)] border border-[var(--space-border)] rounded-2xl">
-                  <p className="font-bold text-lg text-[var(--space-text)]">5</p>
-                  <p className="text-xs text-[var(--space-text-muted)]">Remaining</p>
-                </div>
-                <div className="text-center p-3 bg-[var(--space-card)] border border-[var(--space-border)] rounded-2xl">
-                  <p className="font-bold text-lg text-[var(--space-text)]">720p</p>
-                  <p className="text-xs text-[var(--space-text-muted)]">Max Res</p>
+                  <p className="font-bold text-lg text-[var(--space-text)]">{user.videosCreatedThisMonth}</p>
+                  <p className="text-xs text-[var(--space-text-muted)]">Videos this month</p>
                 </div>
               </div>
             </div>
 
+            {/* ── ElevenLabs premium voices (BYOK) ── */}
+            <div className="glass-panel p-6 border border-[var(--space-border)] bg-[var(--space-card)]/80 rounded-2xl">
+              <h2 className="font-semibold text-lg mb-1 flex items-center gap-2 text-[var(--space-text)]">
+                <Crown className="w-5 h-5 text-amber-500" />
+                ElevenLabs Premium Voices
+              </h2>
+              <p className="text-xs text-[var(--space-text-muted)] mb-4">
+                Premium voices run on your own ElevenLabs API key. It's validated, encrypted, and used only for your renders.
+              </p>
+
+              {keyStatus.isLoading ? (
+                <div className="flex items-center gap-2 text-sm text-[var(--space-text-muted)]">
+                  <Loader2 className="w-4 h-4 animate-spin" /> Checking…
+                </div>
+              ) : hasKey ? (
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-sm font-semibold text-[var(--space-text)]">
+                      <CheckCircle className="w-4 h-4 text-emerald-500" />
+                      Key saved ••••{keyStatus.data?.hint}
+                    </span>
+                    <button
+                      onClick={handleRemoveKey}
+                      disabled={removeKey.isPending}
+                      className="text-xs font-semibold text-red-500 hover:text-red-600 flex items-center gap-1 disabled:opacity-50"
+                    >
+                      {removeKey.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                      Remove
+                    </button>
+                  </div>
+                  <p className="text-xs text-[var(--space-text-muted)]">
+                    {keyCredits.isLoading
+                      ? "Checking credits…"
+                      : keyCredits.data
+                        ? `Credits: ${keyCredits.data.remaining.toLocaleString()} / ${keyCredits.data.limit.toLocaleString()}${keyCredits.data.tier ? ` · ${keyCredits.data.tier}` : ""}`
+                        : "Key saved. Couldn't fetch live credits right now."}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <Input
+                      type="password"
+                      value={keyInput}
+                      onChange={(e) => setKeyInput(e.target.value)}
+                      placeholder="Paste API key (sk_…)"
+                      className="flex-1"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handleSaveKey();
+                      }}
+                    />
+                    <Button
+                      onClick={handleSaveKey}
+                      disabled={saveKey.isPending}
+                      className="bg-[#FBBF24] hover:bg-[#F59E0B] text-black font-bold"
+                    >
+                      {saveKey.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+                    </Button>
+                  </div>
+                  <a
+                    href="/blog/elevenlabs-api-key-guide"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block text-xs font-semibold text-amber-600 hover:text-amber-500 hover:underline"
+                  >
+                    How do I get an API key? Read the guide →
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {/* ── Preferences ── */}
             <div className="glass-panel p-6 border border-[var(--space-border)] bg-[var(--space-card)]/80 rounded-2xl">
               <h2 className="font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--space-text)]">
                 <Monitor className="w-5 h-5 text-teal-500" />
                 Preferences
               </h2>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-[var(--space-text)]">Theme</p>
-                    <p className="text-xs text-[var(--space-text-muted)]">
-                      {theme === "system" ? "System preference" : theme}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setTheme("light")}
-                      className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all ${
-                        resolvedTheme === "light"
-                          ? "border-teal-500 bg-teal-500/10 text-teal-600"
-                          : "border-[var(--space-border)] bg-[var(--space-card)]"
-                      }`}
-                      title="Light mode"
-                    >
-                      <Sun className="w-4 h-4 text-[var(--space-text)]" />
-                    </button>
-                    <button
-                      onClick={() => setTheme("dark")}
-                      className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all ${
-                        resolvedTheme === "dark"
-                          ? "border-teal-500 bg-teal-500/10 text-teal-400"
-                          : "border-[var(--space-border)] bg-[var(--space-card)]"
-                      }`}
-                      title="Dark mode"
-                    >
-                      <Moon className="w-4 h-4 text-[var(--space-text)]" />
-                    </button>
-                  </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-[var(--space-text)]">Theme</p>
+                  <p className="text-xs text-[var(--space-text-muted)]">
+                    {theme === "system" ? "System preference" : theme}
+                  </p>
                 </div>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-[var(--space-text)]">Notifications</p>
-                    <p className="text-xs text-[var(--space-text-muted)]">
-                      Email when render completes
-                    </p>
-                  </div>
-                  <div className="w-12 h-6 bg-[var(--space-border)] border border-[var(--space-border)] rounded-full relative cursor-pointer" onClick={() => {}}>
-                    <div className="w-5 h-5 bg-teal-500 rounded-full absolute top-0.5 right-0.5 shadow-sm" />
-                  </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setTheme("light")}
+                    className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all ${
+                      resolvedTheme === "light"
+                        ? "border-teal-500 bg-teal-500/10 text-teal-600"
+                        : "border-[var(--space-border)] bg-[var(--space-card)]"
+                    }`}
+                    title="Light mode"
+                  >
+                    <Sun className="w-4 h-4 text-[var(--space-text)]" />
+                  </button>
+                  <button
+                    onClick={() => setTheme("dark")}
+                    className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all ${
+                      resolvedTheme === "dark"
+                        ? "border-teal-500 bg-teal-500/10 text-teal-400"
+                        : "border-[var(--space-border)] bg-[var(--space-card)]"
+                    }`}
+                    title="Dark mode"
+                  >
+                    <Moon className="w-4 h-4 text-[var(--space-text)]" />
+                  </button>
                 </div>
               </div>
             </div>
 
+            {/* ── Danger Zone ── */}
             <div className="glass-panel p-6 border border-red-500/30 bg-red-500/5 rounded-2xl">
               <h2 className="font-semibold text-lg mb-4 flex items-center gap-2 text-red-500">
                 <Shield className="w-5 h-5" />
                 Danger Zone
               </h2>
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-4">
                 <div>
                   <p className="text-sm font-medium text-[var(--space-text)]">Delete Account</p>
                   <p className="text-xs text-[var(--space-text-muted)]">
-                    This will permanently delete all your projects and data.
+                    Permanently deletes your account and every project. This cannot be undone.
                   </p>
                 </div>
-                <Button
-                  variant="destructive"
-                  className="bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs py-2 px-4"
-                >
-                  Delete
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="destructive"
+                      className="bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs py-2 px-4 shrink-0"
+                    >
+                      Delete
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete your account?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This permanently deletes your account, all your projects, their steps,
+                        and render history. This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel disabled={deleteAccount.isPending}>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        onClick={(e) => {
+                          e.preventDefault();
+                          handleDeleteAccount();
+                        }}
+                        disabled={deleteAccount.isPending}
+                        className="bg-red-500 hover:bg-red-600 text-white"
+                      >
+                        {deleteAccount.isPending ? (
+                          <span className="flex items-center gap-2">
+                            <Loader2 className="w-4 h-4 animate-spin" /> Deleting…
+                          </span>
+                        ) : (
+                          "Yes, delete everything"
+                        )}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             </div>
-
-            <Button
-              className="glass-btn glass-btn-primary w-full py-4 text-sm font-semibold rounded-xl"
-              onClick={() => navigate("/dashboard")}
-            >
-              Save Changes
-            </Button>
           </motion.div>
         </main>
       </div>

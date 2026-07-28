@@ -14,6 +14,7 @@ import { Wrench } from "lucide-react";
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Wizard = lazy(() => import("./pages/Wizard"));
 const Login = lazy(() => import("./pages/Login"));
+const SignUp = lazy(() => import("./pages/SignUp"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Pricing = lazy(() => import("./pages/Pricing"));
 const Settings = lazy(() => import("./pages/Settings"));
@@ -97,6 +98,7 @@ export default function App() {
         <Route path="/feedback" element={<Feedback />} />
 
         <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<SignUp />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/videos" element={<Videos />} />
         <Route path="/pricing" element={<Pricing />} />
