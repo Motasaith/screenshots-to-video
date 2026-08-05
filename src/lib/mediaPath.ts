@@ -6,7 +6,7 @@
  * while media imported from Pexels is tagged with a `#video` fragment because
  * the CDN URL has no useful extension. Anything deciding "is this a clip or a
  * still" has to handle both, so the rule lives here rather than being
- * re-derived — inconsistent copies are how a video ends up being treated as an
+ * re-derived: inconsistent copies are how a video ends up being treated as an
  * image in one place and a video in another.
  */
 

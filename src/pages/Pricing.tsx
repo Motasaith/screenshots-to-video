@@ -1,181 +1,114 @@
-import { useRef } from "react";
-import { motion, useInView } from "framer-motion";
-import { Check, Zap, ArrowLeft } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router";
-import Navbar from "@/components/Navbar";
-import FooterSection from "@/sections/FooterSection";
-import { SEO, createBreadcrumbSchema } from "@/components/SEO";
-import { AdSensePlaceholder } from "@/components/shared/AdSensePlaceholder";
-import { SpaceBackground } from "@/components/shared/SpaceBackground";
+import { Check } from "lucide-react";
+import { PageShell } from "@/components/site/PageShell";
+import { plans } from "@/data/pricing";
 
-const plans = [
+const faqs = [
   {
-    name: "Free",
-    price: "$0",
-    period: "forever",
-    description: "Perfect for getting started",
-    features: [
-      "5 videos per month",
-      "720p export resolution",
-      "Proactive AI Chat Guide",
-      "All Aspect Ratios (16:9, 9:16, etc.)",
-      "12 Voices (including 4 Ultra-Realistic Kokoro)",
-      "Basic AI script generation",
-      "Community support",
-    ],
-    cta: "Get Started",
-    popular: false,
+    q: "What counts as a video?",
+    a: "One completed render. Re-rendering the same project after an edit counts again, so it is worth previewing before you commit on the free plan.",
   },
   {
-    name: "Pro",
-    price: "$25",
-    period: "/month",
-    description: "For serious content creators",
-    features: [
-      "Unlimited videos",
-      "1080p & 4K export",
-      "Vision Copyright Checker",
-      "ElevenLabs premium voices",
-      "Cinematic Scene Transitions",
-      "Custom intro/outro",
-      "Priority render queue",
-      "Advanced AI suggestions",
-      "Background music library",
-      "Priority support",
-    ],
-    cta: "Upgrade to Pro",
-    popular: true,
+    q: "What happens when I run out on the free plan?",
+    a: "Nothing breaks. You keep every project and every video you already rendered, and the counter resets at the start of the next month.",
   },
   {
-    name: "Team",
-    price: "$99",
-    period: "/month",
-    description: "For teams and agencies",
-    features: [
-      "Everything in Pro",
-      "Unlimited team members",
-      "Shared project library",
-      "Brand templates",
-      "Team analytics",
-      "SSO authentication",
-      "Dedicated support",
-      "Custom integrations",
-      "SLA guarantee",
-    ],
-    cta: "Contact Sales",
-    popular: false,
+    q: "Can I cancel?",
+    a: "Any time, from settings. You keep Pro until the end of the period you have paid for, then drop back to the free plan with your work intact.",
+  },
+  {
+    q: "Do I need my own ElevenLabs account?",
+    a: "Only for the ElevenLabs voices. The twelve built-in voices, including the four ultra-realistic ones, need nothing from you.",
   },
 ];
 
 export default function Pricing() {
-  const ref = useRef(null);
-  const isInView = useInView(ref, { once: true, margin: "-100px" });
-
-  const breadcrumbJsonLd = createBreadcrumbSchema([
-    { name: "Home", url: "https://aivideo.ai/" },
-    { name: "Pricing", url: "https://aivideo.ai/pricing" },
-  ]);
+  const [yearly, setYearly] = useState(false);
 
   return (
-    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
-      <SEO
-        title="Pricing"
-        description="Simple, transparent pricing for AIVideo. Start free and upgrade when you need more power. No hidden fees."
-        canonical="https://aivideo.ai/pricing"
-        jsonLd={breadcrumbJsonLd}
-      />
-      <SpaceBackground />
-      <div className="relative z-10">
-        <Navbar />
-        <main className="pt-28 pb-20" ref={ref}>
-          <div className="w-full px-6 lg:px-12">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={isInView ? { opacity: 1, y: 0 } : {}}
-              transition={{ duration: 0.6 }}
-              className="text-center mb-16"
-            >
-              <Link
-                to="/"
-                className="inline-flex items-center gap-2 text-[var(--space-text-subtle)] hover:text-[var(--space-text)] transition-colors mb-6 font-mono text-sm"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Back to home
-              </Link>
-              <h1 className="font-extrabold text-4xl lg:text-6xl tracking-tight text-[var(--space-text)] leading-tight">
-                Simple, transparent pricing
-              </h1>
-              <p className="text-[var(--space-text-muted)] mt-4 max-w-lg mx-auto">
-                Start free. Upgrade when you need more power. No hidden fees.
-              </p>
-            </motion.div>
-
-            <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto items-stretch">
-              {plans.map((plan, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, y: 30 }}
-                  animate={isInView ? { opacity: 1, y: 0 } : {}}
-                  transition={{ duration: 0.5, delay: index * 0.15 }}
-                  className={`relative flex flex-col ${plan.popular ? "md:-mt-4 md:mb-4" : ""}`}
-                >
-                  {plan.popular && (
-                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-teal-500 text-white px-4 py-1 text-[10px] font-semibold font-mono rounded-full border border-teal-400/20 shadow-md z-20">
-                      <Zap className="w-3 h-3 inline mr-1 -mt-0.5 animate-pulse" />
-                      Most Popular
-                    </div>
-                  )}
-                  <div
-                    className={`h-full p-6 lg:p-8 flex flex-col justify-between rounded-2xl border ${
-                      plan.popular
-                        ? "border-teal-500 bg-teal-500/5 shadow-[0_0_30px_rgba(13,148,136,0.1)]"
-                        : "border-[var(--space-border)] bg-[var(--space-card)]"
-                    }`}
-                  >
-                    <div>
-                      <h3 className="font-bold text-xl text-[var(--space-text)]">{plan.name}</h3>
-                      <div className="mt-4 flex items-baseline gap-1">
-                        <span className="font-extrabold text-4xl text-[var(--space-text)]">
-                          {plan.price}
-                        </span>
-                        <span className="text-sm text-[var(--space-text-muted)]">
-                          {plan.period}
-                        </span>
-                      </div>
-                      <p className="text-sm text-[var(--space-text-muted)] mt-2">
-                        {plan.description}
-                      </p>
-
-                      <ul className="mt-6 space-y-3.5 border-t border-[var(--space-border)] pt-6">
-                        {plan.features.map((feature, i) => (
-                          <li
-                            key={i}
-                            className="flex items-start gap-3 text-sm text-[var(--space-text-muted)]"
-                          >
-                            <Check className="w-4 h-4 text-teal-500 flex-shrink-0 mt-0.5" />
-                            <span>{feature}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-
-                    <button
-                      disabled
-                      className={`mt-8 w-full glass-btn py-3.5 text-center font-semibold text-xs opacity-60 cursor-not-allowed ${
-                        plan.popular ? "glass-btn-primary" : "glass-btn-secondary"
-                      }`}
-                    >
-                      Coming Soon
-                    </button>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-            <div className="container mx-auto px-4 mt-12"><AdSensePlaceholder size="leaderboard" /></div>
-          </div>
-        </main>
-        <FooterSection />
+    <PageShell
+      title="Pricing"
+      description="AIVideo pricing: a free plan, Pro at $25 a month, and Team at $99."
+      canonical="https://aivideo.ai/pricing"
+      lede="Start free. Upgrade when five videos a month stops being enough."
+      wide
+    >
+      <div className="inline-flex rounded-full border border-line bg-mat p-1">
+        {[
+          { label: "Monthly", value: false },
+          { label: "Yearly, save 20%", value: true },
+        ].map((option) => (
+          <button
+            key={option.label}
+            onClick={() => setYearly(option.value)}
+            className={`rounded-full px-4 py-1.5 text-[13.5px] font-medium transition-colors ${
+              yearly === option.value ? "bg-white text-ink shadow-xs" : "text-ink-body hover:text-ink"
+            }`}
+          >
+            {option.label}
+          </button>
+        ))}
       </div>
-    </div>
+
+      <div className="mt-8 grid gap-5 lg:grid-cols-3">
+        {plans.map((plan) => {
+          const price = yearly && plan.yearlyPrice ? plan.yearlyPrice : plan.price;
+
+          return (
+            <div
+              key={plan.id}
+              className={`card flex flex-col p-7 ${plan.popular ? "border-ink shadow-soft" : "card-lift"}`}
+            >
+              <div className="flex items-baseline justify-between gap-3">
+                <h2 className="text-[17px] font-semibold text-ink">{plan.name}</h2>
+                {plan.popular && (
+                  <span className="rounded-full bg-ink px-2.5 py-1 text-[11.5px] font-medium text-white">
+                    Most popular
+                  </span>
+                )}
+              </div>
+
+              <p className="mt-1.5 text-[14.5px] text-ink-body">{plan.tagline}</p>
+
+              <p className="mt-6 flex items-baseline gap-1.5">
+                <span className="text-[40px] font-semibold leading-none tracking-[-0.035em] text-ink">
+                  {price}
+                </span>
+                <span className="text-[14px] text-ink-muted">{plan.period}</span>
+              </p>
+
+              <ul className="mt-7 flex-1 space-y-3">
+                {plan.features.map((feature) => (
+                  <li key={feature} className="flex gap-2.5 text-[14.5px] text-ink-body">
+                    <Check className="mt-0.5 h-4 w-4 flex-none text-brand" strokeWidth={2.5} />
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+
+              <Link
+                to={plan.href}
+                className={`btn mt-8 w-full ${plan.popular ? "btn-primary" : "btn-secondary"}`}
+              >
+                {plan.cta}
+              </Link>
+            </div>
+          );
+        })}
+      </div>
+
+      <section className="mt-20">
+        <h2 className="h3">Questions people ask before paying</h2>
+        <div className="mt-6 divide-y divide-line border-y border-line">
+          {faqs.map((faq) => (
+            <div key={faq.q} className="py-5">
+              <h3 className="text-[16px] font-medium text-ink">{faq.q}</h3>
+              <p className="mt-2 max-w-[62ch] text-[15px] leading-relaxed text-ink-body">{faq.a}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </PageShell>
   );
 }

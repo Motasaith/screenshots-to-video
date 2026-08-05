@@ -4,15 +4,15 @@
  * Compresses images by converting them to WebP format with high quality (92).
  * WebP provides ~25-35% smaller file sizes than PNG/JPEG at the same visual quality.
  *
- * The compression preserves all visual detail — small text remains readable
+ * The compression preserves all visual detail: small text remains readable
  * even after zoom, because we use high quality (92) and the original resolution.
  *
  * For images that are already small (< 500KB), compression is skipped to avoid
  * any potential quality loss on already-optimized files.
  */
 
-const MAX_DIMENSION = 2560; // Max width/height — 2560px is enough for 4K screenshots
-const QUALITY = 0.92; // High quality — visually lossless
+const MAX_DIMENSION = 2560; // Max width/height: 2560px is enough for 4K screenshots
+const QUALITY = 0.92; // High quality: visually lossless
 const SKIP_THRESHOLD = 500_000; // Skip compression for files < 500KB
 
 /**

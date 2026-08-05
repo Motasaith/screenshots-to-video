@@ -7,7 +7,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { Wrench } from "lucide-react";
 
 // The landing page is the entry point for most visitors, so it stays in the
-// main bundle — lazy-loading it would only add a request waterfall before
+// main bundle: lazy-loading it would only add a request waterfall before
 // first paint. Everything else is split out: a visitor reading the marketing
 // site has no reason to download the admin dashboard, the render wizard, or
 // the 7k-line step editor before seeing anything.

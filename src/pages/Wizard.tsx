@@ -4,24 +4,19 @@ import { useAuth } from "@/hooks/useAuth";
 import { useWizardStore, stepOrder, stepIndex, stepLabels, type WizardStep } from "@/hooks/useWizardStore";
 import { motion, AnimatePresence } from "framer-motion";
 import { trpc } from "@/providers/trpc";
-import { useTheme } from "next-themes";
 import {
   Loader2,
   ArrowLeft,
-  Sun,
-  Moon,
   ChevronLeft,
 } from "lucide-react";
 import StepPreview from "@/components/wizard/StepPreview";
 import StepRender from "@/components/wizard/StepRender";
 import StepExport from "@/components/wizard/StepExport";
 import AIGuide from "@/components/wizard/AIGuide";
-import { SpaceBackground } from "@/components/shared/SpaceBackground";
 
 
 
 export default function Wizard() {
-  const { setTheme, resolvedTheme } = useTheme();
   const { projectId: pid, step } = useParams<{
     projectId: string;
     step: string;
@@ -71,8 +66,7 @@ export default function Wizard() {
 
   if (authLoading) {
     return (
-      <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans flex items-center justify-center">
-        <SpaceBackground />
+      <div className="min-h-screen relative overflow-x-hidden font-sans flex items-center justify-center">
         <div className="relative z-10">
           <Loader2 className="w-8 h-8 animate-spin text-teal-500" />
         </div>
@@ -97,8 +91,7 @@ export default function Wizard() {
   }
 
   return (
-    <div className="theme-3d-immersive min-h-screen lg:h-dvh relative overflow-x-hidden lg:overflow-hidden font-sans flex flex-col pb-2">
-      <SpaceBackground />
+    <div className="min-h-screen lg:h-dvh relative overflow-x-hidden lg:overflow-hidden font-sans flex flex-col pb-2">
       
       {/* Header */}
       <header className="w-full px-2 lg:px-3 pt-2 flex-shrink-0 z-20">
@@ -122,18 +115,23 @@ export default function Wizard() {
                     const isCompleted = i < currentStepIdx;
                     const isActive = i === currentStepIdx;
                     const label = stepLabels[s];
+                    // "render" is a process screen, not a place. Landing on it
+                    // starts a render, so it must never be reachable by
+                    // clicking a 14px dot in the header.
+                    const canNavigate = isCompleted && s !== "render";
                     return (
                       <div key={s} className="flex items-center gap-1">
                         <button
-                          disabled={!isCompleted}
-                          onClick={() => goToStep(s)}
+                          disabled={!canNavigate}
+                          title={canNavigate ? `Back to ${label}` : undefined}
+                          onClick={() => canNavigate && goToStep(s)}
                           className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7.5px] font-bold border transition-all ${
                             isCompleted
                               ? "bg-teal-500 border-teal-500 text-white shadow-[0_0_4px_rgba(20,184,166,0.3)]"
                               : isActive
                                 ? "border-teal-400 bg-teal-500/20 text-teal-300 border-2"
                                 : "border-[var(--space-border)] bg-[var(--space-card)] text-[var(--space-text-subtle)]"
-                          } ${isCompleted ? "cursor-pointer hover:opacity-80" : ""}`}
+                          } ${canNavigate ? "cursor-pointer hover:opacity-80" : ""}`}
                         >
                           {isCompleted ? "✓" : i + 1}
                         </button>
@@ -153,17 +151,6 @@ export default function Wizard() {
               <span className="hidden sm:inline font-mono text-xs text-[var(--space-text-muted)] bg-teal-500/10 px-2.5 py-1 rounded-md border border-[var(--space-border)]">
                 Step {currentStepIdx + 1} of {stepOrder.length}
               </span>
-              <button
-                onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-                className="p-2 rounded-xl bg-[var(--space-card)] border border-[var(--space-border)] hover:bg-[var(--space-card-hover)] hover:border-teal-500/50 transition-colors focus:outline-none cursor-pointer"
-                aria-label="Toggle dark mode"
-              >
-                {resolvedTheme === "dark" ? (
-                  <Sun className="w-4 h-4 text-teal-400" />
-                ) : (
-                  <Moon className="w-4 h-4 text-[var(--space-text-muted)]" />
-                )}
-              </button>
             </div>
           </div>
         </div>

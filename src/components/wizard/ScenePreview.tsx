@@ -11,8 +11,8 @@ import {
  *
  * Rendering used to be expensive enough that "just export and see" was the only
  * option, which made every zoom decision a leap of faith. This runs the same
- * choreography the renderer will — shared easing and phase timing from
- * contracts/sceneTiming — so what plays here is what gets exported, minus the
+ * choreography the renderer will: shared easing and phase timing from
+ * contracts/sceneTiming: so what plays here is what gets exported, minus the
  * narration and annotations.
  *
  * Client-side rather than a real render on purpose: it is instant, it costs
@@ -29,7 +29,7 @@ export function ScenePreview({
   screenshotUrl: string;
   zoomPoints: Array<{ targetX: number; targetY: number; zoomScale?: number; duration?: number }>;
   narrationSec: number;
-  /** Output aspect, e.g. "16:9" — the preview box matches the video frame. */
+  /** Output aspect, e.g. "16:9": the preview box matches the video frame. */
   aspect: string;
   onClose: () => void;
 }) {
@@ -108,7 +108,7 @@ export function ScenePreview({
           <div>
             <h3 className="text-sm font-bold text-[var(--sketch-fg)]">Scene preview</h3>
             <p className="text-[11px] text-[var(--sketch-fg-subtle)]">
-              Camera move only — no narration or annotations. Costs nothing.
+              Camera move only. No narration or annotations. Costs nothing.
             </p>
           </div>
           <button
@@ -140,7 +140,7 @@ export function ScenePreview({
             onClick={() => (t >= total ? restart() : setPlaying((p) => !p))}
             title={playing ? "Pause" : "Play"}
             aria-label={playing ? "Pause preview" : "Play preview"}
-            className="rounded-full bg-[#FBBF24] p-2 text-black hover:bg-[#FBBF24]/90"
+            className="rounded-full bg-brand p-2 text-white hover:bg-brand-hover"
           >
             {t >= total ? (
               <RotateCcw className="h-4 w-4" />
@@ -164,7 +164,7 @@ export function ScenePreview({
               setT(v);
               setPlaying(false);
             }}
-            className="h-1 flex-1 cursor-pointer accent-[#FBBF24]"
+            className="h-1 flex-1 cursor-pointer accent-brand"
           />
 
           <span className="w-24 text-right font-mono text-[11px] text-[var(--sketch-fg-subtle)]">
@@ -173,7 +173,7 @@ export function ScenePreview({
         </div>
 
         {timing.silenceSec > 1.5 && (
-          <p className="mt-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+          <p className="mt-2 rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-700 ">
             {timing.silenceSec.toFixed(1)}s of this scene has no narration. Give each
             zoom point its own script, or shorten the holds.
           </p>

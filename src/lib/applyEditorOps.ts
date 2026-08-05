@@ -8,7 +8,7 @@ import type { EditorOp } from "@contracts/editorOps";
  * an AI change lands on the undo stack, so Ctrl+Z reverses it and nothing it
  * does is unrecoverable.
  *
- * Unknown operations are ignored rather than throwing — the server already
+ * Unknown operations are ignored rather than throwing: the server already
  * validated against the schema, and a scene half-edited by a future op name is
  * worse than one edit silently skipped.
  */

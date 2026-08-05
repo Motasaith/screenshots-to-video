@@ -44,12 +44,12 @@ interface TourStep {
 }
 
 const TOUR_STEPS: TourStep[] = [
-  // 0. Welcome (no target — centered)
+  // 0. Welcome (no target: centered)
   {
     title: "Welcome to the editor",
     description:
       "This is where you turn your screenshots into a professional video. Let's walk through each section of the editor so you know exactly where everything is.",
-    icon: <Compass className="w-6 h-6 text-[#FBBF24]" />,
+    icon: <Compass className="w-6 h-6 text-brand" />,
     targetSelector: null,
     placement: "center",
   },
@@ -220,7 +220,7 @@ const TOUR_STEPS: TourStep[] = [
     title: "Export Button",
     description:
       "When you're ready, click Export to render your final MP4 video. The render runs in the background. You'll get a notification when it's done, then you can download and share it.",
-    icon: <Download className="w-5 h-5 text-[#FBBF24]" />,
+    icon: <Download className="w-5 h-5 text-brand" />,
     targetSelector: "[data-tour='export-btn']",
     placement: "bottom",
   },
@@ -237,7 +237,7 @@ export function startOnboardingTour() {
 }
 
 interface OnboardingTourProps {
-  /** When true the tour is deferred — it won't open until this flips to false. */
+  /** When true the tour is deferred: it won't open until this flips to false. */
   deferUntilReady?: boolean;
 }
 
@@ -253,7 +253,7 @@ export default function OnboardingTour({
   const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
   const rafRef = useRef<number>(0);
 
-  // Measured tooltip size — needed to keep the card inside the viewport.
+  // Measured tooltip size: needed to keep the card inside the viewport.
   // Seeded with a typical size so the first paint lands close to its final spot.
   const tooltipRef = useRef<HTMLDivElement | null>(null);
   const [tooltipSize, setTooltipSize] = useState({ w: 360, h: 260 });
@@ -401,7 +401,7 @@ export default function OnboardingTour({
     };
 
     // Prefer the authored side, then any side with room. Targets that fill the
-    // viewport (the canvas) leave no room anywhere — center over them instead.
+    // viewport (the canvas) leave no room anywhere: center over them instead.
     const order: (keyof typeof fits)[] =
       step.placement === "center"
         ? []
@@ -504,7 +504,7 @@ export default function OnboardingTour({
         </svg>
         {/* Glowing border around cutout */}
         <div
-          className="absolute pointer-events-none border-2 border-[#FBBF24]/70 rounded-lg shadow-[0_0_20px_rgba(251,191,36,0.3)]"
+          className="absolute pointer-events-none border-2 border-brand/70 rounded-lg shadow-[0_0_20px_rgb(var(--brand-rgb)/0.3)]"
           style={{
             left: cx,
             top: cy,
@@ -567,9 +567,9 @@ export default function OnboardingTour({
                     key={i}
                     className={`h-1.5 rounded-full transition-all duration-300 ${
                       i === currentStep
-                        ? "w-5 bg-[#FBBF24]"
+                        ? "w-5 bg-brand"
                         : i < currentStep
-                          ? "w-1.5 bg-[#FBBF24]/40"
+                          ? "w-1.5 bg-brand/40"
                           : "w-1.5 bg-[var(--sketch-fg-subtle)]/30"
                     }`}
                   />

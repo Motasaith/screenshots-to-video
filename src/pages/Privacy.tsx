@@ -1,85 +1,64 @@
-import { motion } from "framer-motion";
-import Navbar from "@/components/Navbar";
-import FooterSection from "@/sections/FooterSection";
-import { SEO, createBreadcrumbSchema } from "@/components/SEO";
-import { SpaceBackground } from "@/components/shared/SpaceBackground";
+import { PageShell } from "@/components/site/PageShell";
 
 export default function Privacy() {
-  const breadcrumbJsonLd = createBreadcrumbSchema([
-    { name: "Home", url: "https://aivideo.ai/" },
-    { name: "Privacy Policy", url: "https://aivideo.ai/privacy" },
-  ]);
-
   return (
-    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
-      <SEO
-        title="Privacy Policy"
-        description="AIVideo's Privacy Policy: how we collect, use, and protect your data."
-        canonical="https://aivideo.ai/privacy"
-        noindex
-        jsonLd={breadcrumbJsonLd}
-      />
-      <SpaceBackground />
-      <div className="relative z-10">
-        <Navbar />
-        <main className="max-w-4xl mx-auto pt-32 pb-20 px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-12"
-          >
-            <h1 className="font-extrabold text-5xl tracking-tight mb-4 text-[var(--space-text)]">
-              Privacy Policy
-            </h1>
-            <p className="text-sm text-[var(--space-text-subtle)] font-mono">
-              Effective Date: June 11, 2026
-            </p>
-          </motion.div>
+    <PageShell
+      title="Privacy policy"
+      description="How AIVideo collects, uses, stores and shares your data."
+      canonical="https://aivideo.ai/privacy"
+      lede="Effective 11 June 2026."
+    >
+      <div className="copy">
+        <h2>What we collect</h2>
+        <ul>
+          <li>
+            <strong>Account information.</strong> Your name, email address and the authentication
+            data Google returns when you sign in.
+          </li>
+          <li>
+            <strong>Content.</strong> Screenshots you upload, the descriptions and scripts you
+            write, the audio we generate, and the finished MP4 files.
+          </li>
+          <li>
+            <strong>Usage data.</strong> How you move through the application, plus browser and
+            device information.
+          </li>
+        </ul>
 
-          <div className="glass-panel p-8 bg-[var(--space-card)]/80 border border-[var(--space-border)] space-y-8 text-[var(--space-text-muted)] leading-relaxed rounded-2xl">
-            <section>
-              <h2 className="font-bold text-2xl mb-4 text-teal-600 dark:text-teal-400">1. Information We Collect</h2>
-              <p className="mb-4">
-                When you use AIVideo, we may collect the following types of information:
-              </p>
-              <ul className="list-disc pl-6 space-y-2 text-sm">
-                <li><strong>Account Information:</strong> Name, email address, and authentication data via Google OAuth.</li>
-                <li><strong>Content Data:</strong> Screenshots, text prompts, video scripts, generated audio, and final MP4 files uploaded or generated through our service.</li>
-                <li><strong>Usage Data:</strong> Information about how you interact with our application, browser type, and device information.</li>
-              </ul>
-            </section>
+        <h2>What we do with it</h2>
+        <p>
+          We use it to run the service: to render the videos you ask for, which means sending
+          screenshot and script data to text and vision models and to the render workers, and to
+          reply when you contact support.
+        </p>
 
-            <section>
-              <h2 className="font-bold text-2xl mb-4 text-teal-600 dark:text-teal-400">2. How We Use Your Information</h2>
-              <p className="text-sm">
-                The information we collect is used to provide, maintain, and improve our services; to process your video generation requests (including sending data to AI text and Vision models, and FFmpeg workers); and to communicate with you about your account or support inquiries.
-              </p>
-            </section>
+        <h2>Where it is stored</h2>
+        <p>
+          Screenshots and rendered videos are held in R2/B2 object storage. We apply
+          industry-standard protections, though no transmission over the internet and no storage
+          system is completely secure, and we will not claim otherwise.
+        </p>
 
-            <section>
-              <h2 className="font-bold text-2xl mb-4 text-teal-600 dark:text-teal-400">3. Data Storage and Security</h2>
-              <p className="text-sm">
-                Your screenshots and videos are securely stored using R2/B2 cloud storage. While we implement industry-standard security measures to protect your data, no method of transmission over the internet or electronic storage is 100% secure.
-              </p>
-            </section>
+        <h2>Who else sees it</h2>
+        <p>
+          We do not sell personal data. We pass the minimum necessary to third-party providers
+          that do specific jobs: script generation, copyright scanning, and speech synthesis
+          through services such as ElevenLabs and edge-tts. Those providers are not permitted to
+          train their base models on your private project data.
+        </p>
 
-            <section>
-              <h2 className="font-bold text-2xl mb-4 text-teal-600 dark:text-teal-400">4. Sharing Your Information & AI Providers</h2>
-              <p className="text-sm">
-                We do not sell your personal data. We share necessary data with third-party AI models (for script generation, Vision copyright scanning, and Proactive Guide chats) and services (like ElevenLabs or edge-tts) strictly for the purpose of generating your requested video content. We do not permit these providers to use your private data to train their base models.
-              </p>
-            </section>
+        <h2>Deleting your data</h2>
+        <p>
+          Deleting a project removes its screenshots and rendered output from storage. To close
+          your account and remove everything attached to it, write to{" "}
+          <a href="mailto:hello@aivideo.ai">hello@aivideo.ai</a>.
+        </p>
 
-            <section>
-              <h2 className="font-bold text-2xl mb-4 text-teal-600 dark:text-teal-400">5. Contact Us</h2>
-              <p className="text-sm">
-                If you have any questions about this Privacy Policy, please contact us at <strong className="text-[var(--space-text)] font-mono">hello@aivideo.ai</strong>.
-              </p>
-            </section>
-          </div>
-        </main>
-        <FooterSection />
+        <h2>Contact</h2>
+        <p>
+          Questions about this policy go to <a href="mailto:hello@aivideo.ai">hello@aivideo.ai</a>.
+        </p>
       </div>
-    </div>
+    </PageShell>
   );
 }

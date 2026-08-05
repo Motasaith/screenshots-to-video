@@ -1,103 +1,83 @@
-import { motion } from "framer-motion";
-import { Book, Terminal, Settings2 } from "lucide-react";
-import Navbar from "@/components/Navbar";
-import FooterSection from "@/sections/FooterSection";
-import { SEO, createBreadcrumbSchema } from "@/components/SEO";
-import { SpaceBackground } from "@/components/shared/SpaceBackground";
+import { PageShell } from "@/components/site/PageShell";
 
 export default function Docs() {
-  const breadcrumbJsonLd = createBreadcrumbSchema([
-    { name: "Home", url: "https://aivideo.ai/" },
-    { name: "Documentation", url: "https://aivideo.ai/docs" },
-  ]);
-
   return (
-    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
-      <SEO
-        title="Documentation"
-        description="Learn how to create cinematic, AI-narrated tutorials from your screenshots with AIVideo's documentation."
-        canonical="https://aivideo.ai/docs"
-        jsonLd={breadcrumbJsonLd}
-      />
-      <SpaceBackground />
-      <div className="relative z-10">
-        <Navbar />
-        
-        <main className="max-w-4xl mx-auto pt-32 pb-20 px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-12"
-          >
-            <h1 className="font-extrabold text-5xl tracking-tight mb-4 text-[var(--space-text)]">
-              Documentation
-            </h1>
-            <p className="text-lg text-[var(--space-text-muted)] leading-relaxed">
-              Learn how to create cinematic, AI-narrated tutorials from your screenshots.
-            </p>
-          </motion.div>
+    <PageShell
+      title="Documentation"
+      description="How to build a narrated tutorial video from screenshots with AIVideo."
+      canonical="https://aivideo.ai/docs"
+      lede="Everything from your first project to the parts of the render engine most people never touch."
+    >
+      <div className="copy">
+        <h2>Your first video</h2>
+        <ol>
+          <li>
+            <strong>Create a project.</strong> Give it a name, pick a platform preset (YouTube,
+            TikTok, Teams) and an aspect ratio. Upload your screenshots as loose files, a folder,
+            or a ZIP.
+          </li>
+          <li>
+            <strong>Annotate.</strong> In the canvas editor, add highlight boxes, blur anything
+            sensitive, set zoom targets, and add captions, watermarks or step numbers.
+          </li>
+          <li>
+            <strong>Check the script.</strong> Each step gets a narration line drafted from the
+            screenshot and your description. Edit any line you disagree with.
+          </li>
+          <li>
+            <strong>Set the motion.</strong> Choose transitions between steps, pick a voice and a
+            speaking speed, and add an intro or outro if you want one.
+          </li>
+          <li>
+            <strong>Render.</strong> FFmpeg compiles the annotated screenshots, narration, zooms
+            and transitions into an MP4. This runs server-side, so you can close the tab.
+          </li>
+          <li>
+            <strong>Download.</strong> The finished file appears in your library.
+          </li>
+        </ol>
 
-          <div className="space-y-12">
-            <section>
-              <h2 className="font-bold text-2xl mb-4 flex items-center gap-2 text-[var(--space-text)]">
-                <Book className="w-6 h-6 text-teal-500 animate-pulse" />
-                Quick Start
-              </h2>
-              <div className="glass-panel p-6 border border-[var(--space-border)] bg-[var(--space-card)]/80 rounded-2xl">
-                <p className="text-[var(--space-text-muted)] text-sm mb-4 leading-relaxed">
-                  Creating your first AIVideo is simple. Upload screenshots, edit them with our built-in annotation tools, and render a polished video.
-                </p>
-                <ol className="list-decimal pl-5 space-y-3.5 text-sm text-[var(--space-text-muted)] leading-relaxed">
-                  <li><strong>Create a Project:</strong> Name your project, pick a platform preset (YouTube, TikTok, Teams), and choose an aspect ratio (16:9, 9:16, 1:1, or 4:5). Upload your screenshots.</li>
-                  <li><strong>Edit & Annotate:</strong> Use the canvas editor to add highlight boxes, blur sensitive data, set zoom targets, add captions, watermarks, and step numbers. AI generates voiceover scripts for each step.</li>
-                  <li><strong>AI Scripting:</strong> Our LLM converts your descriptions into a professional, conversational script tailored to your chosen platform. Edit any script to fine-tune the narration.</li>
-                  <li><strong>Cinematic Styling:</strong> Set zoom targets, choose slide/fade transitions, and select Intro/Outro templates. Adjust voice and speaking speed.</li>
-                  <li><strong>Render:</strong> The FFmpeg engine compiles your annotated screenshots with AI narration, zoom animations, and transitions into a final MP4.</li>
-                  <li><strong>Export:</strong> Download the completed video immediately from your dashboard.</li>
-                </ol>
-              </div>
-            </section>
+        <h2>Getting good screenshots</h2>
+        <ul>
+          <li>Capture the whole application window rather than a cropped detail. Zoom targets do the cropping later, and they can only zoom into pixels that exist.</li>
+          <li>Use the same window size for every screenshot in a project. Mismatched sizes force letterboxing between steps.</li>
+          <li>Close unrelated tabs and dismiss notifications before capturing.</li>
+          <li>Name files so they sort in the order you want: <code>01-login.png</code>, <code>02-dashboard.png</code>. Sorting is natural, so <code>step2</code> comes before <code>step10</code>.</li>
+        </ul>
 
-            <section>
-              <h2 className="font-bold text-2xl mb-4 flex items-center gap-2 text-[var(--space-text)]">
-                <Terminal className="w-6 h-6 text-teal-500" />
-                Best Practices
-              </h2>
-              <div className="grid md:grid-cols-2 gap-4">
-                <div className="glass-panel p-5 border border-[var(--space-border)] bg-[var(--space-card)]/80 rounded-2xl">
-                  <h3 className="font-bold text-lg mb-2 text-[var(--space-text)]">Capturing Screenshots</h3>
-                  <ul className="list-disc pl-5 text-sm text-[var(--space-text-muted)] space-y-2 leading-relaxed">
-                    <li>Capture the full application window, not just small snippets.</li>
-                    <li>Ensure the UI is clean (close unrelated tabs or notifications).</li>
-                    <li>Use a consistent window size for all screenshots.</li>
-                  </ul>
-                </div>
-                <div className="glass-panel p-5 border border-[var(--space-border)] bg-[var(--space-card)]/80 rounded-2xl">
-                  <h3 className="font-bold text-lg mb-2 text-[var(--space-text)]">Writing Descriptions</h3>
-                  <ul className="list-disc pl-5 text-sm text-[var(--space-text-muted)] space-y-2 leading-relaxed">
-                    <li>Keep it concise: describe the single action taking place.</li>
-                    <li>Use active voice (e.g., "Click the submit button").</li>
-                    <li>Chat with the Proactive AI Guide if you get stuck.</li>
-                  </ul>
-                </div>
-              </div>
-            </section>
+        <h2>Writing descriptions</h2>
+        <ul>
+          <li>Describe the single action happening on that screen, not the whole feature.</li>
+          <li>Use active voice. &ldquo;Click Submit&rdquo; reads better out loud than &ldquo;the Submit button should be clicked&rdquo;.</li>
+          <li>Leave out anything already visible in the screenshot. The script generator can see it.</li>
+        </ul>
 
-            <section>
-              <h2 className="font-bold text-2xl mb-4 flex items-center gap-2 text-[var(--space-text)]">
-                <Settings2 className="w-6 h-6 text-teal-500" />
-                Advanced Features
-              </h2>
-              <div className="glass-panel p-6 border border-[var(--space-border)] bg-[var(--space-card)]/80 rounded-2xl">
-                <p className="text-sm text-[var(--space-text-muted)] leading-relaxed">
-                  AIVideo supports advanced timeline controls, dynamic zoom panning, and multi-aspect ratio rendering (16:9, 9:16, 1:1, 4:5). When you set a target coordinate, the FFmpeg rendering engine automatically calculates a smooth, eased interpolation from the full frame to a 2.5x zoom level focused entirely on your target. Additionally, the Vision Copyright Checker uses an advanced LLM to scan your media, ensuring your output is completely safe for AdSense monetization before rendering even begins.
-                </p>
-              </div>
-            </section>
-          </div>
-        </main>
-        <FooterSection />
+        <h2>Zoom and camera</h2>
+        <p>
+          Setting a target coordinate on a screenshot tells the render engine to interpolate from
+          the full frame to roughly a 2.5x zoom centred on that point, hold while the narration
+          for that step plays, then ease back out. The easing is applied to the whole move, so it
+          reads as a camera rather than a jump cut.
+        </p>
+        <p>
+          Two targets on one screenshot produce a pan between them instead of a push in. Timing
+          for the hold and the transition is per step.
+        </p>
+
+        <h2>Copyright checking</h2>
+        <p>
+          Before a render starts, a vision model scans the uploaded screenshots for material that
+          would put a monetised upload at risk. It flags rather than blocks, so you decide what
+          to do about anything it finds.
+        </p>
+
+        <h2>Aspect ratios</h2>
+        <p>
+          A project renders to 16:9, 9:16, 1:1 or 4:5. Annotations are stored relative to the
+          screenshot rather than to the output frame, so changing the ratio and rendering again
+          keeps every highlight and blur where you put it.
+        </p>
       </div>
-    </div>
+    </PageShell>
   );
 }

@@ -1,260 +1,187 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  Menu,
-  X,
-  Film,
-  LogOut,
-  LayoutDashboard,
-  Moon,
-  Sun,
-  ShieldAlert,
-} from "lucide-react";
-import { useTheme } from "next-themes";
+import { Menu, X, LayoutDashboard, LogOut, ShieldAlert } from "lucide-react";
 import { trpc } from "@/providers/trpc";
+import { Logo } from "@/components/site/Logo";
+
+const NAV = [
+  { label: "Features", section: "features" },
+  { label: "How it works", section: "how-it-works" },
+  { label: "Pricing", section: "pricing" },
+  { label: "Docs", path: "/docs" },
+] as const;
 
 export default function Navbar() {
   const { user, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const { setTheme, resolvedTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
 
-  // Check if admin is impersonating a user (restore cookie exists)
-  const [isImpersonating, setIsImpersonating] = useState(false);
-  useEffect(() => {
-    setIsImpersonating(document.cookie.includes("aivideo_admin_restore="));
-  }, [location.pathname]);
+  // Re-read on navigation rather than in an effect: an effect that only calls
+  // setState schedules a second render to compute something already available
+  // during the first one.
+  const isImpersonating = useMemo(
+    () => document.cookie.includes("aivideo_admin_restore="),
+    [location.pathname]
+  );
 
-  const restoreAdminMutation = trpc.admin.restoreAdminSession.useMutation({
+  const restoreAdmin = trpc.admin.restoreAdminSession.useMutation({
     onSuccess: () => {
       window.location.href = "/admin";
     },
   });
 
+  // The header only changes at one threshold, so the handler does nothing but
+  // compare a boolean. Passive, because it never calls preventDefault.
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 20);
-    // Passive: without it the browser must wait for this handler before it
-    // can scroll, in case it calls preventDefault. It never does.
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  // Deep links like /#pricing arriving from another page.
   useEffect(() => {
-    if (location.pathname === "/" && location.hash) {
-      const id = location.hash.replace("#", "");
-      setTimeout(() => {
-        const el = document.getElementById(id);
-        if (el) {
-          el.scrollIntoView({ behavior: "smooth" });
-        }
-      }, 100);
-    }
+    if (location.pathname !== "/" || !location.hash) return;
+    const el = document.getElementById(location.hash.slice(1));
+    if (el) requestAnimationFrame(() => el.scrollIntoView({ behavior: "smooth" }));
   }, [location]);
 
-  const scrollToSection = (id: string) => {
+  useEffect(() => {
+    document.body.style.overflow = mobileOpen ? "hidden" : "";
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [mobileOpen]);
+
+  const goToSection = (id: string) => {
     setMobileOpen(false);
     if (location.pathname !== "/") {
       navigate(`/#${id}`);
-    } else {
-      const el = document.getElementById(id);
-      if (el) {
-        el.scrollIntoView({ behavior: "smooth" });
-      }
+      return;
     }
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
   };
 
-
   return (
-    <nav
-      className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
-        scrolled
-          ? "max-w-6xl mx-2 sm:mx-auto mt-4 rounded-full bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] shadow-[0_10px_35px_rgba(0,0,0,0.06)] px-3 sm:px-4 py-1"
-          : "bg-transparent py-4 px-4"
+    <header
+      className={`sticky top-0 z-50 bg-white/85 backdrop-blur-[6px] transition-shadow duration-200 ${
+        scrolled ? "border-b border-line" : "border-b border-transparent"
       }`}
     >
-      <div className="w-full max-w-6xl mx-auto">
-        <div className="flex items-center justify-between h-14">
-          <Link to="/" className="flex items-center gap-2 group">
-            <Film className="w-5 h-5 text-teal-600 dark:text-teal-400 group-hover:text-teal-500 transition-colors" />
-            <span className="font-bold text-lg tracking-tight font-sans text-[var(--space-text)] transition-colors">
-              AIVideo
-            </span>
+      <div className="container-site">
+        <div className="flex h-[64px] items-center justify-between gap-4">
+          <Link to="/" className="flex items-center gap-2.5" onClick={() => setMobileOpen(false)}>
+            <Logo />
+            <span className="text-[17px] font-semibold tracking-[-0.02em] text-ink">AIVideo</span>
           </Link>
 
-          {/* Center Navigation Links with sliding background pill */}
-          <div 
-            className="hidden md:flex items-center gap-1.5"
-            onMouseLeave={() => setHoveredIdx(null)}
-          >
-            {[
-              { id: "features", label: "Features", type: "section" },
-              { id: "how-it-works", label: "How It Works", type: "section" },
-              { id: "pricing", label: "Pricing", type: "section" },
-              { id: "docs", label: "Docs", type: "link", path: "/docs" }
-            ].map((item, idx) => {
-              const isHovered = hoveredIdx === idx;
-              const isActive = item.type === "section" 
-                ? location.hash === `#${item.id}` 
-                : location.pathname === item.path;
+          <nav className="hidden items-center gap-1 md:flex">
+            {NAV.map((item) =>
+              "path" in item ? (
+                <Link
+                  key={item.label}
+                  to={item.path}
+                  className={`rounded-lg px-3 py-2 text-[14.5px] font-medium transition-colors ${
+                    location.pathname === item.path
+                      ? "text-ink"
+                      : "text-ink-body hover:bg-mat hover:text-ink"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              ) : (
+                <button
+                  key={item.label}
+                  onClick={() => goToSection(item.section)}
+                  className="rounded-lg px-3 py-2 text-[14.5px] font-medium text-ink-body transition-colors hover:bg-mat hover:text-ink"
+                >
+                  {item.label}
+                </button>
+              )
+            )}
+          </nav>
 
-              return (
-                <div key={item.id} className="relative">
-                  {item.type === "section" ? (
-                    <button
-                      onClick={() => scrollToSection(item.id)}
-                      onMouseEnter={() => setHoveredIdx(idx)}
-                      className={`text-sm font-medium px-4 py-2 rounded-full relative transition-colors duration-250 block focus:outline-none ${
-                        isActive
-                          ? "text-[var(--space-text)] font-semibold"
-                          : "text-[var(--space-text-subtle)] hover:text-[var(--space-text)]"
-                      }`}
-                    >
-                      <span className="relative z-10">{item.label}</span>
-                      {isHovered && (
-                        <motion.span
-                          layoutId="navHoverPill"
-                          className="absolute inset-0 rounded-full -z-0 bg-teal-500/8 dark:bg-teal-400/8 border border-teal-500/15"
-                          transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                        />
-                      )}
-                    </button>
-                  ) : (
-                    <Link
-                      to={item.path || "/"}
-                      onMouseEnter={() => setHoveredIdx(idx)}
-                      className={`text-sm font-medium px-4 py-2 rounded-full relative transition-colors duration-250 block ${
-                        isActive
-                          ? "text-[var(--space-text)] font-semibold"
-                          : "text-[var(--space-text-subtle)] hover:text-[var(--space-text)]"
-                      }`}
-                    >
-                      <span className="relative z-10">{item.label}</span>
-                      {isHovered && (
-                        <motion.span
-                          layoutId="navHoverPill"
-                          className="absolute inset-0 rounded-full -z-0 bg-teal-500/8 dark:bg-teal-400/8 border border-teal-500/15"
-                          transition={{ type: "spring", stiffness: 380, damping: 30 }}
-                        />
-                      )}
-                    </Link>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+          <div className="hidden items-center gap-2 md:flex">
+            {isImpersonating && (
+              <button
+                onClick={() => restoreAdmin.mutate()}
+                disabled={restoreAdmin.isPending}
+                className="btn btn-sm border-amber-300 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                title="Return to your admin account"
+              >
+                <ShieldAlert className="h-3.5 w-3.5" />
+                {restoreAdmin.isPending ? "Restoring" : "Back to admin"}
+              </button>
+            )}
 
-          <div className="hidden md:flex items-center gap-3">
             {user ? (
               <>
-                {isImpersonating && (
-                  <button
-                    onClick={() => restoreAdminMutation.mutate()}
-                    disabled={restoreAdminMutation.isPending}
-                    className="glass-btn text-xs py-2 px-4 border-amber-500/30 bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"
-                    title="Return to your admin account"
-                  >
-                    <ShieldAlert className="w-3.5 h-3.5" />
-                    {restoreAdminMutation.isPending ? "Restoring..." : "Return to Admin"}
-                  </button>
-                )}
-                <Link
-                  to="/dashboard"
-                  className="glass-btn glass-btn-secondary text-xs py-2 px-4"
-                >
-                  <LayoutDashboard className="w-3.5 h-3.5" />
+                <Link to="/dashboard" className="btn btn-sm btn-ghost">
+                  <LayoutDashboard className="h-4 w-4" />
                   Dashboard
                 </Link>
-                <button
-                  onClick={logout}
-                  className="glass-btn glass-btn-primary text-xs py-2 px-4"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  Sign Out
+                <button onClick={logout} className="btn btn-sm btn-secondary">
+                  <LogOut className="h-3.5 w-3.5" />
+                  Sign out
                 </button>
               </>
             ) : (
               <>
-                <Link
-                  to="/login"
-                  className="glass-btn glass-btn-secondary text-xs py-2 px-4"
-                >
-                  Sign In
+                <Link to="/login" className="btn btn-sm btn-ghost">
+                  Sign in
                 </Link>
-                <Link to="/signup" className="glass-btn glass-btn-primary text-xs py-2 px-4">
-                  Start Free
+                <Link to="/signup" className="btn btn-sm btn-primary">
+                  Start free
                 </Link>
               </>
             )}
-            
-            <button
-              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-              className="p-2 ml-1 rounded-xl bg-[var(--space-card)] border border-[var(--space-border)] hover:bg-[var(--space-card-hover)] hover:border-teal-500/50 transition-colors focus:outline-none"
-              aria-label="Toggle dark mode"
-            >
-              {resolvedTheme === "dark" ? (
-                <Sun className="w-4 h-4 text-teal-400" />
-              ) : (
-                <Moon className="w-4 h-4 text-[var(--space-text-muted)]" />
-              )}
-            </button>
           </div>
 
           <button
-            className="md:hidden p-2 text-[var(--space-text)] focus:outline-none"
-            onClick={() => setMobileOpen(!mobileOpen)}
-            aria-label="Toggle menu"
+            className="-mr-2 grid h-10 w-10 place-items-center rounded-lg text-ink md:hidden"
+            onClick={() => setMobileOpen((v) => !v)}
+            aria-label={mobileOpen ? "Close menu" : "Open menu"}
+            aria-expanded={mobileOpen}
           >
-            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
       </div>
 
-      <AnimatePresence>
-        {mobileOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="md:hidden mt-2 mx-1 rounded-2xl bg-[var(--space-card)]/95 backdrop-blur-lg border border-[var(--space-border)] shadow-[0_10px_30px_rgba(0,0,0,0.15)] overflow-hidden"
-          >
-            <div className="px-6 py-4 space-y-3">
-              {[
-                { id: "features", label: "Features", type: "section" },
-                { id: "how-it-works", label: "How It Works", type: "section" },
-                { id: "pricing", label: "Pricing", type: "section" },
-                { id: "docs", label: "Docs", type: "link", path: "/docs" }
-              ].map((item) => (
-                <div key={item.id}>
-                  {item.type === "section" ? (
-                    <button
-                      onClick={() => scrollToSection(item.id)}
-                      className="block w-full text-left font-medium py-2 text-[var(--space-text)] font-sans text-sm hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
-                    >
-                      {item.label}
-                    </button>
-                  ) : (
-                    <Link
-                      to={item.path || "/"}
-                      className="block font-medium py-2 text-[var(--space-text)] font-sans text-sm hover:text-teal-500 dark:hover:text-teal-400 transition-colors"
-                      onClick={() => setMobileOpen(false)}
-                    >
-                      {item.label}
-                    </Link>
-                  )}
-                </div>
-              ))}
-              <hr className="border-[var(--space-border)]" />
+      {mobileOpen && (
+        <div className="animate-fade-in border-t border-line bg-white md:hidden">
+          <div className="container-site flex flex-col py-3">
+            {NAV.map((item) =>
+              "path" in item ? (
+                <Link
+                  key={item.label}
+                  to={item.path}
+                  onClick={() => setMobileOpen(false)}
+                  className="rounded-lg px-2 py-3 text-[15px] font-medium text-ink"
+                >
+                  {item.label}
+                </Link>
+              ) : (
+                <button
+                  key={item.label}
+                  onClick={() => goToSection(item.section)}
+                  className="rounded-lg px-2 py-3 text-left text-[15px] font-medium text-ink"
+                >
+                  {item.label}
+                </button>
+              )
+            )}
+
+            <div className="mt-3 flex flex-col gap-2 border-t border-line pt-4">
               {user ? (
-                <div className="flex flex-col gap-2 pt-2">
+                <>
                   <Link
                     to="/dashboard"
-                    className="glass-btn glass-btn-secondary text-xs py-2.5 w-full text-center"
                     onClick={() => setMobileOpen(false)}
+                    className="btn btn-secondary w-full"
                   >
                     Dashboard
                   </Link>
@@ -263,33 +190,25 @@ export default function Navbar() {
                       logout();
                       setMobileOpen(false);
                     }}
-                    className="glass-btn glass-btn-primary text-xs py-2.5 w-full text-center"
+                    className="btn btn-ghost w-full"
                   >
-                    Sign Out
+                    Sign out
                   </button>
-                </div>
+                </>
               ) : (
-                <div className="flex flex-col gap-2 pt-2">
-                  <Link
-                    to="/login"
-                    className="glass-btn glass-btn-secondary text-xs py-2.5 w-full text-center"
-                    onClick={() => setMobileOpen(false)}
-                  >
-                    Sign In
+                <>
+                  <Link to="/signup" onClick={() => setMobileOpen(false)} className="btn btn-primary w-full">
+                    Start free
                   </Link>
-                  <Link
-                    to="/signup"
-                    className="glass-btn glass-btn-primary text-xs py-2.5 w-full text-center"
-                    onClick={() => setMobileOpen(false)}
-                  >
-                    Start Free
+                  <Link to="/login" onClick={() => setMobileOpen(false)} className="btn btn-secondary w-full">
+                    Sign in
                   </Link>
-                </div>
+                </>
               )}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </nav>
+          </div>
+        </div>
+      )}
+    </header>
   );
 }

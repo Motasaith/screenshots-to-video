@@ -1,59 +1,74 @@
-import { motion } from "framer-motion";
-import Navbar from "@/components/Navbar";
-import FooterSection from "@/sections/FooterSection";
-import { Search, Book, MessageCircle, PlayCircle, Settings, HelpCircle } from "lucide-react";
-import { Input } from "@/components/ui/input";
-import { SpaceBackground } from "@/components/shared/SpaceBackground";
+import { Link } from "react-router";
+import { PageShell } from "@/components/site/PageShell";
 
-const CATEGORIES = [
-  { icon: PlayCircle, title: "Getting Started", desc: "Learn the basics of creating your first video from screenshots." },
-  { icon: MessageCircle, title: "AI Script Guide", desc: "How to use AI-generated scripts and edit them for your narration." },
-  { icon: Book, title: "Copyright Checker", desc: "Understanding how the Vision LLM scans your project." },
-  { icon: Settings, title: "Editor Tools", desc: "Master zoom, highlights, blur, captions, and transitions." },
-  { icon: HelpCircle, title: "Troubleshooting", desc: "Fixing render errors and common issues." },
+const faqs = [
+  {
+    q: "How many screenshots can one video have?",
+    a: "Fifty per project. Past that the render gets long enough that people stop watching anyway, so it is worth splitting into two videos.",
+  },
+  {
+    q: "What order do my screenshots end up in?",
+    a: "Sorted by filename, naturally, so step2 comes before step10. Name them 01-, 02-, 03- if you want to be certain.",
+  },
+  {
+    q: "Can I change the narration?",
+    a: "Yes. Every step has an editable script line. Change one and only that line is re-recorded, so fixing a single sentence does not mean regenerating the whole voiceover.",
+  },
+  {
+    q: "Does the blur survive a re-render?",
+    a: "Yes. Blur is stored as a region on the screenshot, not as baked pixels, so it holds through re-renders and through changing the aspect ratio.",
+  },
+  {
+    q: "Do I need to keep the tab open while it renders?",
+    a: "No. Rendering runs on our machines. Close the tab and the finished MP4 will be in your library.",
+  },
+  {
+    q: "My render failed. What now?",
+    a: "Check that every screenshot is under 50 MB and is a PNG, JPG, WebP or GIF. If they all are, send us the project ID through the feedback form and we will look at the logs.",
+  },
+  {
+    q: "What does the copyright checker actually do?",
+    a: "A vision model scans your screenshots before a render for material that would put a monetised upload at risk. It flags things rather than blocking them; the decision stays yours.",
+  },
+  {
+    q: "Can I get one video in more than one aspect ratio?",
+    a: "Yes. Change the ratio on the project and render again. Annotations are stored relative to the screenshot, so nothing moves.",
+  },
 ];
 
 export default function HelpCenter() {
   return (
-    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
-      <SpaceBackground />
-      <div className="relative z-10">
-        <Navbar />
-        <main className="max-w-5xl mx-auto pt-32 pb-20 px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-center mb-16"
-          >
-            <h1 className="font-extrabold text-5xl lg:text-6xl tracking-tight mb-6 text-[var(--space-text)]">
-              How can we <span className="text-teal-600">help?</span>
-            </h1>
-            <div className="max-w-2xl mx-auto relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--space-text-subtle)] w-5 h-5" />
-              <Input 
-                placeholder="Search for answers..." 
-                className="pl-12 py-6 text-lg bg-[var(--space-card)] border-[var(--space-border)] text-[var(--space-text)] rounded-2xl focus:ring-teal-500 focus:border-teal-500 shadow-sm"
-              />
-            </div>
-          </motion.div>
-
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {CATEGORIES.map((cat, idx) => {
-              const Icon = cat.icon;
-              return (
-                <div key={idx} className="glass-panel p-6 cursor-pointer group hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 border border-[var(--space-border)]">
-                  <Icon className="w-8 h-8 text-teal-500 mb-4 group-hover:scale-110 transition-transform" />
-                  <h3 className="font-bold text-xl mb-2 text-[var(--space-text)] group-hover:text-teal-600 transition-colors">
-                    {cat.title}
-                  </h3>
-                  <p className="text-[var(--space-text-muted)] text-sm leading-relaxed">{cat.desc}</p>
-                </div>
-              );
-            })}
-          </div>
-        </main>
-        <FooterSection />
+    <PageShell
+      title="Help centre"
+      description="Answers to the questions people ask most about AIVideo."
+      canonical="https://aivideo.ai/help"
+      lede="The things people ask most. If yours is not here, the docs go deeper."
+    >
+      <div className="divide-y divide-line border-y border-line">
+        {faqs.map((faq) => (
+          <details key={faq.q} className="group py-5">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-[16px] font-medium text-ink">
+              {faq.q}
+              <span className="grid h-6 w-6 flex-none place-items-center rounded-full border border-line text-ink-muted transition-transform group-open:rotate-45">
+                +
+              </span>
+            </summary>
+            <p className="mt-3 max-w-[62ch] text-[15px] leading-relaxed text-ink-body">{faq.a}</p>
+          </details>
+        ))}
       </div>
-    </div>
+
+      <div className="card card-pad mt-12">
+        <h2 className="text-[17px] font-semibold text-ink">Still stuck?</h2>
+        <p className="mt-2 text-[15px] leading-relaxed text-ink-body">
+          The <Link to="/docs" className="text-brand hover:underline">documentation</Link> covers
+          the render pipeline in more detail, and{" "}
+          <Link to="/contact" className="text-brand hover:underline">
+            contacting us
+          </Link>{" "}
+          reaches a person.
+        </p>
+      </div>
+    </PageShell>
   );
 }

@@ -151,7 +151,7 @@ export const renderRouter = createRouter({
         .limit(1);
 
       if (existingJob) {
-        return { success: true, totalSteps: projectSteps.length };
+        return { success: true, totalSteps: projectSteps.length, jobId: existingJob.id };
       }
 
       // ── SAFETY CHECK 2: Per-user concurrent render limit ──
@@ -233,7 +233,7 @@ export const renderRouter = createRouter({
           .where(eq(steps.id, step.id));
       }
 
-      // Create a render job — the background worker will pick it up
+      // Create a render job: the background worker will pick it up
       await getDb().insert(renderJobs).values({
         projectId: input.projectId,
         status: "queued",
@@ -245,11 +245,23 @@ export const renderRouter = createRouter({
           : "Waiting in render queue...",
       });
 
+      // Read back the id we just inserted. The client needs it to tell this
+      // render apart from the previous one: on a re-render the project is
+      // still "complete" from the last pass for a moment, and without a job
+      // id to compare against the UI cannot distinguish "finished already"
+      // from "finished last time".
+      const [queuedJob] = await getDb()
+        .select({ id: renderJobs.id })
+        .from(renderJobs)
+        .where(eq(renderJobs.projectId, input.projectId))
+        .orderBy(desc(renderJobs.id))
+        .limit(1);
+
       // The worker shares this process, so start it now rather than leaving
       // the job to be discovered on the next 5s tick.
       notifyRenderJobQueued();
 
-      return { success: true, totalSteps: projectSteps.length };
+      return { success: true, totalSteps: projectSteps.length, jobId: queuedJob?.id ?? null };
     }),
 
   /**

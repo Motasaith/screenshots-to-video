@@ -1,90 +1,58 @@
-import { motion } from "framer-motion";
-import Navbar from "@/components/Navbar";
-import FooterSection from "@/sections/FooterSection";
-import { SEO, createBreadcrumbSchema } from "@/components/SEO";
-import { SpaceBackground } from "@/components/shared/SpaceBackground";
+import { PageShell } from "@/components/site/PageShell";
 
 export default function Terms() {
-  const breadcrumbJsonLd = createBreadcrumbSchema([
-    { name: "Home", url: "https://aivideo.ai/" },
-    { name: "Terms of Service", url: "https://aivideo.ai/terms" },
-  ]);
-
   return (
-    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
-      <SEO
-        title="Terms of Service"
-        description="AIVideo's Terms of Service: the rules and guidelines for using our platform."
-        canonical="https://aivideo.ai/terms"
-        noindex
-        jsonLd={breadcrumbJsonLd}
-      />
-      <SpaceBackground />
-      <div className="relative z-10">
-        <Navbar />
-        <main className="max-w-4xl mx-auto pt-32 pb-20 px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-12"
-          >
-            <h1 className="font-extrabold text-5xl tracking-tight mb-4 text-[var(--space-text)]">
-              Terms of Service
-            </h1>
-            <p className="text-sm text-[var(--space-text-subtle)] font-mono">
-              Effective Date: June 11, 2026
-            </p>
-          </motion.div>
+    <PageShell
+      title="Terms of service"
+      description="The rules and guidelines for using the AIVideo platform."
+      canonical="https://aivideo.ai/terms"
+      lede="Effective 11 June 2026."
+    >
+      <div className="copy">
+        <h2>1. Accepting these terms</h2>
+        <p>
+          Using AIVideo means you agree to these terms. If you do not agree with them, do not use
+          the service.
+        </p>
 
-          <div className="glass-panel p-8 bg-[var(--space-card)]/80 border border-[var(--space-border)] space-y-8 text-[var(--space-text-muted)] leading-relaxed rounded-2xl">
-            <section>
-              <h2 className="font-bold text-2xl mb-4 text-teal-600 dark:text-teal-400">1. Acceptance of Terms</h2>
-              <p className="text-sm">
-                By accessing or using AIVideo, you agree to be bound by these Terms of Service. If you do not agree to these terms, please do not use our services.
-              </p>
-            </section>
+        <h2>2. What the service is</h2>
+        <p>
+          AIVideo takes screenshots and descriptions you provide and produces a narrated,
+          animated video. It uses AI-generated scripts, vision models for copyright scanning, and
+          text-to-speech for narration.
+        </p>
 
-            <section>
-              <h2 className="font-bold text-2xl mb-4 text-teal-600 dark:text-teal-400">2. Description of Service</h2>
-              <p className="text-sm">
-                AIVideo is a SaaS platform that allows users to upload screenshots (Tutorial Mode) or enter text prompts (Studio Mode) to generate narrated, animated videos. The service utilizes AI-generated scripts, Vision models for copyright scanning, and text-to-speech technologies.
-              </p>
-            </section>
+        <h2>3. Your responsibilities</h2>
+        <ul>
+          <li>You must be at least 13 years old.</li>
+          <li>You are responsible for keeping your account secure.</li>
+          <li>
+            You must own or have permission to use everything you upload. Our copyright scan
+            catches obvious problems, but you remain responsible for what you publish.
+          </li>
+          <li>Generating harmful or illegal content is prohibited.</li>
+        </ul>
 
-            <section>
-              <h2 className="font-bold text-2xl mb-4 text-teal-600 dark:text-teal-400">3. User Responsibilities & AI Usage</h2>
-              <ul className="list-disc pl-6 space-y-2 text-sm">
-                <li>You must be at least 13 years old to use this service.</li>
-                <li>You are responsible for maintaining the security of your account.</li>
-                <li>You must own the rights or have permission to use the images and textual content you upload. Our Vision LLM scans for blatant copyright violations to ensure AdSense safety, but you remain ultimately liable for the content you generate.</li>
-                <li>Generating harmful, illicit, or illegal content using our AI Studio or Chat Guide is strictly prohibited.</li>
-              </ul>
-            </section>
+        <h2>4. Who owns what</h2>
+        <p>
+          You keep ownership of the screenshots you upload and of the videos the platform renders
+          for you. We make no ownership claim over your output. We keep the rights to the
+          underlying technology, the interface and the codebase.
+        </p>
 
-            <section>
-              <h2 className="font-bold text-2xl mb-4 text-teal-600 dark:text-teal-400">4. Intellectual Property</h2>
-              <p className="text-sm">
-                You retain all ownership rights to the screenshots you upload and the final videos generated by our platform. AIVideo makes no claim of ownership over AI-generated outputs produced by your prompts. AIVideo retains all rights to the underlying technology, UI design, and platform codebase.
-              </p>
-            </section>
+        <h2>5. Limits on our liability</h2>
+        <p>
+          The service is provided as is and as available. We do not warrant that AI-generated
+          narration is accurate or that render servers are uninterrupted. We are not liable for
+          direct, indirect or consequential damages arising from using the service.
+        </p>
 
-            <section>
-              <h2 className="font-bold text-2xl mb-4 text-teal-600 dark:text-teal-400">5. Limitation of Liability</h2>
-              <p className="text-sm">
-                AIVideo is provided on an "as is" and "as available" basis. We make no warranties regarding the accuracy of AI-generated narrations or the uninterrupted availability of the rendering servers. In no event shall AIVideo be liable for any direct, indirect, or consequential damages resulting from the use of our service.
-              </p>
-            </section>
-
-            <section>
-              <h2 className="font-bold text-2xl mb-4 text-teal-600 dark:text-teal-400">6. Changes to Terms</h2>
-              <p className="text-sm">
-                We reserve the right to modify these terms at any time. Continued use of the platform constitutes your acceptance of the revised terms.
-              </p>
-            </section>
-          </div>
-        </main>
-        <FooterSection />
+        <h2>6. Changes</h2>
+        <p>
+          We may revise these terms. Continuing to use the platform after a revision means you
+          accept it.
+        </p>
       </div>
-    </div>
+    </PageShell>
   );
 }

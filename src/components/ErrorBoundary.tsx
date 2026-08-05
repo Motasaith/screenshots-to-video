@@ -25,7 +25,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    // Log to console — the backend logger handles server-side errors.
+    // Log to console: the backend logger handles server-side errors.
     // For client errors, we could send them to an endpoint in the future.
     console.error("[ErrorBoundary] Unhandled React error:", error, errorInfo);
   }

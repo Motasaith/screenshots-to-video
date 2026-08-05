@@ -11,17 +11,15 @@ import {
   AlertCircle,
   Trash2,
   Play,
+  Pencil,
   Settings,
   CircleDashed,
   Clapperboard,
   LogOut,
   X,
-  Sun,
-  Moon,
   Coins,
   ShieldAlert,
 } from "lucide-react";
-import { useTheme } from "next-themes";
 import { detectGibberish } from "@/lib/gibberish";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,12 +29,10 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { SpaceBackground } from "@/components/shared/SpaceBackground";
 
 export default function Dashboard() {
   const { user, logout, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
-  const { setTheme, resolvedTheme } = useTheme();
   const [deleteProjectInfo, setDeleteProjectInfo] = useState<{ id: number } | null>(null);
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
 
@@ -105,9 +101,8 @@ export default function Dashboard() {
 
   if (authLoading || isLoading) {
     return (
-      <div className="theme-3d-immersive min-h-screen flex items-center justify-center font-sans">
-        <SpaceBackground />
-        <div className="relative z-10 flex items-center gap-2 text-[var(--space-text-subtle)] font-mono">
+      <div className="min-h-screen flex items-center justify-center font-sans">
+        <div className="relative z-10 flex items-center gap-2 text-[var(--space-text-subtle)]">
           <Clock className="w-5 h-5 animate-spin" />
           <span>Loading...</span>
         </div>
@@ -173,8 +168,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
-      <SpaceBackground />
+    <div className="min-h-screen relative overflow-x-hidden font-sans">
       <div className="relative z-10">
         <header className="fixed top-0 left-0 right-0 z-50 px-4 pt-4 transition-all duration-300">
           <div className="max-w-6xl mx-auto rounded-full bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] shadow-[0_10px_35px_rgba(0,0,0,0.06)] px-3 sm:px-6 py-1">
@@ -187,7 +181,7 @@ export default function Dashboard() {
                 <span className="font-bold text-lg text-[var(--space-text)]">AIVideo</span>
               </div>
               <div className="flex items-center gap-2 sm:gap-4">
-                <span className="text-xs font-mono text-[var(--space-text-subtle)] hidden sm:block">
+                <span className="text-[13px] text-[var(--space-text-muted)] hidden sm:block">
                   {user.name || user.email}
                 </span>
                 <Button
@@ -206,19 +200,6 @@ export default function Dashboard() {
                   className="glass-btn glass-btn-secondary p-2 rounded-lg"
                 >
                   <Settings className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-                  className="glass-btn glass-btn-secondary p-2 rounded-lg"
-                  aria-label="Toggle dark mode"
-                >
-                  {resolvedTheme === "dark" ? (
-                    <Sun className="w-4 h-4 text-teal-400" />
-                  ) : (
-                    <Moon className="w-4 h-4 text-[var(--space-text-muted)]" />
-                  )}
                 </Button>
                 {isImpersonating && (
                   <Button
@@ -253,7 +234,7 @@ export default function Dashboard() {
                 You're on the Free plan (5 videos/month, 720p, 7-day expiry).
                 <button
                   onClick={() => navigate("/pricing")}
-                  className="underline ml-1 font-semibold text-teal-600 dark:text-teal-400"
+                  className="underline ml-1 font-semibold text-teal-600 "
                 >
                   Upgrade to Pro
                 </button>
@@ -292,19 +273,19 @@ export default function Dashboard() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 mb-8">
             <div className="glass-panel p-5 bg-[var(--space-card)]/80 border border-[var(--space-border)] rounded-2xl">
-              <p className="text-sm text-[var(--space-text-subtle)] font-mono uppercase tracking-wider">Total Videos</p>
+              <p className="text-[13px] text-[var(--space-text-muted)]">Total Videos</p>
               <p className="font-bold text-3xl mt-1 text-[var(--space-text)]">
                 {projects?.length || 0}
               </p>
             </div>
             <div className="glass-panel p-5 bg-[var(--space-card)]/80 border border-[var(--space-border)] rounded-2xl">
-              <p className="text-sm text-[var(--space-text-subtle)] font-mono uppercase tracking-wider">Completed</p>
+              <p className="text-[13px] text-[var(--space-text-muted)]">Completed</p>
               <p className="font-bold text-3xl mt-1 text-[var(--space-text)]">
                 {projects?.filter((p) => p.status === "complete").length || 0}
               </p>
             </div>
             <div className="glass-panel p-5 bg-[var(--space-card)]/80 border border-[var(--space-border)] rounded-2xl">
-              <p className="text-sm text-[var(--space-text-subtle)] font-mono uppercase tracking-wider">This Month</p>
+              <p className="text-[13px] text-[var(--space-text-muted)]">This Month</p>
               <p className="font-bold text-3xl mt-1 text-[var(--space-text)]">
                 {projects?.filter((p) => {
                   const d = new Date(p.createdAt);
@@ -322,7 +303,7 @@ export default function Dashboard() {
                 : "bg-[var(--space-card)]/80 border-[var(--space-border)]"
             }`}>
               <div className="flex items-center justify-between">
-                <p className="text-sm text-[var(--space-text-subtle)] font-mono uppercase tracking-wider">Credits</p>
+                <p className="text-[13px] text-[var(--space-text-muted)]">Credits</p>
                 <Coins className={`w-4 h-4 ${user.credits <= 2 ? "text-amber-500" : "text-teal-500"}`} />
               </div>
               <p className={`font-bold text-3xl mt-1 ${
@@ -382,16 +363,40 @@ export default function Dashboard() {
                       </p>
                     </div>
 
-                    <div className="mt-4 flex items-center justify-between border-t border-[var(--space-border)] pt-3">
-                      <span className="font-mono text-xs text-[var(--space-text-subtle)]">
+                    {/* A finished project used to open straight into export,
+                        which was a dead end: no way back to the editor from
+                        the card or from the export screen. Both destinations
+                        are now reachable from here. */}
+                    <div className="mt-4 flex items-center justify-between gap-2 border-t border-[var(--space-border)] pt-3">
+                      <span className="text-xs text-[var(--space-text-subtle)]">
                         {new Date(project.createdAt).toLocaleDateString()}
                       </span>
-                      {project.status === "complete" && (
-                        <span className="inline-flex items-center gap-1 text-xs font-mono text-teal-500 font-semibold">
-                          <Play className="w-3 h-3 fill-teal-500" />
-                          Ready
-                        </span>
-                      )}
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/create/${project.id}/preview`);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--space-border)] px-2.5 py-1 text-xs font-medium text-[var(--space-text-muted)] transition-colors hover:border-line-strong hover:text-[var(--space-text)]"
+                        >
+                          <Pencil className="w-3 h-3" />
+                          Edit
+                        </button>
+
+                        {project.status === "complete" && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              navigate(`/create/${project.id}/export`);
+                            }}
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-brand-hover"
+                          >
+                            <Play className="w-3 h-3 fill-current" />
+                            Watch
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </motion.div>
                 ))}
@@ -417,7 +422,7 @@ export default function Dashboard() {
           )}
         </main>
       </div>
-      {/* Upgraded Mega Menu — New Project Dialog */}
+      {/* Upgraded Mega Menu: New Project Dialog */}
       <Dialog
         open={showNewProjectDialog}
         onOpenChange={(open) => {
@@ -426,7 +431,7 @@ export default function Dashboard() {
           else setShowNewProjectDialog(true);
         }}
       >
-        <DialogContent showCloseButton={false} className="border border-[var(--space-border)] bg-[var(--space-card)] dark:bg-[#041715] sm:max-w-3xl w-[92vw] h-auto rounded-3xl shadow-2xl p-0 overflow-hidden flex flex-col select-none">
+        <DialogContent showCloseButton={false} className="border border-[var(--space-border)] bg-[var(--space-card)] sm:max-w-3xl w-[92vw] h-auto rounded-3xl shadow-2xl p-0 overflow-hidden flex flex-col select-none">
           {/* Header bar */}
           <div className="flex items-center justify-between px-8 py-5 border-b border-[var(--space-border)]">
             <div className="flex items-center gap-3.5">
@@ -465,7 +470,7 @@ export default function Dashboard() {
                     value={newProjectTitle}
                     onChange={(e) => setNewProjectTitle(e.target.value)}
                     placeholder="e.g. How to clean Windows temp files"
-                    className="w-full text-sm bg-slate-100/40 dark:bg-slate-950/40 border border-[var(--space-border)] focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/30 rounded-xl px-4 py-2.5 text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)] focus:outline-none transition-all"
+                    className="w-full text-sm bg-slate-100/40  border border-[var(--space-border)] focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/30 rounded-xl px-4 py-2.5 text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)] focus:outline-none transition-all"
                   />
                   <div className="flex items-center justify-between px-1">
                     <span className="text-[10px] text-[var(--space-text-subtle)]">
@@ -505,7 +510,7 @@ export default function Dashboard() {
                     value={newProjectDesc}
                     onChange={(e) => setNewProjectDesc(e.target.value)}
                     placeholder="Describe what this video is about, who the audience is, and what they should be able to do after watching."
-                    className="w-full text-sm bg-slate-100/40 dark:bg-slate-950/40 border border-[var(--space-border)] focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/30 rounded-xl px-4 py-3 text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)] focus:outline-none resize-none transition-all"
+                    className="w-full text-sm bg-slate-100/40  border border-[var(--space-border)] focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/30 rounded-xl px-4 py-3 text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)] focus:outline-none resize-none transition-all"
                     rows={5}
                   />
                   <div className="flex items-center justify-between px-1">
@@ -559,16 +564,16 @@ export default function Dashboard() {
                         onClick={() => setSelectedRatio(r.ratio)}
                         className={`p-4 rounded-2xl text-sm font-semibold flex flex-col items-center justify-center gap-2 transition-all cursor-pointer border ${
                           isSelected
-                            ? "bg-teal-500/5 dark:bg-teal-955 border-teal-500/50 dark:border-teal-400/50 text-teal-700 dark:text-teal-400 shadow-md shadow-teal-500/5"
-                            : "bg-slate-50/50 dark:bg-slate-900/10 border-[var(--space-border)] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/40 dark:hover:bg-slate-900/30"
+                            ? "bg-teal-500/5  border-teal-500/50  text-teal-700  shadow-md shadow-teal-500/5"
+                            : "bg-slate-50/50  border-[var(--space-border)] text-slate-700  hover:text-slate-900  hover:bg-slate-100/40 "
                         }`}
                       >
                         <div className="flex items-center justify-center w-14 h-14 shrink-0">
                           {getRatioSvg(r.ratio, isSelected)}
                         </div>
                         <div className="text-center leading-tight">
-                          <div className={`font-bold text-xs ${isSelected ? "text-teal-700 dark:text-teal-400" : "text-slate-800 dark:text-slate-200"}`}>{r.label}</div>
-                          <div className={`text-[10px] font-mono mt-0.5 ${isSelected ? "text-teal-600/80 dark:text-teal-400/80" : "text-slate-500"}`}>{r.ratio}</div>
+                          <div className={`font-bold text-xs ${isSelected ? "text-teal-700 " : "text-slate-800 "}`}>{r.label}</div>
+                          <div className={`text-[10px] font-mono mt-0.5 ${isSelected ? "text-teal-600/80 " : "text-slate-500"}`}>{r.ratio}</div>
                         </div>
                       </button>
                     );
@@ -690,8 +695,8 @@ export default function Dashboard() {
 
 function getRatioSvg(ratio: "16:9" | "9:16" | "1:1" | "4:5", isSelected: boolean) {
   const colorClass = isSelected
-    ? "text-teal-500 dark:text-teal-400"
-    : "text-slate-400 dark:text-slate-500";
+    ? "text-teal-500 "
+    : "text-slate-400 ";
   const bgOpacity = isSelected ? "0.1" : "0.03";
 
   switch (ratio) {

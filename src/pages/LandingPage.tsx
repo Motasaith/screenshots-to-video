@@ -1,43 +1,42 @@
 import Navbar from "@/components/Navbar";
 import HeroSection from "@/sections/HeroSection";
-import SocialProofSection from "@/sections/SocialProofSection";
-import FeaturesSection from "@/sections/FeaturesSection";
+import ShowcaseSection from "@/sections/ShowcaseSection";
 import HowItWorksSection from "@/sections/HowItWorksSection";
-import StatsSection from "@/sections/StatsSection";
+import FeaturesSection from "@/sections/FeaturesSection";
+import DemoSection from "@/sections/DemoSection";
 import TestimonialsSection from "@/sections/TestimonialsSection";
 import PricingTeaserSection from "@/sections/PricingTeaserSection";
 import CTASection from "@/sections/CTASection";
 import FooterSection from "@/sections/FooterSection";
 import { SEO, organizationSchema, softwareApplicationSchema } from "@/components/SEO";
-import { SpaceBackground } from "@/components/shared/SpaceBackground";
 
 export default function LandingPage() {
   return (
-    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
+    <div className="min-h-screen">
       <SEO
-        title="AIVideo | Turn Screenshots into Video Tutorials"
-        description="AIVideo automatically transforms your screenshots and descriptions into a professional, narrated video tutorial with cinematic zoom animations."
-        keywords="AI video, tutorial maker, screen recording alternative, auto video generator, documentation, SaaS"
+        title="AIVideo · Turn screenshots into narrated video tutorials"
+        description="Upload the screenshots you already have. AIVideo writes the narration, zooms into the right part of each screen, and renders a finished MP4."
+        keywords="tutorial video maker, screenshot to video, screen recording alternative, documentation video, onboarding video"
         canonical="https://aivideo.ai/"
         jsonLd={[organizationSchema, softwareApplicationSchema]}
       />
-      
-      <SpaceBackground />
 
-      <div className="relative z-10">
-        <Navbar />
-        <main>
-          <HeroSection />
-          <SocialProofSection />
-          <FeaturesSection />
-          <HowItWorksSection />
-          <StatsSection />
-          <TestimonialsSection />
-          <PricingTeaserSection />
-          <CTASection />
-        </main>
-        <FooterSection />
-      </div>
+      <Navbar />
+
+      <main>
+        {/* Order is a narrative: what it does, what it looks like, how it
+            works, what is in it, proof, price, ask. */}
+        <HeroSection />
+        <ShowcaseSection />
+        <HowItWorksSection />
+        <FeaturesSection />
+        <DemoSection />
+        <TestimonialsSection />
+        <PricingTeaserSection />
+        <CTASection />
+      </main>
+
+      <FooterSection />
     </div>
   );
 }

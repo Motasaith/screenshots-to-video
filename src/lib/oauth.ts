@@ -2,7 +2,7 @@
  * Google OAuth helpers shared by the sign-in and sign-up pages.
  *
  * Terms acceptance is remembered locally so returning users don't have to
- * re-tick the agreement on every visit — it's a one-time thing, then it's a
+ * re-tick the agreement on every visit: it's a one-time thing, then it's a
  * single click. (We intentionally do NOT set an OAuth `prompt` param: that lets
  * Google skip its own account/consent screen for users who already have a
  * session and have granted access before.)
@@ -21,7 +21,7 @@ export function rememberTermsAccepted(): void {
   try {
     localStorage.setItem(TERMS_KEY, "1");
   } catch {
-    /* localStorage unavailable (private mode) — non-fatal */
+    /* localStorage unavailable (private mode): non-fatal */
   }
 }
 

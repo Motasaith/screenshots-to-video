@@ -1,54 +1,70 @@
-import { motion } from "framer-motion";
-import Navbar from "@/components/Navbar";
-import FooterSection from "@/sections/FooterSection";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { SpaceBackground } from "@/components/shared/SpaceBackground";
+import { useState } from "react";
+import { PageShell } from "@/components/site/PageShell";
+
+const KINDS = ["Bug report", "Feature request", "Something else"] as const;
 
 export default function Feedback() {
+  const [kind, setKind] = useState<(typeof KINDS)[number]>("Bug report");
+
   return (
-    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
-      <SpaceBackground />
-      <div className="relative z-10">
-        <Navbar />
-        <main className="max-w-2xl mx-auto pt-32 pb-20 px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-            <h1 className="font-extrabold text-5xl tracking-tight mb-4 text-center text-[var(--space-text)]">
-              Send Feedback
-            </h1>
-            <p className="text-[var(--space-text-muted)] text-center mb-12">
-              Your ideas help shape the future of AIVideo. Let us know what we can improve.
-            </p>
+    <PageShell
+      title="Feedback"
+      description="Report a bug or suggest a feature for AIVideo."
+      canonical="https://aivideo.ai/feedback"
+      lede="Tell us what broke or what is missing. Both are useful."
+    >
+      <form
+        className="card card-pad"
+        onSubmit={(e) => {
+          // No backend behind this yet; prevented so nothing typed is lost.
+          e.preventDefault();
+        }}
+      >
+        <fieldset>
+          <legend className="text-[14px] font-medium text-ink">What kind of feedback is this?</legend>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {KINDS.map((option) => (
+              <button
+                key={option}
+                type="button"
+                onClick={() => setKind(option)}
+                aria-pressed={kind === option}
+                className={`rounded-lg border px-3.5 py-2 text-[14px] font-medium transition-colors ${
+                  kind === option
+                    ? "border-ink bg-ink text-white"
+                    : "border-line-strong bg-white text-ink-body hover:text-ink"
+                }`}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        </fieldset>
 
-            <form className="glass-panel p-8 border border-[var(--space-border)] bg-[var(--space-card)]/80 space-y-6">
-              <div className="space-y-4">
-                <Label className="font-bold text-sm text-[var(--space-text)]">What kind of feedback is this?</Label>
-                <div className="grid grid-cols-2 gap-4">
-                  <Button type="button" variant="outline" className="h-12 bg-[var(--space-card)] border-[var(--space-border)] hover:border-teal-500 hover:text-teal-500 text-[var(--space-text)] rounded-xl transition-all">Bug Report</Button>
-                  <Button type="button" variant="outline" className="h-12 bg-[var(--space-card)] border-[var(--space-border)] hover:border-teal-500 hover:text-teal-500 text-[var(--space-text)] rounded-xl transition-all">Feature Request</Button>
-                </div>
-              </div>
+        <div className="mt-7">
+          <label htmlFor="details" className="mb-1.5 block text-[14px] font-medium text-ink">
+            Details
+          </label>
+          <textarea
+            id="details"
+            name="details"
+            rows={9}
+            className="field"
+            placeholder={
+              kind === "Bug report"
+                ? "What did you do, what happened, and what did you expect instead?"
+                : "What are you trying to do that the product will not let you do?"
+            }
+          />
+          <p className="mt-2 text-[13px] text-ink-muted">
+            For a bug, a project ID and a rough time helps us find it in the logs.
+          </p>
+        </div>
 
-              <div className="space-y-2 pt-4">
-                <Label className="font-bold text-sm text-[var(--space-text)]">Details</Label>
-                <Textarea 
-                  placeholder="Please provide as much detail as possible..." 
-                  className="min-h-[200px] w-full bg-[var(--space-card)] border-[var(--space-border)] text-[var(--space-text)] rounded-xl py-3 px-4 focus:ring-teal-500 focus:border-teal-500"
-                />
-              </div>
-
-              <Button className="w-full glass-btn glass-btn-primary py-6 text-sm font-semibold rounded-xl transition-all">
-                Submit Feedback
-              </Button>
-            </form>
-          </motion.div>
-        </main>
-        <FooterSection />
-      </div>
-    </div>
+        <button type="submit" className="btn btn-primary mt-6">
+          Send feedback
+        </button>
+      </form>
+    </PageShell>
   );
 }

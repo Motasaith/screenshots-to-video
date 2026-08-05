@@ -184,7 +184,7 @@ export default function StepPreview() {
 
   return (
     <div className="w-full h-full flex flex-col">
-      {/* Full immersive editor — sidebar + canvas + timeline */}
+      {/* Full immersive editor: sidebar + canvas + timeline */}
       <div id="preview-editor" className="flex-1 min-h-0">
         <StepEditorPanel
           stepTransitions={stepTransitions}
@@ -244,7 +244,7 @@ export default function StepPreview() {
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
                 placeholder="e.g. Clean partition tutorial"
-                className="bg-slate-100/80 dark:bg-slate-950/40 border-[var(--space-border)] focus:border-teal-500/50 rounded-xl text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)]"
+                className="bg-slate-100/80  border-[var(--space-border)] focus:border-teal-500/50 rounded-xl text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)]"
                 required
                 disabled={isSavingSettings}
               />
@@ -259,7 +259,7 @@ export default function StepPreview() {
                 value={projectDesc}
                 onChange={(e) => setProjectDesc(e.target.value)}
                 placeholder="Describe what this video shows..."
-                className="bg-slate-100/80 dark:bg-slate-950/40 border-[var(--space-border)] focus:border-teal-500/50 rounded-xl min-h-[90px] resize-none text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)]"
+                className="bg-slate-100/80  border-[var(--space-border)] focus:border-teal-500/50 rounded-xl min-h-[90px] resize-none text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)]"
                 required
                 disabled={isSavingSettings}
               />
@@ -283,8 +283,8 @@ export default function StepPreview() {
                       disabled={isSavingSettings}
                       className={`py-2 px-1 rounded-xl border text-[10px] font-semibold flex flex-col items-center justify-center transition-all cursor-pointer ${
                         aspectRatio === ratio
-                          ? "bg-teal-500/15 border-teal-500 text-teal-700 dark:text-teal-300 shadow-sm font-bold"
-                          : "bg-slate-100/80 dark:bg-slate-950/20 border-[var(--space-border)] text-[var(--space-text-subtle)] hover:border-teal-500/30 hover:text-[var(--space-text)]"
+                          ? "bg-teal-500/15 border-teal-500 text-teal-700  shadow-sm font-bold"
+                          : "bg-slate-100/80  border-[var(--space-border)] text-[var(--space-text-subtle)] hover:border-teal-500/30 hover:text-[var(--space-text)]"
                       }`}
                     >
                       <span className="text-sm font-bold">{ratio}</span>

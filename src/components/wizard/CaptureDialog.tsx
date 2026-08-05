@@ -7,7 +7,7 @@ import { Camera, X } from "lucide-react";
  * Screen recording used to live here too and has been removed: browser capture
  * cannot see the mouse position in other applications, so it could never do the
  * zoom-follows-the-cursor behaviour that makes a screen recorder worth using.
- * The renderer's video support stays — Pexels clips and custom intros need it —
+ * The renderer's video support stays: Pexels clips and custom intros need it -
  * so recording can come back later as a desktop companion without redoing that
  * work.
  */
@@ -62,7 +62,7 @@ export function CaptureDialog({
    * Doing this inside startStream did not work: the element is only rendered
    * after a stream arrives, so `videoRef.current` was still null and the
    * assignment was silently skipped. The preview stayed black and `videoWidth`
-   * stayed 0, which produced a 0x0 canvas and a null blob — "the photo could
+   * stayed 0, which produced a 0x0 canvas and a null blob: "the photo could
    * not be captured", with the real fault three steps earlier. An effect runs
    * after the element is committed, so the ordering cannot invert again.
    */
@@ -172,7 +172,7 @@ export function CaptureDialog({
               <Camera className="h-8 w-8 text-[var(--sketch-fg-subtle)]" />
               <button
                 onClick={startStream}
-                className="rounded-full bg-[#FBBF24] px-5 py-2.5 text-xs font-bold text-black hover:bg-[#FBBF24]/90"
+                className="rounded-full bg-brand px-5 py-2.5 text-xs font-bold text-white hover:bg-brand-hover"
               >
                 Turn on camera
               </button>
@@ -196,7 +196,7 @@ export function CaptureDialog({
               disabled={saving || !ready}
               title="Capture a photo"
               aria-label="Capture a photo"
-              className="flex items-center gap-2 rounded-full bg-[#FBBF24] px-5 py-2.5 text-xs font-bold text-black hover:bg-[#FBBF24]/90 disabled:opacity-50"
+              className="flex items-center gap-2 rounded-full bg-brand px-5 py-2.5 text-xs font-bold text-white hover:bg-brand-hover disabled:opacity-50"
             >
               <Camera className="h-4 w-4" />
               {saving ? "Adding…" : "Capture"}

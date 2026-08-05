@@ -193,7 +193,7 @@ export default function AIGuide({ onCollapse }: { onCollapse?: () => void }) {
       >
         <div className="p-4 border-b-2 border-[var(--sketch-fg-subtle)] hidden lg:flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-[#FBBF24]/10 border-2 border-[#FBBF24] flex items-center justify-center sketch-border-sm">
+            <div className="w-7 h-7 bg-brand/10 border-2 border-brand flex items-center justify-center sketch-border-sm">
               <Bot className="w-4 h-4 text-[var(--sketch-fg)]" />
             </div>
             <div>
@@ -237,7 +237,7 @@ export default function AIGuide({ onCollapse }: { onCollapse?: () => void }) {
                 <div
                   className={`w-6 h-6 flex-shrink-0 flex items-center justify-center border-2 ${
                     msg.role === "ai"
-                      ? "bg-[#FBBF24]/10 border-[#FBBF24]"
+                      ? "bg-brand/10 border-brand"
                       : "bg-[var(--sketch-card-bg)] border-[var(--sketch-fg-subtle)]"
                   }`}
                   style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
@@ -268,7 +268,7 @@ export default function AIGuide({ onCollapse }: { onCollapse?: () => void }) {
               animate={{ opacity: 1 }}
               className="flex gap-2"
             >
-              <div className="w-6 h-6 flex-shrink-0 flex items-center justify-center border-2 bg-[#FBBF24]/10 border-[#FBBF24]" style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}>
+              <div className="w-6 h-6 flex-shrink-0 flex items-center justify-center border-2 bg-brand/10 border-brand" style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}>
                 <Bot className="w-3 h-3 text-[var(--sketch-fg)]" />
               </div>
               <div className="p-3 bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-fg-subtle)] sketch-border-sm">
@@ -296,7 +296,7 @@ export default function AIGuide({ onCollapse }: { onCollapse?: () => void }) {
                   onClick={() => {
                     setInput(q);
                   }}
-                  className="px-2 py-1 text-sm font-hand text-[var(--sketch-fg-muted)] border border-dashed border-[var(--sketch-fg-subtle)] hover:border-[var(--sketch-fg-muted)] hover:bg-[#FBBF24]/10 transition-colors"
+                  className="px-2 py-1 text-sm font-hand text-[var(--sketch-fg-muted)] border border-dashed border-[var(--sketch-fg-subtle)] hover:border-[var(--sketch-fg-muted)] hover:bg-brand/10 transition-colors"
                   style={{ borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
                 >
                   {q}
@@ -316,7 +316,7 @@ export default function AIGuide({ onCollapse }: { onCollapse?: () => void }) {
                 if (e.key === "Enter") handleSend();
               }}
               placeholder="Ask anything..."
-              className="flex-1 px-3 py-2 bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-border-color)] text-sm font-body focus:outline-none focus:border-[#FBBF24] transition-colors sketch-input"
+              className="flex-1 px-3 py-2 bg-[var(--sketch-card-bg)] border-2 border-[var(--sketch-border-color)] text-sm font-body focus:outline-none focus:border-brand transition-colors sketch-input"
             />
             <button
               onClick={handleSend}

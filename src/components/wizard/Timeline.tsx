@@ -1,9 +1,9 @@
 /**
- * Simple Timeline Component — thumbnail strip with transitions
+ * Simple Timeline Component: thumbnail strip with transitions
  *
  * Shows screenshots/video thumbnails in order with transition buttons between them.
  * Supports drag-to-reorder, trim (duration adjustment), and add scene.
- * No playhead, no split, no zoom — just a clean strip like the original.
+ * No playhead, no split, no zoom: just a clean strip like the original.
  */
 
 import { useState, useEffect, useMemo } from "react";
@@ -179,10 +179,10 @@ export default function Timeline({
     <div
       data-tour="timeline"
       className={`bg-[var(--sketch-toolbar-bg)] border-t-2 border-[var(--sketch-border-color)] flex flex-col select-none transition-all ${
-        isDragOver ? "ring-2 ring-[#FBBF24] bg-[#FBBF24]/5" : ""
+        isDragOver ? "ring-2 ring-brand bg-brand/5" : ""
       }`}
     >
-      {/* Controls bar — minimal */}
+      {/* Controls bar: minimal */}
       <div className="flex items-center justify-between px-3 py-1.5 gap-3 border-b border-[var(--sketch-border-color)]/30">
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-mono text-[var(--sketch-fg-muted)]">
@@ -264,18 +264,18 @@ export default function Timeline({
                   {/* Scene thumbnail */}
                   <div className="relative flex flex-col">
                     {isActive && (
-                      <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-[#FBBF24] rotate-45 z-20" />
+                      <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-brand rotate-45 z-20" />
                     )}
                     <button
                       onClick={() => onClipSelect(idx)}
                       className={`relative w-24 aspect-video rounded-md overflow-hidden border-2 transition-all ${
                         isActive
-                          ? "border-[#FBBF24] shadow-[0_0_10px_rgba(251,191,36,0.3)]"
+                          ? "border-brand shadow-[0_0_10px_rgb(var(--brand-rgb)/0.3)]"
                           : "border-[var(--sketch-border-color)]/30 hover:border-[var(--sketch-accent)]/50"
-                      } ${isDragged ? "opacity-40" : ""} ${isDragOverTarget ? "ring-2 ring-[#FBBF24]/40" : ""}`}
+                      } ${isDragged ? "opacity-40" : ""} ${isDragOverTarget ? "ring-2 ring-brand/40" : ""}`}
                     >
                       <span className={`absolute top-0.5 left-0.5 text-[8px] font-bold px-1 rounded z-10 ${
-                        isActive ? "bg-[#FBBF24] text-black" : "bg-black/60 text-white"
+                        isActive ? "bg-brand text-white" : "bg-black/60 text-white"
                       }`}>
                         {idx + 1}
                       </span>

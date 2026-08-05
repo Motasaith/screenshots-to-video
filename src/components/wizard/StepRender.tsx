@@ -29,17 +29,28 @@ export default function StepRender() {
   const [startError, setStartError] = useState<string | null>(null);
   const startedRef = useRef(false);
 
+  // The job this mount is waiting on. Everything below is judged against it,
+  // because `render.status` always returns the newest job for the project and
+  // on a re-render that is the *previous*, already-complete one until the
+  // worker picks the new one up.
+  const [jobId, setJobId] = useState<number | null>(null);
+
   const startRender = trpc.render.start.useMutation();
   const utils = trpc.useUtils();
 
-  // Poll render status every 3 seconds
   const { data: status } = trpc.render.status.useQuery(
     { projectId: projectIdNum },
     {
       enabled: projectIdNum > 0 && hasStarted,
       refetchInterval: 3000,
+      // Never serve the previous render's result while this one is in flight.
+      staleTime: 0,
+      refetchOnMount: "always",
     }
   );
+
+  // True only once the status we are looking at describes the job we started.
+  const isCurrentJob = jobId != null && status?.job?.id === jobId;
 
   // Elapsed time while rendering.
   //
@@ -48,8 +59,9 @@ export default function StepRender() {
   // time is a fact rather than a prediction, so it cannot go stale, and paired
   // with the scene counter it tells the user things are still moving.
   const [nowMs, setNowMs] = useState(() => Date.now());
-  const jobStartedAt = status?.job?.createdAt ? new Date(status.job.createdAt).getTime() : null;
-  const isSettled = status?.projectStatus === "complete" || status?.job?.status === "error";
+  const jobStartedAt =
+    isCurrentJob && status?.job?.createdAt ? new Date(status.job.createdAt).getTime() : null;
+  const isSettled = isCurrentJob && (status?.job?.status === "complete" || status?.job?.status === "error");
 
   useEffect(() => {
     if (isSettled || !jobStartedAt) return;
@@ -67,48 +79,56 @@ export default function StepRender() {
 
   // Start render on mount
   useEffect(() => {
-    if (!hasStarted && projectIdNum > 0 && !startedRef.current) {
-      startedRef.current = true;
-      startRender
-        .mutateAsync({ projectId: projectIdNum })
-        .then(() => {
-          setHasStarted(true);
-        })
-        .catch((err) => {
-          setStartError(err.message || "Failed to start render");
-          startedRef.current = false;
-        });
-    }
-  }, [projectIdNum, hasStarted]);
+    if (hasStarted || projectIdNum <= 0 || startedRef.current) return;
+    startedRef.current = true;
 
-  // Auto-navigate to export when complete
+    // Drop any cached status before asking for a new render. Otherwise the
+    // first read after `hasStarted` flips returns the previous run's
+    // "complete" instantly, and this screen bounces to export before the new
+    // job has even been queued.
+    utils.render.status.reset({ projectId: projectIdNum });
+
+    startRender
+      .mutateAsync({ projectId: projectIdNum })
+      .then((res) => {
+        setJobId(res.jobId ?? null);
+        setHasStarted(true);
+      })
+      .catch((err) => {
+        setStartError(err.message || "Failed to start render");
+        startedRef.current = false;
+      });
+  }, [projectIdNum, hasStarted, startRender, utils]);
+
+  const isComplete = isCurrentJob && status?.job?.status === "complete";
+  const isError = isCurrentJob && status?.job?.status === "error";
+
+  // Move on only when *this* job is done, and only after clearing the caches
+  // the export screen reads from, so it opens on the new video rather than
+  // whatever was rendered last time.
   useEffect(() => {
-    if (
-      status?.projectStatus === "complete" ||
-      status?.job?.status === "complete"
-    ) {
-      setTimeout(() => {
-        navigate(`/create/${projectIdNum}/export`);
-      }, 1500);
-    }
-  }, [status?.projectStatus, status?.job?.status]);
+    if (!isComplete) return;
+    const t = setTimeout(() => {
+      utils.render.status.invalidate({ projectId: projectIdNum });
+      utils.project.getById.invalidate({ id: projectIdNum });
+      navigate(`/create/${projectIdNum}/export`);
+    }, 1500);
+    return () => clearTimeout(t);
+  }, [isComplete, projectIdNum, navigate, utils]);
 
-  const currentStage = status?.job?.stage || "queued";
+  const currentStage = (isCurrentJob && status?.job?.stage) || "queued";
   const currentStageIndex = stages.findIndex((s) => s.key === currentStage);
-  const isComplete =
-    status?.projectStatus === "complete" || status?.job?.status === "complete";
-  const isError =
-    status?.projectStatus === "error" || status?.job?.status === "error";
 
-  const progress = status?.job
-    ? ((status.job.currentStep || 0) / (status.job.totalSteps || 1)) * 100
-    : 0;
+  const progress =
+    isCurrentJob && status?.job
+      ? ((status.job.currentStep || 0) / (status.job.totalSteps || 1)) * 100
+      : 0;
 
   return (
     <div className="max-w-2xl mx-auto text-center">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         {!isComplete && !isError && (
-          <div className="font-hand text-xl text-[var(--sketch-fg-muted)] animate-float mb-4">
+          <div className="font-hand text-xl text-[var(--sketch-fg-muted)] mb-4">
             Rendering your video…
           </div>
         )}
@@ -165,7 +185,7 @@ export default function StepRender() {
                     ? "bg-emerald-500"
                     : isError
                       ? "bg-red-500"
-                      : "bg-[#FBBF24]"
+                      : "bg-brand"
                 }`}
                 style={{ width: `${isComplete ? 100 : Math.min(progress + 5, 95)}%`, borderRadius: "255px 15px 225px 15px/15px 225px 15px 255px" }}
               />
@@ -236,7 +256,7 @@ export default function StepRender() {
                       transition={{ delay: i * 0.1 }}
                       className={`sketch-card p-4 flex items-center gap-4 ${
                         isActive
-                          ? "border-[#FBBF24] bg-[#FBBF24]/5"
+                          ? "border-brand bg-brand/5"
                           : isDone
                             ? "border-emerald-500/50 bg-emerald-500/5"
                             : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)]/50 opacity-50"
@@ -245,7 +265,7 @@ export default function StepRender() {
                       <div
                         className={`w-10 h-10 flex items-center justify-center border-2 flex-shrink-0 ${
                           isActive
-                            ? "border-[#FBBF24] bg-[#FBBF24]/10"
+                            ? "border-brand bg-brand/10"
                             : isDone
                               ? "border-emerald-500 bg-emerald-500/10"
                               : "border-[var(--sketch-fg-subtle)] bg-[var(--sketch-card-bg)]"
@@ -283,7 +303,7 @@ export default function StepRender() {
                         )}
                       </div>
                       {isActive && (
-                        <span className="font-mono text-xs text-[#FBBF24]">
+                        <span className="font-mono text-xs text-brand">
                           {status?.job?.currentStep || 0}/{status?.job?.totalSteps || "?"}
                         </span>
                       )}

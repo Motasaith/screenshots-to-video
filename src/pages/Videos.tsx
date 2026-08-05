@@ -6,7 +6,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Play, Film, Clock, Download, Share2, LogOut, Settings, LayoutDashboard, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { SpaceBackground } from "@/components/shared/SpaceBackground";
 
 /** Compute whole days remaining until expiry relative to a reference timestamp. */
 function daysUntilExpiry(expiresAt: string | number | Date, now: number): number {
@@ -37,8 +36,7 @@ export default function Videos() {
 
   if (authLoading || isLoading) {
     return (
-      <div className="theme-3d-immersive min-h-screen flex items-center justify-center font-sans">
-        <SpaceBackground />
+      <div className="min-h-screen flex items-center justify-center font-sans">
         <div className="relative z-10 flex items-center gap-2 text-[var(--space-text-subtle)] font-mono">
           <Clock className="w-5 h-5 animate-spin" />
           <span>Loading...</span>
@@ -50,8 +48,7 @@ export default function Videos() {
   if (!user) return null;
 
   return (
-    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
-      <SpaceBackground />
+    <div className="min-h-screen relative overflow-x-hidden font-sans">
       <div className="relative z-10">
         <header className="border-b border-[var(--space-border)] bg-[var(--space-card)]/90 backdrop-blur-sm relative">
           <div className="w-full px-4 sm:px-6 lg:px-12">

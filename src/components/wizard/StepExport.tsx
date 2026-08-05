@@ -28,14 +28,31 @@ export default function StepExport() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const { user } = useAuth();
 
+  // `refetchOnMount: "always"` on both queries is the fix for landing here
+  // after a re-render and seeing the previous video. Arriving on this screen
+  // reuses the cache entry from the last visit, and a finished render changes
+  // the answer, so the cached copy is always suspect on arrival.
   const { data: project, isLoading } = trpc.project.getById.useQuery(
     { id: projectIdNum },
-    { enabled: projectIdNum > 0 }
+    { enabled: projectIdNum > 0, refetchOnMount: "always", staleTime: 0 }
   );
 
   const { data: renderStatus } = trpc.render.status.useQuery(
     { projectId: projectIdNum },
-    { enabled: projectIdNum > 0 }
+    {
+      enabled: projectIdNum > 0,
+      refetchOnMount: "always",
+      staleTime: 0,
+      // Keep polling while a render is still running. Someone who opens this
+      // screen from the dashboard mid-render, or who gets here just before
+      // the worker finishes, should see the video appear on its own rather
+      // than having to reload the page.
+      refetchInterval: (query) =>
+        query.state.data?.job?.status === "processing" ||
+        query.state.data?.job?.status === "queued"
+          ? 3000
+          : false,
+    }
   );
 
   const regenerateStep = trpc.render.regenerateStep.useMutation();
@@ -75,7 +92,7 @@ export default function StepExport() {
     <div className="w-full max-w-6xl mx-auto px-2 sm:px-4">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
         <div className="relative inline-block mb-1">
-          <span className="font-hand text-xl text-[var(--sketch-fg-muted)] animate-float hidden sm:block">
+          <span className="font-hand text-xl text-[var(--sketch-fg-muted)] hidden sm:block">
             All done
           </span>
         </div>
@@ -90,7 +107,7 @@ export default function StepExport() {
             {/* Video player - sketched frame */}
             <div id="export-player" className="sketch-card p-4 sm:p-6 bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)] scroll-mt-6">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 bg-[#FBBF24]/10 border-2 border-[#FBBF24] flex items-center justify-center sketch-border-sm">
+                <div className="w-12 h-12 bg-brand/10 border-2 border-brand flex items-center justify-center sketch-border-sm">
                   <Film className="w-6 h-6 text-[var(--sketch-fg)]" />
                 </div>
                 <div>
@@ -116,7 +133,15 @@ export default function StepExport() {
               <div className="relative aspect-video bg-[var(--sketch-fg)] border-2 border-[var(--sketch-border-color)] overflow-hidden mb-4 sketch-border-lg">
                 {hasVideo ? (
                   <>
+                    {/* Keyed on the storage path, not the URL.
+                        The path changes once per render (the worker writes
+                        `final_<id>_<timestamp>.mp4`), so a new render swaps in
+                        a fresh <video> instead of leaving the old buffered
+                        media in place. The signed URL is regenerated on every
+                        poll, so keying on that would tear the player down
+                        mid-playback every three seconds. */}
                     <video
+                      key={renderStatus?.finalVideoPath ?? "no-video"}
                       ref={videoRef}
                       src={videoUrl}
                       className="w-full h-full object-contain"
@@ -130,7 +155,7 @@ export default function StepExport() {
                     <div className="text-center">
                       {project?.status === "processing" ? (
                         <>
-                          <Loader2 className="w-12 h-12 text-[#FBBF24] animate-spin mx-auto mb-3" />
+                          <Loader2 className="w-12 h-12 text-brand animate-spin mx-auto mb-3" />
                           <p className="font-body text-sm text-[var(--sketch-bg)]/70">
                             Video is still rendering...
                           </p>
@@ -160,14 +185,20 @@ export default function StepExport() {
 
             {/* Navigation buttons */}
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+              {/* Back goes to the editor, not to the render screen.
+                  The render screen starts a render the moment it mounts and
+                  navigates here again as soon as one finishes, so pointing
+                  "Back" at it meant kicking off a spurious render and being
+                  bounced straight back: the button looked broken because
+                  there was nowhere to land. */}
               <Button
                 variant="ghost"
                 type="button"
-                onClick={() => navigate(`/create/${projectIdNum}/render`)}
+                onClick={() => navigate(`/create/${projectIdNum}/preview`)}
                 className="sketch-btn-ghost flex-1 w-full"
               >
                 <ChevronLeft className="w-4 h-4" />
-                Back
+                Back to editor
               </Button>
               <Button
                 variant="ghost"
@@ -189,7 +220,7 @@ export default function StepExport() {
 
           {/* Right Column: Share, Breakdown, AI Review (5 cols) */}
           <div className="lg:col-span-5 space-y-6">
-            {/* Social Share — appears after video is ready */}
+            {/* Social Share: appears after video is ready */}
             <SocialShare
               videoUrl={videoUrl || undefined}
               title={project?.title || "My AIVideo Tutorial"}
@@ -286,9 +317,9 @@ export default function StepExport() {
             </div>
 
             {/* AI Quality Review */}
-            <div className="sketch-card p-5 bg-[#FBBF24]/5 border-[#FBBF24]">
+            <div className="sketch-card p-5 bg-brand/5 border-brand">
               <h3 className="font-body font-semibold text-lg mb-3 flex items-center gap-2 text-[var(--sketch-fg)]">
-                <ClipboardCheck className="w-5 h-5 text-[#FBBF24]" />
+                <ClipboardCheck className="w-5 h-5 text-brand" />
                 AI Quality Review
               </h3>
               <div className="space-y-2">

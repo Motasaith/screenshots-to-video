@@ -4,7 +4,7 @@
  * The editor's crop was previously a *pending instruction*: the canvas kept
  * showing the whole screenshot with the discarded part dimmed, and FFmpeg did
  * the cutting at render time. That left the canvas and the export disagreeing
- * about what the video frame contains — most visibly with watermarks and
+ * about what the video frame contains: most visibly with watermarks and
  * captions, which FFmpeg positions against the cropped frame while the editor
  * drew them against the full image.
  *
@@ -37,7 +37,7 @@ export async function cropImageFile(
 
   const sx = Math.round((rect.x / 100) * img.naturalWidth);
   const sy = Math.round((rect.y / 100) * img.naturalHeight);
-  // At least 1px, and never past the edge — a crop dragged slightly outside
+  // At least 1px, and never past the edge: a crop dragged slightly outside
   // the image would otherwise produce an empty or errored canvas.
   const sw = Math.max(1, Math.min(Math.round((rect.w / 100) * img.naturalWidth), img.naturalWidth - sx));
   const sh = Math.max(1, Math.min(Math.round((rect.h / 100) * img.naturalHeight), img.naturalHeight - sy));

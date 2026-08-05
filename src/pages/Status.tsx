@@ -1,64 +1,54 @@
-import { motion } from "framer-motion";
-import Navbar from "@/components/Navbar";
-import FooterSection from "@/sections/FooterSection";
-import { CheckCircle2 } from "lucide-react";
-import { SpaceBackground } from "@/components/shared/SpaceBackground";
+import { PageShell } from "@/components/site/PageShell";
 
 const SYSTEMS = [
-  { name: "Web Application", status: "operational", uptime: "99.99%" },
-  { name: "API Services", status: "operational", uptime: "99.98%" },
-  { name: "FFmpeg Render Workers", status: "operational", uptime: "99.95%" },
-  { name: "Vision Copyright LLM", status: "operational", uptime: "99.99%" },
-  { name: "R2/B2 Storage", status: "operational", uptime: "100%" },
-];
+  { name: "Web application", uptime: "99.99%", status: "operational" },
+  { name: "API", uptime: "99.98%", status: "operational" },
+  { name: "Render workers", uptime: "99.95%", status: "operational" },
+  { name: "Copyright scanning", uptime: "99.99%", status: "operational" },
+  { name: "Media storage", uptime: "100%", status: "operational" },
+] as const;
 
 export default function Status() {
-  return (
-    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
-      <SpaceBackground />
-      <div className="relative z-10">
-        <Navbar />
-        <main className="max-w-3xl mx-auto pt-32 pb-20 px-6">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-12"
-          >
-            <h1 className="font-extrabold text-5xl tracking-tight mb-4 text-[var(--space-text)]">
-              System Status
-            </h1>
-            <div className="glass-panel p-4 bg-emerald-500/5 border border-emerald-500/25 flex items-center gap-3 rounded-2xl shadow-sm">
-              <CheckCircle2 className="text-emerald-500 w-6 h-6 animate-pulse" />
-              <span className="font-semibold text-emerald-600 dark:text-emerald-400">All Systems Operational</span>
-            </div>
-          </motion.div>
+  const allGood = SYSTEMS.every((s) => s.status === "operational");
 
-          <div className="space-y-4">
-            {SYSTEMS.map((sys) => (
-              <div key={sys.name} className="glass-panel p-6 border border-[var(--space-border)] bg-[var(--space-card)]/80 flex items-center justify-between rounded-2xl">
-                <div>
-                  <h3 className="font-bold text-xl mb-1 text-[var(--space-text)]">{sys.name}</h3>
-                  <p className="text-sm text-[var(--space-text-muted)]">Uptime (30 days): {sys.uptime}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  {sys.status === "operational" ? (
-                    <>
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
-                      <span className="font-semibold text-emerald-600 dark:text-emerald-400 text-sm">Operational</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
-                      <span className="font-semibold text-amber-600 dark:text-amber-400 text-sm">Degraded</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </main>
-        <FooterSection />
+  return (
+    <PageShell
+      title="System status"
+      description="Current availability of the AIVideo application, API and render workers."
+      canonical="https://aivideo.ai/status"
+      lede="Availability of each part of the service, and uptime over the last 30 days."
+    >
+      <div
+        className={`flex items-center gap-3 rounded-xl border px-5 py-4 ${
+          allGood ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"
+        }`}
+      >
+        <span
+          className={`h-2.5 w-2.5 flex-none rounded-full ${
+            allGood ? "bg-emerald-500" : "bg-amber-500"
+          }`}
+        />
+        <span className={`text-[15px] font-medium ${allGood ? "text-emerald-800" : "text-amber-800"}`}>
+          {allGood ? "All systems operational" : "Some systems are degraded"}
+        </span>
       </div>
-    </div>
+
+      <ul className="mt-8 divide-y divide-line border-y border-line">
+        {SYSTEMS.map((system) => (
+          <li key={system.name} className="flex items-center justify-between gap-4 py-4">
+            <div>
+              <p className="text-[15.5px] font-medium text-ink">{system.name}</p>
+              <p className="mt-0.5 text-[13.5px] text-ink-muted">
+                {system.uptime} uptime over 30 days
+              </p>
+            </div>
+            <span className="flex flex-none items-center gap-2 text-[14px] font-medium text-emerald-700">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              Operational
+            </span>
+          </li>
+        ))}
+      </ul>
+    </PageShell>
   );
 }

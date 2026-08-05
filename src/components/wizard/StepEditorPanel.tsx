@@ -2,7 +2,6 @@ import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useParams } from "react-router";
 import { trpc } from "@/providers/trpc";
 import { motion, AnimatePresence } from "framer-motion";
-import { useTheme } from "next-themes";
 import {
   ChevronRight as ChevronRightIcon,
   Target,
@@ -20,7 +19,6 @@ import {
   Stamp,
   Grid3x3,
   Sun,
-  Moon,
   BadgeCheck,
   Search,
   HelpCircle,
@@ -398,7 +396,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     { id: projectIdNum },
     { enabled: projectIdNum > 0 }
   );
-  const { setTheme, resolvedTheme } = useTheme();
 
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [annotations, setAnnotations] = useState<Record<number, StepAnnotation>>({});
@@ -518,7 +515,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
    *
    * The renderer has always read `introVideoPath`/`outroVideoPath`; nothing ever
    * wrote them, so picking "custom video" silently did nothing. Images are
-   * allowed as well as video — the renderer holds a still for the configured
+   * allowed as well as video: the renderer holds a still for the configured
    * duration.
    */
   const handleBumperUpload = async (kind: "intro" | "outro", file: File) => {
@@ -657,7 +654,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           setElevenLabsKeyInput("");
           elevenLabsKeyStatus.refetch();
           credits.refetch();
-          toast.success("ElevenLabs key saved — premium voices unlocked.");
+          toast.success("ElevenLabs key saved. Premium voices are unlocked.");
         },
         onError: (err) => toast.error(err.message || "Could not validate that key."),
       },
@@ -771,40 +768,55 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
   const startRender = trpc.render.start.useMutation();
 
+  // The job this modal is following. On a second render of an already finished
+  // project, `render.status` keeps reporting the previous job as complete
+  // until the worker picks the new one up, so progress has to be judged
+  // against a specific job id rather than against the project's status flag.
+  const [renderJobId, setRenderJobId] = useState<number | null>(null);
+
   const { data: renderStatus } = trpc.render.status.useQuery(
     { projectId: projectIdNum },
     {
       enabled: projectIdNum > 0 && renderStarted && showRenderModal,
       refetchInterval: 3000,
+      staleTime: 0,
+      refetchOnMount: "always",
     }
   );
 
+  const isCurrentRenderJob = renderJobId != null && renderStatus?.job?.id === renderJobId;
+  const renderIsComplete = isCurrentRenderJob && renderStatus?.job?.status === "complete";
+  const renderIsError = isCurrentRenderJob && renderStatus?.job?.status === "error";
+
   // Trigger render on dialog open
   useEffect(() => {
-    if (showRenderModal && renderStarted && projectIdNum > 0) {
-      setStartRenderError(null);
-      startRender
-        .mutateAsync({ projectId: projectIdNum })
-        .catch((err) => {
-          setStartRenderError(err.message || "Failed to start render");
-        });
-    }
+    if (!(showRenderModal && renderStarted && projectIdNum > 0)) return;
+    setStartRenderError(null);
+    setRenderJobId(null);
+
+    // Clear the previous run's status first. Without this the query resolves
+    // from cache the instant it is enabled, reports "complete", and the modal
+    // jumps to export before this render has been queued.
+    utils.render.status.reset({ projectId: projectIdNum });
+
+    startRender
+      .mutateAsync({ projectId: projectIdNum })
+      .then((res) => setRenderJobId(res.jobId ?? null))
+      .catch((err) => {
+        setStartRenderError(err.message || "Failed to start render");
+      });
   }, [showRenderModal, renderStarted, projectIdNum]);
 
-  // Navigate to export when complete
+  // Navigate to export when this render finishes
   useEffect(() => {
-    if (
-      showRenderModal &&
-      (renderStatus?.projectStatus === "complete" ||
-        renderStatus?.job?.status === "complete")
-    ) {
-      const timer = setTimeout(() => {
-        setShowRenderModal(false);
-        window.location.href = `/create/${projectIdNum}/export`;
-      }, 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [showRenderModal, renderStatus?.projectStatus, renderStatus?.job?.status, projectIdNum]);
+    if (!(showRenderModal && renderIsComplete)) return;
+    const timer = setTimeout(() => {
+      setShowRenderModal(false);
+      // A full page load, so the export screen starts from empty caches.
+      window.location.href = `/create/${projectIdNum}/export`;
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [showRenderModal, renderIsComplete, projectIdNum]);
 
   useEffect(() => {
     if (project?.title) {
@@ -1085,7 +1097,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           utils.step.listByProject.invalidate({ projectId: projectIdNum });
         } catch (err) {
           console.error("Failed to upload screenshot:", err);
-          // The step still exists with the local URL — it will break when the page reloads
+          // The step still exists with the local URL: it will break when the page reloads
           // but at least the user sees it immediately
         } finally {
           setUploadingFilesCount(prev => Math.max(0, prev - 1));
@@ -1307,7 +1319,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
   /* Load existing annotations */
   // Sync project step data into local annotation state. Only runs when the set
-  // of step IDs changes (initial load / step created / step deleted) — NOT on
+  // of step IDs changes (initial load / step created / step deleted): NOT on
   // every project refetch, which would clobber in-flight edits.
   const loadedStepSignatureRef = useRef<string>("");
   useEffect(() => {
@@ -1461,7 +1473,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       return;
     }
 
-    // In select mode, clicking empty canvas does nothing — annotation overlays
+    // In select mode, clicking empty canvas does nothing: annotation overlays
     // handle their own click via stopPropagation above.
     if (mode === "select") {
       return;
@@ -1814,7 +1826,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           x, y, w: width, h: height,
           color: "#FF0099",
         }];
-        // Do NOT set zoomTargetX/Y — highlight is decoupled from zoom
+        // Do NOT set zoomTargetX/Y: highlight is decoupled from zoom
         changed = true;
       }
     }
@@ -2096,7 +2108,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     if (!currentStep) return;
     lastSavedSnapshot.current = JSON.stringify(annotations[currentStep.id] ?? {});
     setSaveState("idle");
-    // Deliberately keyed on the step only — re-seeding on every annotation edit
+    // Deliberately keyed on the step only: re-seeding on every annotation edit
     // would defeat the point.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStep?.id]);
@@ -2146,7 +2158,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   /**
    * Cut the crop out of the screenshot and replace it.
    *
-   * The crop annotation is cleared afterwards because it has been carried out —
+   * The crop annotation is cleared afterwards because it has been carried out -
    * leaving it set would crop the already-cropped image again at render time.
    * Other annotations are cleared too: their coordinates are percentages of the
    * old image, and silently reinterpreting them against a differently-shaped one
@@ -2209,7 +2221,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
   // Whether an annotation overlay should capture pointer events.
   // Overlays only capture clicks when the user is in "select" mode or the
-  // matching tool mode — so you can draw blur/zoom/etc. inside a highlight box.
+  // matching tool mode: so you can draw blur/zoom/etc. inside a highlight box.
   const overlayPointer = (toolMode: ToolMode): "auto" | "none" => {
     if (mode === "select" || mode === toolMode) return "auto";
     return "none";
@@ -2604,7 +2616,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   disabled={isApplyingCrop}
                   title="Cut the crop out of the screenshot now"
                   aria-label="Apply crop to the screenshot"
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#00E676]/40 bg-[#00E676]/10 py-2 text-[11px] font-bold text-[#00A854] hover:bg-[#00E676]/20 disabled:opacity-50 dark:text-[#00E676]"
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#00E676]/40 bg-[#00E676]/10 py-2 text-[11px] font-bold text-[#00A854] hover:bg-[#00E676]/20 disabled:opacity-50 "
                 >
                   {isApplyingCrop ? (
                     <>
@@ -2620,7 +2632,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 </button>
               )}
               <p className="text-[10px] leading-relaxed text-[var(--sketch-fg-subtle)]">
-                Until you apply it, the crop happens at render time — so the
+                Until you apply it, the crop happens at render time, so the
                 watermark and captions preview against the whole screenshot
                 rather than the cropped frame.
               </p>
@@ -3718,13 +3730,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               )}
 
               {/* Adding zoom points lengthens the scene, and until now nothing
-                  said so — the renderer extends the clip to fit the camera move
+                  said so. The renderer extends the clip to fit the camera move
                   and pads the narration with silence. Show both numbers. */}
               {sceneTiming && sceneTiming.cameraSec > 0 && (
                 <div
                   className={`rounded-lg border px-2.5 py-2 text-[11px] leading-relaxed ${
                     sceneTiming.silenceSec > 1.5
-                      ? "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300"
+                      ? "border-amber-500/40 bg-amber-500/10 text-amber-700 "
                       : "border-[var(--sketch-border-color)]/30 bg-[var(--sketch-fg-subtle)]/5 text-[var(--sketch-fg-muted)]"
                   }`}
                 >
@@ -4275,7 +4287,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                       }
                     }}
                     disabled={generateScript.isPending}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-[#FBBF24] hover:bg-[#F59E0B] disabled:opacity-50 text-black text-sm font-bold rounded-md shadow-sm transition-all cursor-pointer border border-black/10"
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white text-sm font-bold rounded-md shadow-sm transition-all cursor-pointer border border-black/10"
                   >
                     {generateScript.isPending ? (
                       <>
@@ -4375,7 +4387,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                       }
                     }}
                     disabled={generateScript.isPending}
-                    className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-[#FBBF24] hover:bg-[#F59E0B] disabled:opacity-50 text-black text-sm font-bold rounded-md shadow-sm transition-all cursor-pointer border border-black/10"
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-brand hover:bg-brand-hover disabled:opacity-50 text-white text-sm font-bold rounded-md shadow-sm transition-all cursor-pointer border border-black/10"
                   >
                     {generateScript.isPending ? (
                       <>
@@ -4503,7 +4515,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                           toast.success(`Applied ${Math.min(scenes.length, steps.length)} scripts!`);
                           setManualScriptText("");
                         }}
-                        className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-[#FBBF24] hover:bg-[#F59E0B] text-black text-xs font-bold rounded-md transition-all cursor-pointer border border-black/10"
+                        className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-brand hover:bg-brand-hover text-white text-xs font-bold rounded-md transition-all cursor-pointer border border-black/10"
                       >
                         Apply Script to Scenes
                       </button>
@@ -4695,7 +4707,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                     key={v.id}
                     onClick={() => setSelectedVoice(v.id)}
                     className={`p-2 border rounded-lg flex items-center justify-between text-xs transition-all cursor-pointer ${isSelected
-                        ? "border-[#FBBF24] bg-[#FBBF24]/5"
+                        ? "border-brand bg-brand/5"
                         : "border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
                       }`}
                   >
@@ -4744,7 +4756,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               step={0.1}
               value={voiceSpeed}
               onChange={(e) => setVoiceSpeed(parseFloat(e.target.value))}
-              className="w-full h-1 bg-[var(--sketch-fg-subtle)]/10 appearance-none rounded cursor-pointer accent-[#FBBF24]"
+              className="w-full h-1 bg-[var(--sketch-fg-subtle)]/10 appearance-none rounded cursor-pointer accent-brand"
             />
           </div>
         </div>
@@ -4754,9 +4766,9 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           <button
             onClick={() => saveVoiceSelection(false)}
             disabled={updateProject.isPending}
-            className="w-full py-2 bg-[#FBBF24] hover:bg-[#FBBF24]/90 text-black disabled:opacity-50 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 border border-black/10 cursor-pointer shadow-md"
+            className="w-full py-2 bg-brand hover:bg-brand-hover text-white disabled:opacity-50 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 border border-black/10 cursor-pointer shadow-md"
           >
-            {updateProject.isPending && <Loader2 className="w-3 h-3 animate-spin text-black" />}
+            {updateProject.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
             Set Voice
           </button>
         </div>
@@ -4794,7 +4806,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   <button
                     onClick={handleSaveElevenLabsKey}
                     disabled={saveElevenLabsKey.isPending}
-                    className="flex-shrink-0 px-3 h-8 bg-[#FBBF24] hover:bg-[#F59E0B] text-black font-bold text-xs rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                    className="flex-shrink-0 px-3 h-8 bg-brand hover:bg-brand-hover text-white font-bold text-xs rounded-lg transition-colors flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
                   >
                     {saveElevenLabsKey.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save"}
                   </button>
@@ -4893,7 +4905,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                     key={v.id}
                     onClick={() => setSelectedVoice(v.id)}
                     className={`p-2 border rounded-lg flex items-center justify-between text-xs transition-all cursor-pointer ${isSelected
-                        ? "border-[#FBBF24] bg-[#FBBF24]/5"
+                        ? "border-brand bg-brand/5"
                         : "border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] hover:border-[var(--sketch-border-color)]/40"
                       }`}
                   >
@@ -4936,7 +4948,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               step={0.1}
               value={voiceSpeed}
               onChange={(e) => setVoiceSpeed(parseFloat(e.target.value))}
-              className="w-full h-1 bg-[var(--sketch-fg-subtle)]/10 appearance-none rounded cursor-pointer accent-[#FBBF24]"
+              className="w-full h-1 bg-[var(--sketch-fg-subtle)]/10 appearance-none rounded cursor-pointer accent-brand"
             />
           </div>
         </div>
@@ -4947,9 +4959,9 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
             onClick={() => saveVoiceSelection(true)}
             disabled={updateProject.isPending || !hasElevenLabsKey}
             title={!hasElevenLabsKey ? "Add your ElevenLabs API key above first" : undefined}
-            className="w-full py-2 bg-[#FBBF24] hover:bg-[#F59E0B] text-black disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold rounded-lg shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-black/10"
+            className="w-full py-2 bg-brand hover:bg-brand-hover text-white disabled:opacity-50 disabled:cursor-not-allowed text-xs font-bold rounded-lg shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5 border border-black/10"
           >
-            {updateProject.isPending && <Loader2 className="w-3 h-3 animate-spin text-black" />}
+            {updateProject.isPending && <Loader2 className="w-3 h-3 animate-spin" />}
             {hasElevenLabsKey ? "Set Premium Voice" : "Add a key to use premium voices"}
           </button>
         </div>
@@ -5044,13 +5056,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     return (
       <div className="space-y-5">
         {isSpecificClip && (
-          <div className="flex items-center justify-between bg-blue-500/5 dark:bg-blue-500/10 p-2.5 rounded-xl border border-blue-500/20 dark:border-blue-500/10">
-            <span className="text-xs font-bold text-blue-700 dark:text-blue-400">
+          <div className="flex items-center justify-between bg-blue-500/5  p-2.5 rounded-xl border border-blue-500/20 ">
+            <span className="text-xs font-bold text-blue-700 ">
               Editing for {clipTitle}
             </span>
             <button 
               onClick={() => setActiveTransitionClipId(null)}
-              className="text-[10px] font-extrabold bg-blue-500/10 hover:bg-blue-500/20 dark:hover:bg-blue-500/30 text-blue-600 dark:text-blue-400 px-2 py-1 rounded-md transition-colors cursor-pointer"
+              className="text-[10px] font-extrabold bg-blue-500/10 hover:bg-blue-500/20  text-blue-600  px-2 py-1 rounded-md transition-colors cursor-pointer"
             >
               Back to Global
             </button>
@@ -5077,8 +5089,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   }}
                   className={`p-3 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer ${
                     isSelected
-                      ? "bg-blue-500/10 border-blue-500 text-blue-600 dark:text-blue-400 shadow-md shadow-blue-500/5"
-                      : "bg-slate-50/50 dark:bg-slate-900/10 border-[var(--sketch-border-color)]/20 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/40"
+                      ? "bg-blue-500/10 border-blue-500 text-blue-600  shadow-md shadow-blue-500/5"
+                      : "bg-slate-50/50  border-[var(--sketch-border-color)]/20 text-slate-700  hover:text-slate-900  hover:bg-slate-100/40"
                   }`}
                 >
                   <div className="flex items-center justify-center h-10 w-full shrink-0">
@@ -5102,7 +5114,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 step={0.01}
                 value={props.transitionDuration ?? 0.5}
                 onChange={(e) => props.onTransitionDurationChange?.(Number(e.target.value))}
-                className="w-14 text-right bg-slate-100/50 dark:bg-slate-950/50 border border-[var(--sketch-border-color)]/20 rounded px-1.5 py-0.5 text-xs font-mono text-[var(--sketch-fg)] focus:outline-none"
+                className="w-14 text-right bg-slate-100/50  border border-[var(--sketch-border-color)]/20 rounded px-1.5 py-0.5 text-xs font-mono text-[var(--sketch-fg)] focus:outline-none"
               />
               <span className="text-[10px] font-semibold text-[var(--sketch-fg-subtle)]">s</span>
             </div>
@@ -5191,7 +5203,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
             {/* Custom intro upload.
                 The "custom-video" template existed and the renderer read
-                project.introVideoPath, but nothing ever set it — so choosing
+                project.introVideoPath, but nothing ever set it, so choosing
                 this option quietly did nothing. Images are accepted too; the
                 renderer holds a still for the chosen duration. */}
             {introTemplate === "custom-video" && (
@@ -5219,7 +5231,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
             {/* Duration slider.
                 Hidden when a custom VIDEO is attached: the clip already has its
-                own length, and the slider was not merely decorative — its 3s
+                own length, and the slider was not merely decorative: its 3s
                 default was being applied as a hard trim, so a 20-second intro
                 came out three seconds long. A custom IMAGE still needs one,
                 since a still has no duration of its own. */}
@@ -5783,7 +5795,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
           {/* Right: Light/Dark Mode toggle button */}
           <div className="flex items-center gap-3">
-            {/* Autosave status. Quiet when idle, explicit when it matters —
+            {/* Autosave status. Quiet when idle, explicit when it matters -
                 a failed save is the one state the user must not miss. */}
             {saveState !== "idle" && (
               <span
@@ -5826,7 +5838,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               data-tour="export-btn"
               onClick={handleExportRequest}
               disabled={isPreparingExport}
-              className="py-1 px-3 bg-[#FBBF24] hover:bg-[#FBBF24]/90 dark:bg-[#FBBF24]/20 dark:hover:bg-[#FBBF24]/30 text-black dark:text-[#FBBF24] text-xs font-bold rounded shadow-sm hover:shadow transition-all flex items-center gap-1.5 cursor-pointer border border-[#FBBF24]/30"
+              className="py-1 px-3 bg-brand hover:bg-brand-hover   text-white  text-xs font-bold rounded shadow-sm hover:shadow transition-all flex items-center gap-1.5 cursor-pointer border border-brand/30"
             >
               {isPreparingExport ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -5846,22 +5858,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               <HelpCircle className="w-4 h-4" />
             </button>
 
-            {/* Light/Dark Mode toggle button */}
-            <button
-              onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-              className="p-1.5 hover:bg-[var(--sketch-fg-subtle)]/10 rounded-full text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] transition-all cursor-pointer border border-[var(--sketch-border-color)]/20 flex items-center justify-center w-8 h-8"
-              title={resolvedTheme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
-            >
-              {resolvedTheme === "dark" ? (
-                <Sun className="w-4 h-4 text-[#FBBF24]" />
-              ) : (
-                <Moon className="w-4 h-4 text-slate-700" />
-              )}
-            </button>
           </div>
         </div>
 
-        {/* Nested Menus — functional dropdown menus (hidden on mobile) */}
+        {/* Nested Menus: functional dropdown menus (hidden on mobile) */}
         <div className="editor-menu-bar-desktop flex items-center gap-1 text-[11px] text-[var(--sketch-fg-muted)] font-medium leading-none select-none pl-9">
           {/* File Menu */}
           <DropdownMenu>
@@ -5946,11 +5946,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               <DropdownMenuCheckboxItem checked={!!activeRightTab} onCheckedChange={(v) => setActiveRightTab(v ? "properties" : null)}>
                 Show Properties Panel
               </DropdownMenuCheckboxItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}>
-                {resolvedTheme === "dark" ? <Sun className="w-3.5 h-3.5 mr-2" /> : <Moon className="w-3.5 h-3.5 mr-2" />}
-                {resolvedTheme === "dark" ? "Light Mode" : "Dark Mode"}
-              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -6232,7 +6227,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           </DropdownMenu>
         </div>
 
-        {/* Mobile Controls (Menu, Properties, Panels) — visible only on small screens */}
+        {/* Mobile Controls (Menu, Properties, Panels): visible only on small screens */}
         <div className="editor-menu-bar-mobile flex items-center gap-1 text-[11px] text-[var(--sketch-fg-muted)] font-medium leading-none select-none pl-2">
           {/* Menu Dropdown */}
           <DropdownMenu open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
@@ -6378,13 +6373,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   }}
                   className="bg-transparent text-[11px] font-medium text-[var(--sketch-fg-muted)] border-none outline-none cursor-pointer py-0.5 pr-1 focus:ring-0"
                 >
-                  <option value="fit" className="bg-white text-slate-900 dark:bg-[#0B1E1B] dark:text-slate-100">Fit</option>
-                  <option value="50" className="bg-white text-slate-900 dark:bg-[#0B1E1B] dark:text-slate-100">50%</option>
-                  <option value="75" className="bg-white text-slate-900 dark:bg-[#0B1E1B] dark:text-slate-100">75%</option>
-                  <option value="100" className="bg-white text-slate-900 dark:bg-[#0B1E1B] dark:text-slate-100">100%</option>
-                  <option value="150" className="bg-white text-slate-900 dark:bg-[#0B1E1B] dark:text-slate-100">150%</option>
-                  <option value="200" className="bg-white text-slate-900 dark:bg-[#0B1E1B] dark:text-slate-100">200%</option>
-                  <option value="300" className="bg-white text-slate-900 dark:bg-[#0B1E1B] dark:text-slate-100">300%</option>
+                  <option value="fit" className="bg-white text-slate-900 ">Fit</option>
+                  <option value="50" className="bg-white text-slate-900 ">50%</option>
+                  <option value="75" className="bg-white text-slate-900 ">75%</option>
+                  <option value="100" className="bg-white text-slate-900 ">100%</option>
+                  <option value="150" className="bg-white text-slate-900 ">150%</option>
+                  <option value="200" className="bg-white text-slate-900 ">200%</option>
+                  <option value="300" className="bg-white text-slate-900 ">300%</option>
                 </select>
               </div>
 
@@ -6484,7 +6479,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         </button>
       )}
 
-      {/* 3. Main Split Workspace — canvas+timeline (left) | sidebar+tabs (right) */}
+      {/* 3. Main Split Workspace: canvas+timeline (left) | sidebar+tabs (right) */}
       <div className="flex-1 flex flex-col md:flex-row items-stretch min-h-0 w-full overflow-hidden">
 
         {/* LEFT COLUMN: Canvas + Timeline stacked vertically */}
@@ -6563,7 +6558,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                             }}
                             muted
                             playsInline
-                            // Native controls only in select mode — while a
+                            // Native controls only in select mode: while a
                             // drawing tool is active they would swallow the
                             // clicks meant for annotating. The floating play
                             // button below works in every mode.
@@ -6757,7 +6752,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                               </button>
                             )}
 
-                            {/* Crop overlay — Canva style with dimmed outside + edge handles */}
+                            {/* Crop overlay: Canva style with dimmed outside + edge handles */}
                             {cropRect && cropRect.x != null && cropRect.y != null && cropRect.w != null && cropRect.h != null && (
                               <>
                                 {/* Dimmed area outside the crop (4 rectangles: top, bottom, left, right) */}
@@ -6772,7 +6767,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                   <div style={{ position: "absolute", left: `${cropRect.x + cropRect.w}%`, top: `${cropRect.y}%`, width: `${100 - cropRect.x - cropRect.w}%`, height: `${cropRect.h}%`, backgroundColor: "rgba(0,0,0,0.55)" }} />
                                 </div>
 
-                                {/* Crop selection rectangle — draggable to move, with edge handles to resize */}
+                                {/* Crop selection rectangle: draggable to move, with edge handles to resize */}
                                 <div
                                   className="absolute cursor-move select-none"
                                   style={{
@@ -6807,7 +6802,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                     Crop: keep this area
                                   </div>
 
-                                  {/* Edge handles — 8 resize handles (corners + midpoints) */}
+                                  {/* Edge handles: 8 resize handles (corners + midpoints) */}
                                   {RESIZE_HANDLES.map((h) => (
                                     <div
                                       key={h.name}
@@ -6994,7 +6989,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                             {/* Watermark preview.
                                 Positioned against the canvas container, which is
                                 sized to the project aspect ratio and therefore IS
-                                the output frame — the same thing FFmpeg positions
+                                the output frame, the same thing FFmpeg positions
                                 the watermark against. Do not re-anchor this to the
                                 crop rectangle: the crop changes what fills the
                                 frame, not where the frame's edges are. */}
@@ -7460,7 +7455,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                           </div>
                         )}
 
-                        {/* Live caption preview — like the watermark, positioned
+                        {/* Live caption preview: like the watermark, positioned
                             against the canvas container, which is the output frame. */}
                         {(props.captionsEnabled ?? true) && currentStep && (
                           <div
@@ -7547,7 +7542,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           </div>
         )}
 
-        {/* RIGHT SIDEBAR CONTENT — full height, conditionally shown */}
+        {/* RIGHT SIDEBAR CONTENT: full height, conditionally shown */}
         {activeRightTab && (
           <div
             className="h-full bg-[var(--sketch-panel-bg)] border-l border-[var(--sketch-border-color)]/40 flex flex-col flex-shrink-0 hidden md:flex"
@@ -7593,7 +7588,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           </div>
         )}
 
-        {/* Far-right vertical tab strip — full height on desktop, hidden on mobile */}
+        {/* Far-right vertical tab strip: full height on desktop, hidden on mobile */}
         <div data-tour="sidebar-tabs" className="editor-tab-strip-vertical w-16 bg-[var(--sketch-panel-bg)] border-l border-[var(--sketch-border-color)]/40 flex flex-col items-center flex-shrink-0 h-full overflow-y-auto scrollbar-thin py-2 gap-1 hidden md:flex">
           <RightTabButton active={activeRightTab === "properties"} onClick={() => toggleRightTab("properties")} icon={<Settings2 className="w-4.5 h-4.5" />} label="Properties" />
           <RightTabButton active={activeRightTab === "script"} onClick={() => toggleRightTab("script")} icon={<Type className="w-4.5 h-4.5" />} label="Script" />
@@ -7610,7 +7605,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         </div>
       </div>
 
-      {/* Mobile sidebar overlay — shown on small screens when sidebar is open */}
+      {/* Mobile sidebar overlay: shown on small screens when sidebar is open */}
       {isMobileSidebarOpen && activeRightTab && (
         <>
           <div className="editor-sidebar-overlay md:hidden" onClick={() => setIsMobileSidebarOpen(false)} />
@@ -7738,40 +7733,40 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       {/* Mega Render Progress Dialog Popup */}
       <Dialog open={showRenderModal} onOpenChange={(open) => {
         if (!open) {
-          const isDone = renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete";
-          const isErr = renderStatus?.projectStatus === "error" || renderStatus?.job?.status === "error" || startRenderError;
+          const isDone = renderIsComplete;
+          const isErr = renderIsError || startRenderError;
           if (isDone || isErr) {
             setShowRenderModal(false);
             setRenderStarted(false);
           }
         }
       }}>
-        <DialogContent className="border border-[var(--sketch-border-color)]/25 bg-white dark:bg-[#0B1E1B] bg-opacity-100 max-w-2xl rounded-2xl shadow-2xl p-8 flex flex-col gap-6 text-center select-none outline-none">
+        <DialogContent className="border border-[var(--sketch-border-color)]/25 bg-white  bg-opacity-100 max-w-2xl rounded-2xl shadow-2xl p-8 flex flex-col gap-6 text-center select-none outline-none">
           <DialogHeader className="text-center flex flex-col items-center">
             <div className="relative inline-block">
-              <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-[#FBBF24]/20 px-2 py-1 sketch-border-sm inline-block">
+              <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-brand/20 px-2 py-1 sketch-border-sm inline-block">
                 Rendering Video
               </span>
-              {!(renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete") &&
-                !(renderStatus?.projectStatus === "error" || renderStatus?.job?.status === "error" || startRenderError) && (
-                  <span className="font-hand text-xl text-[var(--sketch-fg-muted)] absolute -top-7 left-36 rotate-[3deg] animate-float hidden sm:block">
+              {!(renderIsComplete) &&
+                !(renderIsError || startRenderError) && (
+                  <span className="font-hand text-xl text-[var(--sketch-fg-muted)] absolute -top-7 left-36 rotate-[3deg] hidden sm:block">
                     Rendering your video…
                   </span>
                 )}
             </div>
             <DialogTitle className="text-2xl font-bold mt-4 text-[var(--sketch-fg)]">
-              {renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete"
+              {renderIsComplete
                 ? "Video complete!"
-                : renderStatus?.projectStatus === "error" || renderStatus?.job?.status === "error" || startRenderError
+                : renderIsError || startRenderError
                   ? "Something went wrong"
                   : "Generating your video…"}
             </DialogTitle>
             <DialogDescription className="text-sm text-[var(--sketch-fg-muted)] mt-1.5 leading-relaxed max-w-md">
-              {renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete"
+              {renderIsComplete
                 ? "Redirecting to preview page..."
-                : renderStatus?.projectStatus === "error" || renderStatus?.job?.status === "error" || startRenderError
-                  ? renderStatus?.job?.message || startRenderError || "An error occurred during rendering."
-                  : "Rendering runs on our servers — you can safely close this and it will keep going in the background."}
+                : renderIsError || startRenderError
+                  ? (isCurrentRenderJob && renderStatus?.job?.message) || startRenderError || "An error occurred during rendering."
+                  : "Rendering runs on our servers, so you can safely close this and it will keep going in the background."}
             </DialogDescription>
           </DialogHeader>
 
@@ -7798,22 +7793,22 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               {/* Progress bar */}
               <div className="w-full bg-[var(--sketch-fg-subtle)]/5 border border-[var(--sketch-border-color)]/10 rounded-full h-3 overflow-hidden p-0.5 mb-6">
                 <div
-                  className={`h-full transition-all duration-500 rounded-full ${renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete"
+                  className={`h-full transition-all duration-500 rounded-full ${renderIsComplete
                       ? "bg-emerald-500"
-                      : renderStatus?.projectStatus === "error" || renderStatus?.job?.status === "error"
+                      : renderIsError
                         ? "bg-red-500"
-                        : "bg-[#FBBF24]"
+                        : "bg-brand"
                     }`}
                   style={{
-                    width: `${renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete"
+                    width: `${renderIsComplete
                         ? 100
-                        : Math.min((renderStatus?.job ? ((renderStatus.job.currentStep || 0) / (renderStatus.job.totalSteps || 1)) * 100 : 0) + 5, 95)
+                        : Math.min((isCurrentRenderJob && renderStatus?.job ? ((renderStatus.job.currentStep || 0) / (renderStatus.job.totalSteps || 1)) * 100 : 0) + 5, 95)
                       }%`
                   }}
                 />
               </div>
 
-              {renderStatus?.projectStatus === "complete" || renderStatus?.job?.status === "complete" ? (
+              {renderIsComplete ? (
                 <div className="p-6 bg-emerald-500/5 border border-emerald-500/20 rounded-xl flex flex-col items-center">
                   <CheckCircle className="w-10 h-10 text-emerald-600 mb-3" />
                   <h4 className="font-bold text-lg text-[var(--sketch-fg)]">Complete!</h4>
@@ -7821,12 +7816,12 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                     Your video is ready. Preparing export screen...
                   </p>
                 </div>
-              ) : renderStatus?.projectStatus === "error" || renderStatus?.job?.status === "error" ? (
+              ) : renderIsError ? (
                 <div className="p-6 bg-red-500/5 border border-red-500/20 rounded-xl flex flex-col items-center">
                   <AlertTriangle className="w-10 h-10 text-red-600 mb-3" />
                   <h4 className="font-bold text-lg text-[var(--sketch-fg)]">Render Failed</h4>
                   <p className="text-xs text-[var(--sketch-fg-muted)] mt-1.5 max-w-sm">
-                    {renderStatus?.job?.message || "An unexpected error occurred."}
+                    {(isCurrentRenderJob && renderStatus?.job?.message) || "An unexpected error occurred."}
                   </p>
                   <div className="flex gap-3 mt-4">
                     <button
@@ -7845,7 +7840,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                         setRenderStarted(false);
                         setTimeout(() => setRenderStarted(true), 100);
                       }}
-                      className="px-4 py-2 bg-[#FBBF24] hover:bg-[#F59E0B] text-black text-xs font-bold rounded-lg transition-colors cursor-pointer"
+                      className="px-4 py-2 bg-brand hover:bg-brand-hover text-white text-xs font-bold rounded-lg transition-colors cursor-pointer"
                     >
                       Retry
                     </button>
@@ -7855,7 +7850,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 <div className="space-y-2.5 max-w-md mx-auto">
                   {renderStages.map((stage, i) => {
                     const Icon = stage.icon;
-                    const currentStage = renderStatus?.job?.stage || "queued";
+                    const currentStage = (isCurrentRenderJob && renderStatus?.job?.stage) || "queued";
                     const currentStageIndex = renderStages.findIndex((s) => s.key === currentStage);
                     const isActive = i === currentStageIndex;
                     const isDone = i < currentStageIndex;
@@ -7864,7 +7859,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                       <div
                         key={stage.key}
                         className={`p-3 border rounded-xl flex items-center gap-4 transition-all duration-200 ${isActive
-                            ? "border-[#FBBF24] bg-[#FBBF24]/5"
+                            ? "border-brand bg-brand/5"
                             : isDone
                               ? "border-emerald-500/40 bg-emerald-500/5"
                               : "border-[var(--sketch-border-color)]/10 bg-[var(--sketch-card-bg)]/50 opacity-40"
@@ -7872,7 +7867,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                       >
                         <div
                           className={`w-8 h-8 flex items-center justify-center border rounded-lg flex-shrink-0 ${isActive
-                              ? "border-[#FBBF24] bg-[#FBBF24]/10"
+                              ? "border-brand bg-brand/10"
                               : isDone
                                 ? "border-emerald-500 bg-emerald-500/10 text-emerald-600"
                                 : "border-[var(--sketch-border-color)]/25 bg-[var(--sketch-card-bg)]"
@@ -7899,7 +7894,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                           </span>
                           {isActive && (
                             <p className="font-mono text-[9px] text-[var(--sketch-fg-muted)] mt-0.5">
-                              {renderStatus?.job?.message || "Processing..."}
+                              {(isCurrentRenderJob && renderStatus?.job?.message) || "Processing..."}
                             </p>
                           )}
                         </div>
@@ -7930,7 +7925,7 @@ function ShortcutGuideNote() {
       <div className="hidden md:block max-w-2xl w-full space-y-6 text-center">
         <div className="space-y-2">
           <h3 className="text-base font-bold text-[var(--sketch-fg)] flex items-center justify-center gap-2">
-            <Keyboard className="w-5 h-5 text-[#FBBF24]" /> Canvas Editor Keyboard Shortcuts
+            <Keyboard className="w-5 h-5 text-brand" /> Canvas Editor Keyboard Shortcuts
           </h3>
           <p className="text-xs text-[var(--sketch-fg-muted)]">
             Press any of these hotkeys while editing to select tools instantly.
@@ -8028,7 +8023,7 @@ function ShortcutGuideNote() {
       <div className="block md:hidden max-w-md w-full space-y-4 text-center">
         <div className="space-y-1">
           <h3 className="text-sm font-bold text-[var(--sketch-fg)] flex items-center justify-center gap-1.5">
-            <Hand className="w-4 h-4 text-[#FBBF24]" /> Mobile Gesture Guide
+            <Hand className="w-4 h-4 text-brand" /> Mobile Gesture Guide
           </h3>
           <p className="text-[10px] text-[var(--sketch-fg-muted)]">
             Quick tips to edit your video screenshots on touchscreens.
@@ -8144,7 +8139,7 @@ function RightTabButton({
     <button
       onClick={onClick}
       className={`w-full py-2.5 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all border-l-2 ${active
-          ? "bg-[#FBBF24]/10 text-[var(--sketch-fg)] border-[#FBBF24]"
+          ? "bg-brand/10 text-[var(--sketch-fg)] border-brand"
           : "bg-transparent text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] hover:bg-[var(--sketch-fg-subtle)]/5 border-transparent"
         }`}
     >
@@ -8191,7 +8186,7 @@ function BumperUpload({
         <div className="flex items-center justify-between gap-2">
           <span className="truncate font-mono text-[10px] text-[var(--sketch-fg-subtle)]">
             {isVideoPath(currentPath)
-              ? "Video attached — plays in full"
+              ? "Video attached, plays in full"
               : "Image attached"}
           </span>
           <button
@@ -8272,13 +8267,13 @@ function getTransitionSvg(value: TransitionType) {
   switch (value) {
     case "none":
       return (
-        <svg className="w-16 h-10 text-slate-400 dark:text-slate-500" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg className="w-16 h-10 text-slate-400 " viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect x="8" y="6" width="48" height="28" rx="6" stroke="currentColor" strokeWidth="1.5" fill="currentColor" fillOpacity="0.05" />
         </svg>
       );
     case "dissolve":
       return (
-        <svg className="w-16 h-10 text-blue-500 dark:text-blue-400" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg className="w-16 h-10 text-blue-500 " viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect x="8" y="6" width="48" height="28" rx="6" stroke="currentColor" strokeWidth="1.5" fill="currentColor" fillOpacity="0.05" />
           <path d="M26,12 L26,28 M38,12 L38,28" stroke="currentColor" strokeWidth="1.5" strokeDasharray="2 2" />
           <rect x="27" y="7" width="10" height="26" fill="currentColor" fillOpacity="0.15" />
@@ -8286,7 +8281,7 @@ function getTransitionSvg(value: TransitionType) {
       );
     case "fade":
       return (
-        <svg className="w-16 h-10 text-slate-500 dark:text-slate-400" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg className="w-16 h-10 text-slate-500 " viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect x="8" y="6" width="48" height="28" rx="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
           <defs>
             <linearGradient id="fadeGrad" x1="0" y1="0" x2="1" y2="0">
@@ -8299,7 +8294,7 @@ function getTransitionSvg(value: TransitionType) {
       );
     case "slide-left":
       return (
-        <svg className="w-16 h-10 text-slate-500 dark:text-slate-400" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg className="w-16 h-10 text-slate-500 " viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect x="8" y="6" width="48" height="28" rx="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
           <rect x="9" y="7" width="20" height="26" fill="currentColor" fillOpacity="0.25" />
           <path d="M44,20 L32,20 M36,16 L32,20 L36,24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -8308,7 +8303,7 @@ function getTransitionSvg(value: TransitionType) {
       );
     case "slide-right":
       return (
-        <svg className="w-16 h-10 text-slate-500 dark:text-slate-400" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg className="w-16 h-10 text-slate-500 " viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect x="8" y="6" width="48" height="28" rx="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
           <rect x="35" y="7" width="20" height="26" fill="currentColor" fillOpacity="0.25" />
           <path d="M20,20 L32,20 M28,16 L32,20 L28,24" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -8317,7 +8312,7 @@ function getTransitionSvg(value: TransitionType) {
       );
     case "slide-up":
       return (
-        <svg className="w-16 h-10 text-slate-500 dark:text-slate-400" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg className="w-16 h-10 text-slate-500 " viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect x="8" y="6" width="48" height="28" rx="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
           <rect x="9" y="7" width="46" height="12" fill="currentColor" fillOpacity="0.25" />
           <path d="M32,30 L32,18 M28,22 L32,18 L36,22" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -8325,7 +8320,7 @@ function getTransitionSvg(value: TransitionType) {
       );
     case "flip":
       return (
-        <svg className="w-16 h-10 text-slate-500 dark:text-slate-400" viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg className="w-16 h-10 text-slate-500 " viewBox="0 0 64 40" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect x="8" y="6" width="48" height="28" rx="6" stroke="currentColor" strokeWidth="1.5" fill="none" />
           <path d="M32,12 C38,12 42,16 42,20 C42,24 38,28 32,28 C26,28 22,24 22,20" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeDasharray="2 2" />
           <path d="M20,17 L22,21 L26,19" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />

@@ -1,25 +1,39 @@
 import { Link } from "react-router";
-import { ArrowLeft, Film } from "lucide-react";
-import { SpaceBackground } from "@/components/shared/SpaceBackground";
+import { ArrowLeft } from "lucide-react";
+import { Logo } from "@/components/site/Logo";
+import { SEO } from "@/components/SEO";
 
 export default function NotFound() {
   return (
-    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans flex items-center justify-center">
-      <SpaceBackground />
-      <div className="relative z-10 text-center">
-        <div className="w-16 h-16 bg-teal-500/10 border border-teal-500/20 flex items-center justify-center mx-auto mb-6 rounded-2xl shadow-sm">
-          <Film className="w-8 h-8 text-teal-500" />
-        </div>
-        <h1 className="font-extrabold text-6xl tracking-tight text-[var(--space-text)]">
-          404
-        </h1>
-        <p className="text-[var(--space-text-muted)] mt-2 mb-6">
-          This page doesn't exist or has been moved.
-        </p>
-        <Link to="/" className="glass-btn glass-btn-primary inline-flex py-3 px-6 rounded-xl font-semibold text-xs gap-2">
-          <ArrowLeft className="w-4 h-4" />
-          Back to Home
+    <div className="grid min-h-screen place-items-center px-6">
+      <SEO
+        title="Page not found"
+        description="That page does not exist."
+        noindex
+      />
+      <div className="text-center">
+        <Link to="/" className="inline-flex items-center gap-2.5">
+          <Logo size={28} />
+          <span className="text-[18px] font-semibold tracking-[-0.02em] text-ink">AIVideo</span>
         </Link>
+
+        <p className="mt-12 text-[13px] font-medium uppercase tracking-[0.14em] text-ink-muted">
+          404
+        </p>
+        <h1 className="h2 mt-3">This page does not exist</h1>
+        <p className="lede mx-auto mt-4 max-w-md">
+          It may have moved, or the link that brought you here may be out of date.
+        </p>
+
+        <div className="mt-8 flex flex-wrap justify-center gap-3">
+          <Link to="/" className="btn btn-primary">
+            <ArrowLeft className="h-4 w-4" />
+            Back to the homepage
+          </Link>
+          <Link to="/docs" className="btn btn-secondary">
+            Read the docs
+          </Link>
+        </div>
       </div>
     </div>
   );

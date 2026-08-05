@@ -8,9 +8,6 @@ import {
   User,
   CreditCard,
   Shield,
-  Monitor,
-  Moon,
-  Sun,
   Crown,
   CheckCircle,
   Trash2,
@@ -30,8 +27,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { useTheme } from "next-themes";
-import { SpaceBackground } from "@/components/shared/SpaceBackground";
 import { toast } from "sonner";
 
 const PLAN_LABEL: Record<string, string> = {
@@ -43,7 +38,6 @@ const PLAN_LABEL: Record<string, string> = {
 export default function Settings() {
   const { user, isLoading, logout, refresh } = useAuth();
   const navigate = useNavigate();
-  const { theme, setTheme, resolvedTheme } = useTheme();
 
   // ── ElevenLabs bring-your-own-key ──
   const keyStatus = trpc.settings.elevenLabsKeyStatus.useQuery(undefined, { enabled: !!user });
@@ -62,9 +56,8 @@ export default function Settings() {
 
   if (isLoading) {
     return (
-      <div className="theme-3d-immersive min-h-screen flex items-center justify-center font-sans">
-        <SpaceBackground />
-        <div className="relative z-10 text-[var(--space-text-muted)] font-mono">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center font-sans">
+        <div className="relative z-10 text-[var(--space-text-muted)]">Loading...</div>
       </div>
     );
   }
@@ -84,7 +77,7 @@ export default function Settings() {
           setKeyInput("");
           keyStatus.refetch();
           keyCredits.refetch();
-          toast.success("ElevenLabs key saved — premium voices unlocked.");
+          toast.success("ElevenLabs key saved. Premium voices are unlocked.");
         },
         onError: (err) => toast.error(err.message || "Could not validate that key."),
       },
@@ -117,8 +110,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
-      <SpaceBackground />
+    <div className="min-h-screen relative overflow-x-hidden font-sans">
       <div className="relative z-10">
         <header className="border-b border-[var(--space-border)] bg-[var(--space-card)]/90 backdrop-blur-sm relative">
           <div className="w-full px-6 lg:px-12">
@@ -128,12 +120,12 @@ export default function Settings() {
                 className="flex items-center gap-2 text-[var(--space-text-subtle)] hover:text-[var(--space-text)] transition-colors"
               >
                 <ArrowLeft className="w-4 h-4" />
-                <span className="text-sm font-mono">Dashboard</span>
+                <span className="text-sm">Dashboard</span>
               </button>
               <h1 className="font-bold text-lg text-[var(--space-text)]">Account Settings</h1>
               <button
                 onClick={logout}
-                className="flex items-center gap-2 text-[var(--space-text-subtle)] hover:text-[var(--space-text)] transition-colors text-sm font-mono"
+                className="flex items-center gap-2 text-[var(--space-text-subtle)] hover:text-[var(--space-text)] transition-colors text-sm"
               >
                 <LogOut className="w-4 h-4" />
                 Sign out
@@ -171,7 +163,7 @@ export default function Settings() {
                 <div className="min-w-0">
                   <p className="font-semibold text-[var(--space-text)] truncate">{user.name || "User"}</p>
                   <p className="text-sm text-[var(--space-text-muted)] truncate">{user.email}</p>
-                  <p className="text-[11px] text-[var(--space-text-subtle)] mt-1 font-mono">
+                  <p className="text-[11px] text-[var(--space-text-subtle)] mt-1">
                     Managed by your Google account
                     {user.role === "admin" ? " · Admin" : ""}
                   </p>
@@ -219,7 +211,7 @@ export default function Settings() {
             {/* ── ElevenLabs premium voices (BYOK) ── */}
             <div className="glass-panel p-6 border border-[var(--space-border)] bg-[var(--space-card)]/80 rounded-2xl">
               <h2 className="font-semibold text-lg mb-1 flex items-center gap-2 text-[var(--space-text)]">
-                <Crown className="w-5 h-5 text-amber-500" />
+                <Crown className="w-5 h-5 text-brand" />
                 ElevenLabs Premium Voices
               </h2>
               <p className="text-xs text-[var(--space-text-muted)] mb-4">
@@ -270,7 +262,7 @@ export default function Settings() {
                     <Button
                       onClick={handleSaveKey}
                       disabled={saveKey.isPending}
-                      className="bg-[#FBBF24] hover:bg-[#F59E0B] text-black font-bold"
+                      className="bg-brand hover:bg-brand-hover text-white font-bold"
                     >
                       {saveKey.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
                     </Button>
@@ -279,52 +271,12 @@ export default function Settings() {
                     href="/blog/elevenlabs-api-key-guide"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-block text-xs font-semibold text-amber-600 hover:text-amber-500 hover:underline"
+                    className="inline-block text-xs font-semibold text-brand hover:underline"
                   >
                     How do I get an API key? Read the guide →
                   </a>
                 </div>
               )}
-            </div>
-
-            {/* ── Preferences ── */}
-            <div className="glass-panel p-6 border border-[var(--space-border)] bg-[var(--space-card)]/80 rounded-2xl">
-              <h2 className="font-semibold text-lg mb-4 flex items-center gap-2 text-[var(--space-text)]">
-                <Monitor className="w-5 h-5 text-teal-500" />
-                Preferences
-              </h2>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-[var(--space-text)]">Theme</p>
-                  <p className="text-xs text-[var(--space-text-muted)]">
-                    {theme === "system" ? "System preference" : theme}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setTheme("light")}
-                    className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all ${
-                      resolvedTheme === "light"
-                        ? "border-teal-500 bg-teal-500/10 text-teal-600"
-                        : "border-[var(--space-border)] bg-[var(--space-card)]"
-                    }`}
-                    title="Light mode"
-                  >
-                    <Sun className="w-4 h-4 text-[var(--space-text)]" />
-                  </button>
-                  <button
-                    onClick={() => setTheme("dark")}
-                    className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all ${
-                      resolvedTheme === "dark"
-                        ? "border-teal-500 bg-teal-500/10 text-teal-400"
-                        : "border-[var(--space-border)] bg-[var(--space-card)]"
-                    }`}
-                    title="Dark mode"
-                  >
-                    <Moon className="w-4 h-4 text-[var(--space-text)]" />
-                  </button>
-                </div>
-              </div>
             </div>
 
             {/* ── Danger Zone ── */}

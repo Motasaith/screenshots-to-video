@@ -1,6 +1,8 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  darkMode: ["class"],
+  // No `darkMode`. The site ships one theme, so `dark:` variants are not
+  // generated at all and any that survive in markup are dead classes rather
+  // than a second look nobody maintains.
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
@@ -48,6 +50,27 @@ module.exports = {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        ink: {
+          DEFAULT: "var(--ink)",
+          body: "var(--ink-body)",
+          muted: "var(--ink-muted)",
+        },
+        line: {
+          DEFAULT: "var(--line)",
+          strong: "var(--line-strong)",
+        },
+        mat: {
+          DEFAULT: "var(--mat)",
+          strong: "var(--mat-strong)",
+        },
+        brand: {
+          // Channel form, so `bg-brand/10` and `border-brand/40` work. The
+          // editor leans on those a lot for selected and hovered states.
+          DEFAULT: "rgb(var(--brand-rgb) / <alpha-value>)",
+          hover: "var(--brand-hover)",
+          tint: "var(--brand-tint)",
+          strong: "var(--brand-tint-strong)",
+        },
         teal: {
           50: "var(--teal-50)",
           100: "var(--teal-100)",
@@ -70,13 +93,16 @@ module.exports = {
         xs: "calc(var(--radius) - 6px)",
       },
       boxShadow: {
-        xs: "0 1px 2px 0 rgb(0 0 0 / 0.05)",
+        xs: "var(--shadow-sm)",
+        soft: "var(--shadow-md)",
+        lift: "var(--shadow-lg)",
       },
       fontFamily: {
-        sans: ['Inter', 'sans-serif'],
-        hand: ['Caveat', 'cursive'],
-        mono: ['JetBrains Mono', 'monospace'],
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+        mono: ['ui-monospace', 'SFMono-Regular', 'SF Mono', 'Menlo', 'Consolas', 'monospace'],
       },
+      // Only what interactive UI actually needs: Radix open/close transitions
+      // and a spinner. Nothing here loops for decoration.
       keyframes: {
         "accordion-down": {
           from: { height: "0" },
@@ -90,31 +116,21 @@ module.exports = {
           "0%,70%,100%": { opacity: "1" },
           "20%,50%": { opacity: "0" },
         },
-        "float": {
-          "0%, 100%": { transform: "translateY(0px)" },
-          "50%": { transform: "translateY(-8px)" },
+        "fade-in": {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
         },
-        "float-delayed": {
-          "0%, 100%": { transform: "translateY(0px)" },
-          "50%": { transform: "translateY(-6px)" },
-        },
-        "wiggle": {
-          "0%, 100%": { transform: "rotate(-1deg)" },
-          "50%": { transform: "rotate(1deg)" },
-        },
-        "fade-scale": {
-          from: { opacity: "0", transform: "scale(0.95)" },
-          to: { opacity: "1", transform: "scale(1)" },
+        "rise-in": {
+          from: { opacity: "0", transform: "translateY(8px)" },
+          to: { opacity: "1", transform: "none" },
         },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
         "caret-blink": "caret-blink 1.25s ease-out infinite",
-        "float": "float 3s ease-in-out infinite",
-        "float-delayed": "float-delayed 3.5s ease-in-out infinite",
-        "wiggle": "wiggle 2s ease-in-out infinite",
-        "fade-scale": "fade-scale 0.6s ease-out forwards",
+        "fade-in": "fade-in 0.25s ease-out both",
+        "rise-in": "rise-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) both",
       },
     },
   },

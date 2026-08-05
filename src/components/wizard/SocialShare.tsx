@@ -188,7 +188,7 @@ export default function SocialShare({ videoUrl, title }: SocialShareProps) {
       className="sketch-card p-5 bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]"
     >
       <h3 className="font-body font-semibold text-lg mb-1 flex items-center gap-2 text-[var(--sketch-fg)]">
-        <Share2 className="w-5 h-5 text-[#FBBF24]" />
+        <Share2 className="w-5 h-5 text-brand" />
         Share Your Video
       </h3>
       <p className="font-body text-sm text-[var(--sketch-fg-muted)] mb-4">
@@ -271,7 +271,7 @@ export default function SocialShare({ videoUrl, title }: SocialShareProps) {
       </div>
 
       {/* Helper text */}
-      <div className="mt-4 p-3 bg-[#FBBF24]/5 border border-[#FBBF24]/20 rounded-lg">
+      <div className="mt-4 p-3 bg-brand/5 border border-brand/20 rounded-lg">
         <p className="font-body text-xs text-[var(--sketch-fg-muted)] leading-relaxed">
           <strong>Tip:</strong> YouTube, TikTok, and Instagram require you to upload the video file directly.
           Download it first, then click the platform button to open the upload page.

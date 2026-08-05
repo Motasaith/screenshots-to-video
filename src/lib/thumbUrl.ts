@@ -6,8 +6,8 @@
  * multi-megapixel image per scene to fill a postage stamp; at 96px the same
  * image is about 200x smaller on the wire.
  *
- * Returns null when there is nothing for the server to resize — an unsaved
- * local `blob:` preview, or no screenshot at all — so callers can fall back to
+ * Returns null when there is nothing for the server to resize: an unsaved
+ * local `blob:` preview, or no screenshot at all: so callers can fall back to
  * the raw path.
  */
 export function stepThumbUrl(

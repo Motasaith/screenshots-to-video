@@ -14,7 +14,7 @@ export interface BlogPost {
    * Optional YouTube video ID for a hero embed under the article header.
    * You can also embed videos inline anywhere in `content` with a line:
    *   @youtube[VIDEO_ID]
-   * Use "PLACEHOLDER" until you have the real ID — it renders a tidy
+   * Use "PLACEHOLDER" until you have the real ID: it renders a tidy
    * "video coming soon" box instead of a broken player.
    */
   youtubeId?: string;
@@ -26,7 +26,7 @@ export const BLOG_POSTS: BlogPost[] = [
     slug: "elevenlabs-api-key-guide",
     title: "Use Your Own ElevenLabs Voices: How to Get a Free API Key (and Add It in the Editor)",
     excerpt:
-      "Premium ElevenLabs voices are bring-your-own-key. Here's how to grab an ElevenLabs API key — free or paid — and paste it into the editor to unlock ultra-realistic narration.",
+      "Premium ElevenLabs voices are bring-your-own-key. Here's how to grab an ElevenLabs API key, free or paid, and paste it into the editor to unlock ultra-realistic narration.",
     date: "July 28, 2026",
     category: "Tutorials",
     author: "Abdul Rauf Azhar",
@@ -37,7 +37,7 @@ export const BLOG_POSTS: BlogPost[] = [
 
 Our built-in voices (Microsoft Edge and the local Kokoro model) are free and sound great. But if you want the ultra-realistic, studio-grade narration from **ElevenLabs**, those voices run on *your own* ElevenLabs account rather than a shared key.
 
-That's good for you: you control your own usage and credits, you get ElevenLabs' generous free tier directly, and your key is encrypted and only ever used to generate your narration — we never show it back to you or use it for anyone else.
+That's good for you: you control your own usage and credits, you get ElevenLabs' generous free tier directly, and your key is encrypted and only ever used to generate your narration. We never show it back to you or use it for anyone else.
 
 Here's the whole setup, start to finish.
 
@@ -45,7 +45,7 @@ Here's the whole setup, start to finish.
 
 ## Step 1: Create a free ElevenLabs account
 
-Go to **elevenlabs.io** and sign up. The free plan requires no credit card and includes a monthly pool of characters — enough to narrate quite a few short tutorials while you try things out.
+Go to **elevenlabs.io** and sign up. The free plan requires no credit card and includes a monthly pool of characters, enough to narrate quite a few short tutorials while you try things out.
 
 ## Step 2: Copy your API key
 
@@ -53,7 +53,7 @@ Once you're signed in:
 
 - Click your **profile icon** in the bottom-left, then open **Profile + API key** (sometimes shown as "API Keys").
 - Click **Create API Key** (or reveal the existing one).
-- Copy the key — it starts with \`sk_\`. Treat it like a password.
+- Copy the key. It starts with \`sk_\`. Treat it like a password.
 
 That's the only thing you need from ElevenLabs.
 
@@ -70,20 +70,20 @@ To swap or remove it later, use the **Remove** button in that same panel.
 
 ## Free vs. paid: which do you need?
 
-- **Free tier** — a monthly character allowance, ideal for testing and short videos. Voices are the same quality; you're just limited on total characters per month.
-- **Paid tiers** — more characters, commercial usage rights, and higher concurrency for longer or higher-volume projects.
+- **Free tier**: a monthly character allowance, ideal for testing and short videos. Voices are the same quality; you're just limited on total characters per month.
+- **Paid tiers**: more characters, commercial usage rights, and higher concurrency for longer or higher-volume projects.
 
-For most people, start free. If you hit your monthly character limit, ElevenLabs will show it in the credits readout in the editor, and you can upgrade on their site — no change needed on our end.
+For most people, start free. If you hit your monthly character limit, ElevenLabs will show it in the credits readout in the editor, and you can upgrade on their site, with no change needed on our end.
 
 ## Troubleshooting
 
-- **"That key was rejected"** — you likely copied a partial key. Re-copy the full \`sk_…\` string.
-- **Premium voice sounds like a free voice** — you don't have a key saved (or credits ran out). Premium voices fall back to free Edge TTS so a render never fails; add or top up your key to restore them.
-- **Credits show 0 remaining** — your monthly ElevenLabs allowance is used up; it resets on your ElevenLabs billing date, or upgrade for more.
+- **"That key was rejected"**: you likely copied a partial key. Re-copy the full \`sk_…\` string.
+- **Premium voice sounds like a free voice**: you do not have a key saved (or credits ran out). Premium voices fall back to free Edge TTS so a render never fails; add or top up your key to restore them.
+- **Credits show 0 remaining**: your monthly ElevenLabs allowance is used up; it resets on your ElevenLabs billing date, or upgrade for more.
 
 ## That's it
 
-Once your key is saved, nothing else changes about how you work — pick an ElevenLabs voice, hit preview, and render. Your narration just got a whole lot more human.`,
+Once your key is saved, nothing else changes about how you work. Pick an ElevenLabs voice, hit preview, and render. Your narration just got a whole lot more human.`,
   },
   {
     id: "3",

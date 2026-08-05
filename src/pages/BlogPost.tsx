@@ -1,130 +1,181 @@
+import { useState } from "react";
 import { useParams, Link } from "react-router";
-import { motion } from "framer-motion";
+import { ArrowLeft, Check, Link2, Linkedin, Twitter } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import FooterSection from "@/sections/FooterSection";
 import { SEO, createBreadcrumbSchema, createArticleSchema } from "@/components/SEO";
-import { getPostBySlug, getRelatedPosts, type BlogPost } from "@/data/blog";
-import { ArrowLeft, Clock, Calendar, Tag, User, Share2, Twitter, Linkedin, Link2 } from "lucide-react";
-import { useState } from "react";
-import { SpaceBackground } from "@/components/shared/SpaceBackground";
+import { getPostBySlug, getRelatedPosts, type BlogPost as Post } from "@/data/blog";
 
 function ShareButtons({ title, url }: { title: string; url: string }) {
   const [copied, setCopied] = useState(false);
 
-  const shareLinks = [
+  const links = [
     {
       name: "Twitter",
-      icon: Twitter,
+      Icon: Twitter,
       href: `https://twitter.com/intent/tweet?text=${encodeURIComponent(title)}&url=${encodeURIComponent(url)}`,
     },
     {
       name: "LinkedIn",
-      icon: Linkedin,
+      Icon: Linkedin,
       href: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}`,
     },
   ];
 
-  const copyLink = () => {
-    navigator.clipboard.writeText(url);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
   return (
-    <div className="flex items-center gap-3">
-      <span className="text-sm text-[var(--space-text-muted)] font-mono">Share:</span>
-      {shareLinks.map((link) => (
+    <div className="flex items-center gap-2">
+      {links.map(({ name, Icon, href }) => (
         <a
-          key={link.name}
-          href={link.href}
+          key={name}
+          href={href}
           target="_blank"
           rel="noopener noreferrer"
-          className="p-2 rounded-lg bg-[var(--space-card)] border border-[var(--space-border)] hover:border-teal-500 hover:text-teal-500 transition-colors"
-          aria-label={`Share on ${link.name}`}
+          aria-label={`Share on ${name}`}
+          className="grid h-9 w-9 place-items-center rounded-lg border border-line text-ink-muted transition-colors hover:border-line-strong hover:text-ink"
         >
-          <link.icon className="w-4 h-4 text-[var(--space-text-muted)]" />
+          <Icon className="h-4 w-4" />
         </a>
       ))}
       <button
-        onClick={copyLink}
-        className="p-2 rounded-lg bg-[var(--space-card)] border border-[var(--space-border)] hover:border-teal-500 hover:text-teal-500 transition-colors relative"
+        onClick={() => {
+          navigator.clipboard.writeText(url);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        }}
         aria-label="Copy link"
+        className="grid h-9 w-9 place-items-center rounded-lg border border-line text-ink-muted transition-colors hover:border-line-strong hover:text-ink"
       >
-        <Link2 className="w-4 h-4 text-[var(--space-text-muted)]" />
-        {copied && (
-          <span className="absolute -top-8 left-1/2 -translate-x-1/2 text-[10px] bg-slate-900 text-white px-2 py-0.5 rounded whitespace-nowrap">
-            Copied!
-          </span>
-        )}
+        {copied ? <Check className="h-4 w-4 text-brand" /> : <Link2 className="h-4 w-4" />}
       </button>
     </div>
   );
 }
 
-function RelatedPosts({ posts }: { posts: BlogPost[] }) {
-  if (posts.length === 0) return null;
-
-  return (
-    <div className="mt-16 pt-16 border-t border-[var(--space-border)]">
-      <h2 className="font-bold text-2xl mb-8 text-[var(--space-text)]">
-        Related Articles
-      </h2>
-      <div className="grid gap-6 md:grid-cols-3">
-        {posts.map((post) => (
-          <Link
-            key={post.id}
-            to={`/blog/${post.slug}`}
-            className="glass-panel p-6 group hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 border border-[var(--space-border)] bg-[var(--space-card)]/85"
-          >
-            <span className="text-[9px] font-mono font-semibold uppercase tracking-wider px-2 py-0.5 bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20 rounded mb-3 inline-block">
-              {post.category}
-            </span>
-            <h3 className="font-bold text-lg mb-2 text-[var(--space-text)] group-hover:text-teal-600 transition-colors line-clamp-2 leading-tight">
-              {post.title}
-            </h3>
-            <p className="text-sm text-[var(--space-text-muted)] line-clamp-2 leading-relaxed">{post.excerpt}</p>
-          </Link>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /**
- * Render a responsive 16:9 YouTube embed. A "PLACEHOLDER" (or empty) id renders
- * a tidy "coming soon" box instead of a broken player, so authors can ship the
- * post before the video is ready.
+ * 16:9 YouTube embed. A missing or "PLACEHOLDER" id renders a framed note
+ * instead of a broken player, so a post can ship before its video is cut.
  */
-function renderYouTube(rawId: string, key: number): React.ReactElement {
+function YouTube({ id: rawId }: { id: string }) {
   const id = rawId.trim();
+
   if (!id || id.toUpperCase() === "PLACEHOLDER") {
     return (
-      <div
-        key={key}
-        className="my-8 rounded-2xl border border-dashed border-[var(--space-border)] bg-[var(--space-card)]/60 py-12 px-6 text-center"
-      >
-        <p className="text-sm font-semibold text-[var(--space-text)]">Walkthrough video coming soon</p>
-        <p className="text-xs text-[var(--space-text-muted)] mt-1 font-mono">
-          Replace "PLACEHOLDER" with a YouTube video ID to embed it here.
+      <div className="my-8 rounded-xl border border-dashed border-line-strong bg-mat px-6 py-12 text-center">
+        <p className="text-[15px] font-medium text-ink">Walkthrough video coming soon</p>
+        <p className="mt-1 text-[13px] text-ink-muted">
+          Replace the placeholder id in src/data/blog.ts to embed it here.
         </p>
       </div>
     );
   }
+
   return (
-    <div
-      key={key}
-      className="relative w-full my-8 rounded-2xl overflow-hidden border border-[var(--space-border)]"
-      style={{ paddingBottom: "56.25%" }}
-    >
+    <div className="my-8 overflow-hidden rounded-xl border border-line" style={{ aspectRatio: "16 / 9" }}>
       <iframe
-        className="absolute inset-0 w-full h-full"
+        className="h-full w-full"
         src={`https://www.youtube.com/embed/${encodeURIComponent(id)}`}
-        title="YouTube video player"
+        title="Video"
+        // Lazy, so an embed halfway down an article does not cost a player
+        // download and an iframe's worth of script on first paint.
         loading="lazy"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowFullScreen
       />
     </div>
+  );
+}
+
+/** Bold, italic and inline code, applied to a single line of body text. */
+function inlineMarkup(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*]+?)\*/g, "$1<em>$2</em>")
+    .replace(/`(.*?)`/g, "<code>$1</code>");
+}
+
+/**
+ * The small subset of markdown the posts actually use. Not a full parser, and
+ * not trying to be one; posts are written in-repo by us, so the input is
+ * trusted.
+ */
+function renderContent(content: string) {
+  const out: React.ReactElement[] = [];
+  let listItems: string[] = [];
+  let key = 0;
+
+  const flushList = () => {
+    if (listItems.length === 0) return;
+    out.push(
+      <ul key={`ul-${key++}`}>
+        {listItems.map((item, i) => (
+          <li key={i} dangerouslySetInnerHTML={{ __html: item }} />
+        ))}
+      </ul>
+    );
+    listItems = [];
+  };
+
+  for (const line of content.trim().split("\n")) {
+    const trimmed = line.trim();
+
+    if (trimmed.startsWith("### ")) {
+      flushList();
+      out.push(<h3 key={key++}>{trimmed.slice(4)}</h3>);
+    } else if (trimmed.startsWith("## ")) {
+      flushList();
+      out.push(<h2 key={key++}>{trimmed.slice(3)}</h2>);
+    } else if (trimmed.startsWith("# ")) {
+      flushList();
+      out.push(<h2 key={key++}>{trimmed.slice(2)}</h2>);
+    } else if (trimmed.startsWith("@youtube[") && trimmed.endsWith("]")) {
+      flushList();
+      out.push(<YouTube key={key++} id={trimmed.slice("@youtube[".length, -1)} />);
+    } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+      listItems.push(inlineMarkup(trimmed.slice(2)));
+    } else if (trimmed.startsWith("> ")) {
+      flushList();
+      out.push(
+        <blockquote
+          key={key++}
+          className="border-l-2 border-brand pl-5 italic text-ink-body"
+          dangerouslySetInnerHTML={{ __html: inlineMarkup(trimmed.slice(2)) }}
+        />
+      );
+    } else if (trimmed.startsWith("---")) {
+      flushList();
+      out.push(<hr key={key++} className="border-line" />);
+    } else if (trimmed === "" || trimmed.startsWith("```") || trimmed.startsWith("|")) {
+      flushList();
+    } else {
+      flushList();
+      out.push(<p key={key++} dangerouslySetInnerHTML={{ __html: inlineMarkup(trimmed) }} />);
+    }
+  }
+
+  flushList();
+  return out;
+}
+
+function RelatedPosts({ posts }: { posts: Post[] }) {
+  if (posts.length === 0) return null;
+
+  return (
+    <section className="mt-16 border-t border-line pt-12">
+      <h2 className="h3">Related</h2>
+      <div className="mt-6 grid gap-x-6 gap-y-8 sm:grid-cols-3">
+        {posts.map((post) => (
+          <Link key={post.id} to={`/blog/${post.slug}`} className="group block">
+            <span className="chip chip-brand">{post.category}</span>
+            <h3 className="mt-3 text-[16px] font-semibold leading-snug text-ink group-hover:text-brand">
+              {post.title}
+            </h3>
+            <p className="mt-2 line-clamp-2 text-[14.5px] leading-relaxed text-ink-body">
+              {post.excerpt}
+            </p>
+          </Link>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -134,233 +185,104 @@ export default function BlogPost() {
 
   if (!post) {
     return (
-      <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans flex items-center justify-center">
-        <SpaceBackground />
-        <div className="relative z-10 text-center max-w-md mx-auto px-6">
-          <h1 className="font-extrabold text-4xl mb-4 text-[var(--space-text)]">Article Not Found</h1>
-          <p className="text-[var(--space-text-muted)] mb-8">
-            The article you're looking for doesn't exist or has been moved.
-          </p>
-          <Link
-            to="/blog"
-            className="inline-flex items-center gap-2 text-teal-600 dark:text-teal-400 hover:text-teal-500 font-bold text-sm"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Blog
-          </Link>
-        </div>
+      <div className="flex min-h-screen flex-col">
+        <SEO title="Article not found" description="That article does not exist." noindex />
+        <Navbar />
+        <main className="container-narrow grid flex-1 place-items-center py-24 text-center">
+          <div>
+            <h1 className="h2">Article not found</h1>
+            <p className="lede mt-4">It may have moved, or the link may be out of date.</p>
+            <Link to="/blog" className="btn btn-secondary mt-7">
+              <ArrowLeft className="h-4 w-4" />
+              All articles
+            </Link>
+          </div>
+        </main>
+        <FooterSection />
       </div>
     );
   }
 
-  const breadcrumbJsonLd = createBreadcrumbSchema([
-    { name: "Home", url: "https://aivideo.ai/" },
-    { name: "Blog", url: "https://aivideo.ai/blog" },
-    { name: post.title, url: `https://aivideo.ai/blog/${post.slug}` },
-  ]);
-
-  const articleJsonLd = createArticleSchema(
-    post.title,
-    post.excerpt,
-    `https://aivideo.ai/blog/${post.slug}`,
-    new Date(post.date).toISOString()
-  );
-
   const postUrl = `https://aivideo.ai/blog/${post.slug}`;
-  const relatedPosts = getRelatedPosts(post);
-
-  // Convert markdown-like content to HTML
-  const renderContent = (content: string) => {
-    const lines = content.trim().split("\n");
-    const elements: React.ReactElement[] = [];
-    let listItems: string[] = [];
-    let key = 0;
-
-    const flushList = () => {
-      if (listItems.length > 0) {
-        elements.push(
-          <ul key={`list-${key++}`} className="list-disc pl-6 space-y-2 mb-6 text-[var(--space-text-muted)]">
-            {listItems.map((item, i) => (
-              <li key={i} dangerouslySetInnerHTML={{ __html: item }} />
-            ))}
-          </ul>
-        );
-        listItems = [];
-      }
-    };
-
-    lines.forEach((line) => {
-      const trimmed = line.trim();
-
-      if (trimmed.startsWith("# ")) {
-        flushList();
-        elements.push(
-          <h1 key={key++} className="font-extrabold text-3xl lg:text-4xl tracking-tight mb-6 mt-12 text-[var(--space-text)]">
-            {trimmed.replace("# ", "")}
-          </h1>
-        );
-      } else if (trimmed.startsWith("## ")) {
-        flushList();
-        elements.push(
-          <h2 key={key++} className="font-bold text-2xl lg:text-3xl tracking-tight mb-4 mt-10 text-[var(--space-text)] border-b border-[var(--space-border)] pb-2">
-            {trimmed.replace("## ", "")}
-          </h2>
-        );
-      } else if (trimmed.startsWith("### ")) {
-        flushList();
-        elements.push(
-          <h3 key={key++} className="font-bold text-xl lg:text-2xl tracking-tight mb-3 mt-8 text-[var(--space-text)]">
-            {trimmed.replace("### ", "")}
-          </h3>
-        );
-      } else if (trimmed.startsWith("```")) {
-        flushList();
-      } else if (trimmed.startsWith("@youtube[") && trimmed.endsWith("]")) {
-        flushList();
-        elements.push(renderYouTube(trimmed.slice("@youtube[".length, -1), key++));
-      } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
-        listItems.push(trimmed.replace(/^[-*] /, "").replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>"));
-      } else if (trimmed.startsWith("| ") && trimmed.endsWith(" |")) {
-        flushList();
-      } else if (trimmed === "") {
-        flushList();
-      } else if (trimmed.startsWith("[> ")) {
-        flushList();
-        elements.push(
-          <blockquote key={key++} className="border-l-4 border-teal-500 bg-teal-500/5 pl-6 py-4 my-6 italic text-[var(--space-text-muted)] rounded-r-xl">
-            {trimmed.replace("> ", "")}
-          </blockquote>
-        );
-      } else if (trimmed.startsWith("---")) {
-        flushList();
-        elements.push(<hr key={key++} className="my-8 border-[var(--space-border)]" />);
-      } else {
-        flushList();
-        const html = trimmed
-          .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-          .replace(/\*(.*?)\*/g, "<em>$1</em>")
-          .replace(/`(.*?)`/g, "<code className='bg-[var(--space-card)] border border-[var(--space-border)] px-1.5 py-0.5 rounded text-sm font-mono text-teal-600 dark:text-teal-400'>$1</code>");
-        elements.push(
-          <p key={key++} className="text-[var(--space-text-muted)] leading-relaxed mb-6"
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
-        );
-      }
-    });
-
-    flushList();
-    return elements;
-  };
 
   return (
-    <div className="theme-3d-immersive min-h-screen relative overflow-x-hidden font-sans">
+    <div className="flex min-h-screen flex-col">
       <SEO
         title={post.title}
         description={post.excerpt}
         canonical={postUrl}
         ogType="article"
-        jsonLd={[breadcrumbJsonLd, articleJsonLd]}
+        jsonLd={[
+          createBreadcrumbSchema([
+            { name: "Home", url: "https://aivideo.ai/" },
+            { name: "Blog", url: "https://aivideo.ai/blog" },
+            { name: post.title, url: postUrl },
+          ]),
+          createArticleSchema(
+            post.title,
+            post.excerpt,
+            postUrl,
+            new Date(post.date).toISOString()
+          ),
+        ]}
       />
-      <SpaceBackground />
-      <div className="relative z-10">
-        <Navbar />
+      <Navbar />
 
-        <main className="max-w-4xl mx-auto pt-32 pb-20 px-6">
-          {/* Back Link */}
-          <Link
-            to="/blog"
-            className="inline-flex items-center gap-2 text-[var(--space-text-subtle)] hover:text-[var(--space-text)] transition-colors mb-8 font-mono text-sm"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Blog
-          </Link>
+      <main className="flex-1">
+        <div className="border-b border-line bg-mat">
+          <div className="container-narrow py-14 md:py-16">
+            <Link
+              to="/blog"
+              className="inline-flex items-center gap-1.5 text-[14px] text-ink-muted transition-colors hover:text-ink"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" />
+              All articles
+            </Link>
 
-          {/* Article Header */}
-          <motion.article
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-            <div className="mb-8">
-              <span className="inline-block text-[9px] font-mono font-semibold uppercase tracking-wider px-3 py-1 bg-teal-500/10 text-teal-600 dark:text-teal-400 border border-teal-500/20 rounded mb-4">
-                {post.category}
-              </span>
+            <span className="chip chip-brand mt-6">{post.category}</span>
 
-              <h1 className="font-extrabold text-4xl lg:text-5xl tracking-tight mb-6 text-[var(--space-text)] leading-tight">
-                {post.title}
-              </h1>
+            <h1 className="h2 mt-4">{post.title}</h1>
+            <p className="lede mt-4">{post.excerpt}</p>
 
-              <p className="text-xl text-[var(--space-text-muted)] leading-relaxed mb-6">
-                {post.excerpt}
+            <div className="mt-7 flex flex-wrap items-center justify-between gap-4 border-t border-line pt-5">
+              <p className="text-[14px] text-ink-muted">
+                {post.author} · {post.date} · {post.readTime}
               </p>
-
-              <div className="flex flex-wrap items-center gap-6 text-sm text-[var(--space-text-subtle)] font-mono border-y border-[var(--space-border)] py-4">
-                <div className="flex items-center gap-2">
-                  <User className="w-4 h-4" />
-                  {post.author}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4" />
-                  {post.date}
-                </div>
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  {post.readTime}
-                </div>
-              </div>
-            </div>
-
-            {/* Tags */}
-            <div className="flex flex-wrap gap-2 mb-8">
-              {post.tags.map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--space-card)] border border-[var(--space-border)] text-[var(--space-text-muted)] text-xs font-mono"
-                >
-                  <Tag className="w-3 h-3 text-teal-500" />
-                  {tag}
-                </span>
-              ))}
-            </div>
-
-            {/* Share Buttons */}
-            <div className="mb-12 pb-8 border-b border-[var(--space-border)]">
               <ShareButtons title={post.title} url={postUrl} />
             </div>
+          </div>
+        </div>
 
-            {/* Hero video embed (only if not already embedded inline via @youtube[…]) */}
-            {post.youtubeId && !post.content.includes("@youtube[") && (
-              <div className="mb-12">{renderYouTube(post.youtubeId, -1)}</div>
-            )}
+        <article className="container-narrow py-14 md:py-16">
+          {post.youtubeId && !post.content.includes("@youtube[") && (
+            <YouTube id={post.youtubeId} />
+          )}
 
-            {/* Article Content */}
-            <div className="prose prose-lg max-w-none mb-16">
-              {renderContent(post.content)}
-            </div>
+          <div className="copy">{renderContent(post.content)}</div>
 
-            {/* CTA Box */}
-            <div className="mt-16 p-8 glass-panel border border-[var(--space-border)] bg-[var(--space-card)]/80 rounded-2xl">
-              <h3 className="font-bold text-2xl mb-3 text-[var(--space-text)]">
-                Ready to Create AI Videos?
-              </h3>
-              <p className="text-[var(--space-text-muted)] text-sm mb-6 leading-relaxed">
-                Join 500+ teams using AIVideo to create professional tutorial videos from screenshots in minutes.
-              </p>
-              <Link
-                to="/pricing"
-                className="inline-flex items-center gap-2 glass-btn glass-btn-primary py-3 px-6 rounded-xl font-semibold text-xs"
-              >
-                Start Creating Free
-                <Share2 className="w-4 h-4" />
-              </Link>
-            </div>
+          <div className="mt-10 flex flex-wrap gap-2">
+            {post.tags.map((tag) => (
+              <span key={tag} className="chip">
+                {tag}
+              </span>
+            ))}
+          </div>
 
-            {/* Related Posts */}
-            <RelatedPosts posts={relatedPosts} />
-          </motion.article>
-        </main>
+          <div className="card card-pad mt-14">
+            <h2 className="text-[17px] font-semibold text-ink">Try it on your own screenshots</h2>
+            <p className="mt-2 text-[15px] leading-relaxed text-ink-body">
+              Five videos a month on the free plan, no card needed.
+            </p>
+            <Link to="/signup" className="btn btn-primary mt-5">
+              Start free
+            </Link>
+          </div>
 
-        <FooterSection />
-      </div>
+          <RelatedPosts posts={getRelatedPosts(post)} />
+        </article>
+      </main>
+
+      <FooterSection />
     </div>
   );
 }
