@@ -5,6 +5,7 @@ import { trpc } from "./providers/trpc";
 import { useAuth } from "./hooks/useAuth";
 import { Spinner } from "@/components/ui/spinner";
 import { Wrench } from "lucide-react";
+import { SupportWidget } from "@/components/support/SupportWidget";
 
 // The landing page is the entry point for most visitors, so it stays in the
 // main bundle: lazy-loading it would only add a request waterfall before
@@ -75,38 +76,45 @@ export default function App() {
   }
 
   return (
-    <Suspense fallback={<RouteFallback />}>
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/docs" element={<Docs />} />
-        <Route path="/about" element={<About />} />
-        <Route path="/blog" element={<Blog />} />
-        <Route path="/blog/:slug" element={<BlogPost />} />
-        <Route path="/contact" element={<Contact />} />
-        <Route path="/changelog" element={<Changelog />} />
+    <>
+      <Suspense fallback={<RouteFallback />}>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/docs" element={<Docs />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/blog" element={<Blog />} />
+          <Route path="/blog/:slug" element={<BlogPost />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="/changelog" element={<Changelog />} />
 
-        {/* Footer Pages */}
-        <Route path="/api" element={<GenericContent title="API Reference" description="Integrate the AIVideo FFmpeg rendering pipeline and Vision LLM directly into your CI/CD." />} />
-        <Route path="/tutorials" element={<GenericContent title="Tutorials" description="Advanced guides on mastering cinematic zoom, Studio Mode storytelling, and custom transitions." />} />
-        <Route path="/careers" element={<Careers />} />
-        <Route path="/legal" element={<Legal />} />
-        <Route path="/privacy" element={<Privacy />} />
-        <Route path="/terms" element={<Terms />} />
-        <Route path="/help" element={<HelpCenter />} />
-        <Route path="/community" element={<Community />} />
-        <Route path="/status" element={<Status />} />
-        <Route path="/feedback" element={<Feedback />} />
+          {/* Footer Pages */}
+          <Route path="/api" element={<GenericContent title="API Reference" description="Integrate the AIVideo FFmpeg rendering pipeline and Vision LLM directly into your CI/CD." />} />
+          <Route path="/tutorials" element={<GenericContent title="Tutorials" description="Advanced guides on mastering cinematic zoom, Studio Mode storytelling, and custom transitions." />} />
+          <Route path="/careers" element={<Careers />} />
+          <Route path="/legal" element={<Legal />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
+          <Route path="/help" element={<HelpCenter />} />
+          <Route path="/community" element={<Community />} />
+          <Route path="/status" element={<Status />} />
+          <Route path="/feedback" element={<Feedback />} />
 
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<SignUp />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/videos" element={<Videos />} />
-        <Route path="/pricing" element={<Pricing />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/create/:projectId/:step" element={<Wizard />} />
-        <Route path="/admin" element={<Admin />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
-    </Suspense>
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<SignUp />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/videos" element={<Videos />} />
+          <Route path="/pricing" element={<Pricing />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/create/:projectId/:step" element={<Wizard />} />
+          <Route path="/admin" element={<Admin />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </Suspense>
+
+      {/* Support chat, every page. Mounted outside Suspense so it stays put
+          while a route chunk loads, and outside Routes so the conversation
+          survives navigation instead of restarting on each page. */}
+      <SupportWidget />
+    </>
   );
 }

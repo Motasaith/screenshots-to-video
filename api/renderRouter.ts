@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { createRouter, authedQuery, rateLimitByUser } from "./middleware";
+import { createRouter, authedQuery, rateLimitByUser, userError } from "./middleware";
 import { getDb } from "./queries/connection";
 import { projects, steps, renderJobs, users } from "@db/schema";
 import { eq, and, desc, inArray, count } from "drizzle-orm";
@@ -36,7 +36,7 @@ export const renderRouter = createRouter({
         )
         .limit(1);
 
-      if (!project) throw new Error("Project not found");
+      if (!project) throw userError("Project not found", "NOT_FOUND");
 
       const [job] = await getDb()
         .select()
@@ -94,7 +94,7 @@ export const renderRouter = createRouter({
         )
         .limit(1);
 
-      if (!project) throw new Error("Project not found");
+      if (!project) throw userError("Project not found", "NOT_FOUND");
 
       const projectSteps = await getDb()
         .select()
@@ -102,7 +102,7 @@ export const renderRouter = createRouter({
         .where(eq(steps.projectId, input.projectId));
 
       if (projectSteps.length === 0) {
-        throw new Error("No steps to render. Add at least one step.");
+        throw userError("No steps to render. Add at least one step.");
       }
 
       // Check that all steps have screenshots
@@ -110,7 +110,7 @@ export const renderRouter = createRouter({
         (s) => !s.screenshotPath || s.screenshotPath.startsWith("blob:")
       );
       if (missingScreenshots.length > 0) {
-        throw new Error(
+        throw userError(
           `Steps ${missingScreenshots.map((s) => s.order).join(", ")} are missing uploaded screenshots.`
         );
       }
@@ -132,7 +132,7 @@ export const renderRouter = createRouter({
         }
 
         if (narrationIssues.length > 0) {
-          throw new Error(
+          throw userError(
             `${narrationIssues.join(" ")} To export without voiceover or captions, choose Continue anyway.`
           );
         }
@@ -167,8 +167,9 @@ export const renderRouter = createRouter({
         );
 
       if ((userActiveJobs?.value ?? 0) >= MAX_CONCURRENT_RENDERS_PER_USER) {
-        throw new Error(
-          `You already have a render in progress. Please wait for it to complete before starting another.`
+        throw userError(
+          `You already have a render in progress. Please wait for it to complete before starting another.`,
+          "PRECONDITION_FAILED"
         );
       }
 
@@ -179,16 +180,18 @@ export const renderRouter = createRouter({
         .where(inArray(renderJobs.status, ["queued", "processing"]));
 
       if ((queueCount?.value ?? 0) >= MAX_QUEUE_DEPTH) {
-        throw new Error(
-          `The render queue is currently full (${MAX_QUEUE_DEPTH} jobs). Please try again in a few minutes.`
+        throw userError(
+          `The render queue is currently full (${MAX_QUEUE_DEPTH} jobs). Please try again in a few minutes.`,
+          "TOO_MANY_REQUESTS"
         );
       }
 
       // ── SAFETY CHECK 4: Credit check ──
       const creditCost = CREDIT_COST[project.resolution] ?? CREDIT_COST["1080p"];
       if (ctx.user!.credits < MIN_CREDITS_TO_RENDER) {
-        throw new Error(
-          `You need at least ${MIN_CREDITS_TO_RENDER} credit to render a video. You have ${ctx.user!.credits}. Upgrade your plan for more credits.`
+        throw userError(
+          `You need at least ${MIN_CREDITS_TO_RENDER} credit to render a video. You have ${ctx.user!.credits}. Upgrade your plan for more credits.`,
+          "PRECONDITION_FAILED"
         );
       }
 
@@ -282,8 +285,8 @@ export const renderRouter = createRouter({
         )
         .limit(1);
 
-      if (!project) throw new Error("Project not found");
-      if (!project.finalVideoPath) throw new Error("Video not ready yet");
+      if (!project) throw userError("Project not found", "NOT_FOUND");
+      if (!project.finalVideoPath) throw userError("Video not ready yet", "PRECONDITION_FAILED");
 
       if (isR2Configured()) {
         const url = await getSignedDownloadUrl(project.finalVideoPath, 7200);
@@ -303,7 +306,7 @@ export const renderRouter = createRouter({
         .where(eq(steps.id, input.stepId))
         .limit(1);
 
-      if (!step) throw new Error("Step not found");
+      if (!step) throw userError("Step not found", "NOT_FOUND");
 
       const [project] = await getDb()
         .select()
@@ -313,7 +316,7 @@ export const renderRouter = createRouter({
         )
         .limit(1);
 
-      if (!project) throw new Error("Not authorized");
+      if (!project) throw userError("Not authorized", "FORBIDDEN");
 
       // Mark the step as pending re-render
       await getDb()

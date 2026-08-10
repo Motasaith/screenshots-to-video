@@ -1,17 +1,21 @@
 import { z } from "zod";
+import { TRPCError } from "@trpc/server";
 import { createRouter, adminQuery, authedQuery, isMaintenanceMode, setMaintenanceMode, rateLimitByUser } from "./middleware";
 import { getDb } from "./queries/connection";
-import { users, projects, renderJobs } from "@db/schema";
+import { users, projects, renderJobs, supportTickets } from "@db/schema";
 import { desc, count, eq, and, gte, sql, like, or } from "drizzle-orm";
 import { signSessionToken } from "./kimi/session";
 import { env } from "./lib/env";
 import * as cookie from "cookie";
 import { Session } from "@contracts/constants";
 import { getSessionCookieOptions } from "./lib/cookies";
+import { createLogger } from "./lib/logger";
 
 import { cleanupExpiredProjects, findExpiredProjects, findPendingExpiryProjects } from "./lib/cleanup";
 
 // Admin rate-limited query/mutation helpers
+const log = createLogger({ path: "adminRouter" });
+
 const adminLimited = adminQuery.use(rateLimitByUser(60_000, 30));
 const adminMutationLimited = adminQuery.use(rateLimitByUser(60_000, 20));
 
@@ -400,6 +404,7 @@ export const adminRouter = createRouter({
           level: z.enum(["debug", "info", "warn", "error"]).optional(),
           userId: z.number().optional(),
           search: z.string().optional(),
+          pathPrefix: z.string().max(60).optional(),
           limit: z.number().max(500).default(200),
         })
         .optional(),
@@ -464,4 +469,146 @@ export const adminRouter = createRouter({
       renderTimeoutMs: RENDER_TIMEOUT_MS,
     };
   }),
+
+  /* --------------------------------------------------------- support queue */
+
+  /**
+   * The support queue.
+   *
+   * Open tickets first, because a queue sorted purely by date buries the thing
+   * that still needs doing under everything already resolved.
+   */
+  listTickets: adminLimited
+    .input(
+      z
+        .object({
+          status: z.enum(["open", "in_progress", "waiting", "resolved", "all"]).default("open"),
+          limit: z.number().min(1).max(100).default(50),
+        })
+        .optional()
+    )
+    .query(async ({ input }) => {
+      const status = input?.status ?? "open";
+      const db = getDb();
+
+      const rows = await db
+        .select()
+        .from(supportTickets)
+        .where(status === "all" ? undefined : eq(supportTickets.status, status))
+        .orderBy(desc(supportTickets.id))
+        .limit(input?.limit ?? 50);
+
+      const [openCount] = await db
+        .select({ value: count() })
+        .from(supportTickets)
+        .where(eq(supportTickets.status, "open"));
+
+      return { tickets: rows, openCount: openCount?.value ?? 0 };
+    }),
+
+  /**
+   * One ticket, by id.
+   *
+   * The detail pane reads from here rather than from the filtered list, because
+   * replying moves a ticket to "waiting" and it would drop straight out of the
+   * default "open" filter, emptying the pane the admin was reading.
+   */
+  getTicket: adminLimited
+    .input(z.object({ ticketId: z.number() }))
+    .query(async ({ input }) => {
+      const [ticket] = await getDb()
+        .select()
+        .from(supportTickets)
+        .where(eq(supportTickets.id, input.ticketId))
+        .limit(1);
+      if (!ticket) throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
+      return ticket;
+    }),
+
+  /**
+   * Answer a customer.
+   *
+   * The reply lands on the ticket, which the widget polls, so it appears in the
+   * customer's chat without them reloading. `unreadForCustomer` is what lets the
+   * widget nudge someone who has the panel closed.
+   *
+   * Moves the ticket to "waiting" unless it is being explicitly resolved: after
+   * answering, the ball is with the customer.
+   */
+  replyToTicket: adminLimited
+    .input(
+      z.object({
+        ticketId: z.number(),
+        message: z.string().min(1).max(4000),
+        resolve: z.boolean().default(false),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = getDb();
+      const [ticket] = await db
+        .select()
+        .from(supportTickets)
+        .where(eq(supportTickets.id, input.ticketId))
+        .limit(1);
+
+      if (!ticket) throw new TRPCError({ code: "NOT_FOUND", message: "Ticket not found" });
+
+      const replies = [
+        ...(ticket.replies ?? []),
+        { from: "admin" as const, content: input.message, at: new Date().toISOString() },
+      ];
+
+      await db
+        .update(supportTickets)
+        .set({
+          replies,
+          status: input.resolve ? "resolved" : "waiting",
+          unreadForCustomer: (ticket.unreadForCustomer ?? 0) + 1,
+        })
+        .where(eq(supportTickets.id, ticket.id));
+
+      log.info("Admin replied to support ticket", {
+        userId: ctx.user!.id,
+        ticketId: ticket.id,
+        resolved: input.resolve,
+      });
+
+      // Only reaches the customer once a mail provider is configured; the reply
+      // is already in their widget either way. See api/lib/notify.ts.
+      const { notifyCustomerOfReply } = await import("./lib/notify");
+      void notifyCustomerOfReply({
+        to: ticket.email,
+        subject: ticket.subject,
+        reply: input.message,
+      }).catch(() => {});
+
+      return { ok: true as const };
+    }),
+
+  /** Move a ticket through the queue without replying. */
+  setTicketStatus: adminLimited
+    .input(
+      z.object({
+        ticketId: z.number(),
+        status: z.enum(["open", "in_progress", "waiting", "resolved"]),
+      })
+    )
+    .mutation(async ({ input }) => {
+      await getDb()
+        .update(supportTickets)
+        .set({ status: input.status })
+        .where(eq(supportTickets.id, input.ticketId));
+      return { ok: true as const };
+    }),
+
+  /** A note only admins ever see. */
+  setTicketNote: adminLimited
+    .input(z.object({ ticketId: z.number(), note: z.string().max(4000) }))
+    .mutation(async ({ input }) => {
+      await getDb()
+        .update(supportTickets)
+        .set({ internalNote: input.note })
+        .where(eq(supportTickets.id, input.ticketId));
+      return { ok: true as const };
+    }),
 });

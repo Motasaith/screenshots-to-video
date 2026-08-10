@@ -52,6 +52,23 @@ const t = initTRPC.context<TrpcContext>().create({
   },
 });
 
+/**
+ * An error written for the person using the app.
+ *
+ * The distinction matters because the error formatter above replaces the
+ * message of anything classified INTERNAL_SERVER_ERROR, which is what a plain
+ * `throw new Error("You need at least 1 credit")` inside a procedure becomes.
+ * Deliberate messages have to carry a 4xx code to survive the trip to the
+ * client. Anything genuinely unexpected should stay a plain `Error` so that it
+ * *is* sanitised.
+ */
+export function userError(
+  message: string,
+  code: "BAD_REQUEST" | "NOT_FOUND" | "FORBIDDEN" | "PRECONDITION_FAILED" | "TOO_MANY_REQUESTS" = "BAD_REQUEST"
+): TRPCError {
+  return new TRPCError({ code, message });
+}
+
 export const createRouter = t.router;
 export const publicQuery = t.procedure;
 

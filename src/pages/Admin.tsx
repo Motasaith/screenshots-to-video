@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
 import Navbar from "@/components/Navbar";
+import { SupportTab } from "./admin/SupportTab";
 import {
   ShieldAlert,
   Users,
@@ -23,6 +24,7 @@ import {
   Coins,
   UserPlus,
   Video,
+  MessageSquare,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -86,6 +88,12 @@ export default function Admin() {
   const { data: projects, refetch: refetchProjects } = trpc.admin.listProjects.useQuery(
     { status: projectStatus === "all" ? undefined : projectStatus },
     { enabled: isAdmin },
+  );
+
+  // Only the count is wanted here; the Support tab runs its own full query.
+  const { data: ticketSummary } = trpc.admin.listTickets.useQuery(
+    { status: "open", limit: 1 },
+    { refetchInterval: 60_000 }
   );
 
   const { data: expiredProjects } = trpc.admin.getExpiredProjects.useQuery(undefined, {
@@ -389,6 +397,18 @@ export default function Admin() {
               className="font-dm text-sm h-10 px-6 data-[state=active]:bg-primary/10 data-[state=active]:border-2 data-[state=active]:border-border font-medium"
             >
               Cleanup
+            </TabsTrigger>
+            <TabsTrigger
+              value="support"
+              className="font-dm text-sm h-10 px-6 data-[state=active]:bg-primary/10 data-[state=active]:border-2 data-[state=active]:border-border font-medium"
+            >
+              <MessageSquare className="mr-1.5 h-3.5 w-3.5" />
+              Support
+              {ticketSummary?.openCount ? (
+                <span className="ml-1.5 rounded-full bg-amber-500 px-1.5 text-[10px] font-bold text-white">
+                  {ticketSummary.openCount}
+                </span>
+              ) : null}
             </TabsTrigger>
             <TabsTrigger
               value="logs"
@@ -829,6 +849,10 @@ export default function Admin() {
           </TabsContent>
 
           {/* ── Logs Tab ── */}
+          <TabsContent value="support">
+            <SupportTab />
+          </TabsContent>
+
           <TabsContent value="logs">
             <LogsTab />
           </TabsContent>
@@ -850,6 +874,7 @@ function LogsTab() {
   const [logLevel, setLogLevel] = useState<string>("all");
   const [logSearch, setLogSearch] = useState<string>("");
   const [logUserId, setLogUserId] = useState<string>("");
+  const [logSource, setLogSource] = useState<string>("all");
 
   const { data: logDates } = trpc.admin.getLogDates.useQuery(undefined);
   const { data: logStats } = trpc.admin.getLogStats.useQuery(undefined);
@@ -860,6 +885,7 @@ function LogsTab() {
       level: logLevel === "all" ? undefined : (logLevel as "debug" | "info" | "warn" | "error"),
       userId: logUserId ? parseInt(logUserId) : undefined,
       search: logSearch || undefined,
+      pathPrefix: logSource === "all" ? undefined : logSource,
       limit: 200,
     },
     { refetchInterval: 10_000 },
@@ -936,6 +962,29 @@ function LogsTab() {
             <SelectItem value="warn">Warn</SelectItem>
             <SelectItem value="info">Info</SelectItem>
             <SelectItem value="debug">Debug</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {/* Source filter.
+            Every subsystem already tags its entries with a `path`, so these are
+            prefix matches rather than a new field: "support" catches both
+            supportRouter and the support.* tRPC paths. */}
+        <Label className="font-syne text-sm">Source:</Label>
+        <Select value={logSource} onValueChange={setLogSource}>
+          <SelectTrigger className="w-32 sm:w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All sources</SelectItem>
+            <SelectItem value="support">Support widget</SelectItem>
+            <SelectItem value="whisper">Voice transcription</SelectItem>
+            <SelectItem value="ai">AI / editor guide</SelectItem>
+            <SelectItem value="render">Render</SelectItem>
+            <SelectItem value="worker">Render worker</SelectItem>
+            <SelectItem value="project">Projects</SelectItem>
+            <SelectItem value="step">Scenes</SelectItem>
+            <SelectItem value="auth">Auth</SelectItem>
+            <SelectItem value="admin">Admin</SelectItem>
           </SelectContent>
         </Select>
 

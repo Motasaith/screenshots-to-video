@@ -72,8 +72,16 @@ export type EditorOpsResponse = z.infer<typeof editorOpsResponseSchema>;
 
 /** Describes the operations to the model. Kept next to the schema so they cannot drift. */
 export const EDITOR_OPS_REFERENCE = `
-Available operations. Coordinates are percentages of the screenshot, 0-100,
-where x/y is the TOP-LEFT of a region and w/h are its size.
+Every operation is a FLAT object whose name is the value of an "op" field. The
+operation name is never used as a key. Exactly this shape:
+
+  {"summary": "Blurred the face.", "ops": [{"op": "addBlur", "x": 58, "y": 16, "w": 23, "h": 34}]}
+
+and never {"ops": [{"addBlur": {"x": 58, ...}}]}.
+
+Available operations, listed as op name followed by its fields. Coordinates are
+percentages of the screenshot, 0-100, where x/y is the TOP-LEFT of a region and
+w/h are its size.
 
 - addZoomPoint   {targetX, targetY, zoomScale?, duration?, script?}
     Camera moves to this point. targetX/targetY are the CENTRE of what to look
@@ -97,3 +105,52 @@ Rules:
 - If the request is ambiguous about WHERE, do not guess coordinates: return no
   ops and ask in the summary.
 `.trim();
+
+/**
+ * Coerce an operation into the flat `{op, ...fields}` shape.
+ *
+ * Models reliably produce `{"addBlur": {x, y, w, h}}` instead, reading the
+ * reference list above as a mapping of name to arguments. The schema rejects
+ * that, and the salvage path drops each op individually, so a model that had
+ * correctly located the thing being asked about still came back having done
+ * nothing. Rewriting the shape is cheaper and more honest than pretending the
+ * prompt alone will hold.
+ *
+ * Anything already flat passes through untouched, and anything unrecognisable is
+ * returned as-is so the schema is still the thing that decides.
+ */
+export function normalizeEditorOp(raw: unknown): unknown {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj.op === "string") return obj;
+
+  const keys = Object.keys(obj);
+  if (keys.length !== 1) return raw;
+
+  const [name] = keys;
+  if (!KNOWN_OP_NAMES.has(name)) return raw;
+
+  const params = obj[name];
+  // `clearZoomPoints` legitimately has no fields, so an empty object or null
+  // still has to yield a valid op rather than being discarded.
+  if (params === null || params === undefined) return { op: name };
+  if (typeof params !== "object" || Array.isArray(params)) return raw;
+
+  return { op: name, ...(params as Record<string, unknown>) };
+}
+
+/** Op names the schema accepts, for the normaliser to recognise. */
+const KNOWN_OP_NAMES = new Set([
+  "addZoomPoint",
+  "clearZoomPoints",
+  "addHighlight",
+  "addBlur",
+  "addRedact",
+  "setCrop",
+  "setOverlayText",
+  "setWatermark",
+  "setColorFilter",
+  "setScript",
+  "setDuration",
+]);

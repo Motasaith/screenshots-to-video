@@ -41,4 +41,12 @@ export const env = {
 
   // ── ElevenLabs (Premium TTS voices) ──
   elevenlabsApiKey: optional("ELEVENLABS_API_KEY"),
+
+  // ── Speech to text (support widget voice notes) ──
+  // Optional. Browsers with the Web Speech API transcribe locally and never
+  // reach the server; these are the fallback for the ones that cannot, mainly
+  // Firefox. Unset means the widget offers typing and images only in those
+  // browsers, rather than failing. See api/lib/whisper.ts for setup.
+  whisperBin: optional("WHISPER_BIN"),
+  whisperModel: optional("WHISPER_MODEL"),
 };

@@ -10,7 +10,7 @@ import {
 } from "./queries/users";
 import { getElevenLabsCredits, validateElevenLabsKey } from "./lib/tts";
 import { getDb } from "./queries/connection";
-import { projects, steps, renderJobs, users } from "@db/schema";
+import { projects, steps, renderJobs, users, supportChats } from "@db/schema";
 import { getSessionCookieOptions } from "./lib/cookies";
 import { Session } from "@contracts/constants";
 
@@ -83,6 +83,12 @@ export const settingsRouter = createRouter({
         await getDb().delete(steps).where(inArray(steps.projectId, projectIds));
         await getDb().delete(projects).where(eq(projects.userId, uid));
       }
+      // Support transcripts are the user's own words and have to go too.
+      // Added when the support widget started storing them; without this a
+      // deleted account left its conversations behind, orphaned against an id
+      // that no longer exists.
+      await getDb().delete(supportChats).where(eq(supportChats.userId, uid));
+
       await getDb().delete(users).where(eq(users.id, uid));
 
       // Invalidate the session so the deleted account can't keep browsing.

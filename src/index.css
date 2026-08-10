@@ -913,3 +913,13 @@
     overflow-x: hidden;
   }
 }
+
+/* Support chat replies.
+   The markdown renderer emits paragraphs and lists; this only sets the rhythm
+   between them so a multi-paragraph answer does not read as one slab. */
+.chat-prose > * + * {
+  margin-top: 0.5rem;
+}
+.chat-prose p {
+  margin: 0;
+}

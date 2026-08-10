@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { createRouter, authedQuery, rateLimitByUser } from "./middleware";
+import { createRouter, authedQuery, rateLimitByUser, userError } from "./middleware";
 import { getDb } from "./queries/connection";
 import { projects, steps } from "@db/schema";
 import { eq, and } from "drizzle-orm";
@@ -18,6 +18,7 @@ import { getUserElevenLabsKey } from "./queries/users";
 import { saveLocalFile } from "./lib/localStore";
 import { detectGibberish } from "./lib/gibberish";
 import { createLogger } from "./lib/logger";
+import { env } from "./lib/env";
 import fs from "fs/promises";
 
 const log = createLogger({ path: "aiRouter" });
@@ -570,8 +571,12 @@ export const aiRouter = createRouter({
           engine,
           substituted: !!fellBackFrom,
         };
-      } catch (err: any) {
-        throw new Error(`Failed to generate voice preview: ${err.message}`);
+      } catch (err) {
+        // The upstream reason is worth keeping even though the user gets a
+        // short message: a failing voice is usually a provider outage or a bad
+        // key, and neither is diagnosable from the sanitised text.
+        log.error("Voice preview failed", err, { voice: input.voice });
+        throw userError("That voice could not be previewed right now. Try another voice.");
       }
     }),
 
@@ -725,7 +730,12 @@ export const aiRouter = createRouter({
 
       // Ownership: a step id from another account must not be editable.
       const [row] = await getDb()
-        .select({ stepId: steps.id, ownerId: projects.userId, description: steps.description })
+        .select({
+          stepId: steps.id,
+          ownerId: projects.userId,
+          description: steps.description,
+          screenshotPath: steps.screenshotPath,
+        })
         .from(steps)
         .innerJoin(projects, eq(steps.projectId, projects.id))
         .where(eq(steps.id, input.stepId))
@@ -735,28 +745,72 @@ export const aiRouter = createRouter({
         throw new TRPCError({ code: "NOT_FOUND", message: "Scene not found" });
       }
 
+      // Show the model the actual screenshot.
+      //
+      // Without this it was working from the scene's text description alone, so
+      // any instruction that referred to something visible ("blur the face",
+      // "highlight the Save button") hit the rule below about not guessing
+      // coordinates and came back refusing to act. It was behaving correctly for
+      // something that could not see; the fix is to let it see.
+      //
+      // Video scenes are skipped rather than frame-extracted: a still is what
+      // the coordinate space refers to, and picking an arbitrary frame to
+      // measure against would put annotations in the wrong place.
+      const { loadMediaAsDataUri, isVideoKey } = await import("./lib/mediaSource");
+      const screenshot =
+        row.screenshotPath && !isVideoKey(row.screenshotPath)
+          ? await loadMediaAsDataUri(row.screenshotPath)
+          : null;
+
       const system = buildGuideSystemPrompt(
         `You are editing one scene. Reply ONLY with JSON matching:
 {"summary": "<one sentence, past tense, what you changed>", "ops": [ ... ]}
 
 ${EDITOR_OPS_REFERENCE}
 
+${
+  screenshot
+    ? `The scene's screenshot is attached. Read it to locate whatever the
+instruction refers to, and express the region as percentages of that image:
+x and y are the top-left corner, w and h the size, all 0-100, with 0,0 at the
+top left. Pad a face or a text field slightly so the whole thing is covered.
+If you genuinely cannot find what was asked for in the image, say so in the
+summary and return no ops.`
+    : `No screenshot is available for this scene, so you cannot see it. Do not
+guess coordinates: return no ops and say in the summary that you cannot see the
+scene.`
+}
+
 Return {"summary": "...", "ops": []} if the request is unclear or outside these
 operations, and explain why in the summary. Never invent an operation name.`
       );
+
+      const userText = `Scene: ${row.description || "(no description)"}
+Current annotations: ${JSON.stringify(input.current ?? {})}
+
+Instruction: ${input.instruction}`;
 
       const raw = await chatCompletion(
         [
           { role: "system", content: system },
           {
             role: "user",
-            content: `Scene: ${row.description || "(no description)"}
-Current annotations: ${JSON.stringify(input.current ?? {})}
-
-Instruction: ${input.instruction}`,
+            content: screenshot
+              ? [
+                  { type: "text", text: userText },
+                  { type: "image_url", image_url: { url: screenshot.dataUri } },
+                ]
+              : userText,
           },
         ],
-        { temperature: 0.2, maxTokens: 700, jsonMode: true }
+        {
+          // The vision model only when there is an image to read; the text model
+          // is faster and cheaper for instructions that need no picture.
+          model: screenshot ? env.visionLlmModel : env.llmModel,
+          temperature: 0.2,
+          maxTokens: 700,
+          jsonMode: true,
+        }
       );
 
       // Models wrap JSON in prose or fences often enough to be worth handling.
@@ -766,6 +820,14 @@ Instruction: ${input.instruction}`,
         parsed = JSON.parse(jsonText);
       } catch {
         return { summary: "I could not turn that into an edit. Try rephrasing.", ops: [] };
+      }
+
+      // Rewrite `{"addBlur": {...}}` into `{"op": "addBlur", ...}` before
+      // validating. The model produces that shape often, and it used to be
+      // dropped by the schema, so a correctly located blur turned into "no ops".
+      const { normalizeEditorOp } = await import("@contracts/editorOps");
+      if (parsed && typeof parsed === "object" && Array.isArray((parsed as any).ops)) {
+        (parsed as any).ops = (parsed as any).ops.map(normalizeEditorOp);
       }
 
       const result = editorOpsResponseSchema.safeParse(parsed);

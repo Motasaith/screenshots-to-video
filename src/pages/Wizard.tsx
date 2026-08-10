@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useParams, useNavigate } from "react-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useWizardStore, stepOrder, stepIndex, stepLabels, type WizardStep } from "@/hooks/useWizardStore";
@@ -7,14 +7,12 @@ import { trpc } from "@/providers/trpc";
 import {
   Loader2,
   ArrowLeft,
-  ChevronLeft,
   ChevronRight,
   Check,
 } from "lucide-react";
 import StepPreview from "@/components/wizard/StepPreview";
 import StepRender from "@/components/wizard/StepRender";
 import StepExport from "@/components/wizard/StepExport";
-import AIGuide from "@/components/wizard/AIGuide";
 
 
 
@@ -34,7 +32,6 @@ export default function Wizard() {
   const projectIdNum = Number(pid) || 0;
   const currentStepIdx = stepIndex(currentStep);
 
-  const [isGuideOpen, setIsGuideOpen] = useState<boolean>(false);
 
   const { data: project } = trpc.project.getById.useQuery(
     { id: projectIdNum },
@@ -197,37 +194,6 @@ export default function Wizard() {
         </div> {/* Closes Centered Main Content Wrapper */}
       </div> {/* Closes relative z-10 flex-1 flex flex-row ... */}
 
-      {/* Floating AI Guide Drawer (Slides out from right) */}
-      {currentStep !== "render" && currentStep !== "export" && (
-        <AnimatePresence>
-          {isGuideOpen ? (
-            <motion.div
-              initial={{ x: "110%", opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              exit={{ x: "110%", opacity: 0 }}
-              transition={{ type: "spring", damping: 25, stiffness: 220 }}
-              className="fixed right-4 top-[92px] bottom-6 z-50 w-80 max-w-[calc(100vw-32px)] glass-panel rounded-3xl border border-[var(--space-border)] bg-[var(--space-card)]/95 backdrop-blur-xl shadow-[0_15px_50px_rgba(0,0,0,0.3)] flex flex-col overflow-hidden"
-            >
-              <AIGuide onCollapse={() => setIsGuideOpen(false)} />
-            </motion.div>
-          ) : (
-            <motion.button
-              initial={{ x: "100%", opacity: 0, y: "-50%" }}
-              animate={{ x: 0, opacity: 1, y: "-50%" }}
-              exit={{ x: "100%", opacity: 0, y: "-50%" }}
-              onClick={() => setIsGuideOpen(true)}
-              className="fixed right-0 top-1/2 z-40 bg-[var(--space-card)]/95 backdrop-blur-md border border-r-0 border-teal-500/40 w-7 h-28 rounded-l-xl shadow-[0_0_15px_rgba(20,184,166,0.35)] flex flex-col items-center justify-center hover:bg-teal-500/10 hover:border-teal-400 hover:shadow-[0_0_20px_rgba(45,212,191,0.5)] transition-all duration-300 group cursor-pointer"
-            >
-              <div className="absolute -left-2.5 top-1/2 -translate-y-1/2 flex items-center justify-center w-5 h-5 rounded-full border border-teal-500 bg-teal-500 shadow-[0_0_12px_rgba(45,212,191,0.6)]">
-                <ChevronLeft className="w-3.5 h-3.5 text-white group-hover:-translate-x-0.5 transition-transform" />
-              </div>
-              <span className="font-mono text-[11px] uppercase tracking-wider text-[var(--space-text-muted)] group-hover:text-teal-300 font-bold select-none whitespace-nowrap rotate-90 pl-1.5">
-                AI Guide
-              </span>
-            </motion.button>
-          )}
-        </AnimatePresence>
-      )}
     </div>
   );
 }

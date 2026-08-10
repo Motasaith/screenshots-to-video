@@ -276,3 +276,107 @@ export const renderJobs = mysqlTable("render_jobs", {
 
 export type RenderJob = typeof renderJobs.$inferSelect;
 export type InsertRenderJob = typeof renderJobs.$inferInsert;
+
+/**
+ * Support widget conversations, for signed-in users.
+ *
+ * One row is one conversation. The newest row for a user is the active one, so
+ * "New chat" is an insert rather than a delete and yesterday's thread is still
+ * there if it turns out to matter.
+ *
+ * Messages are stored as JSON rather than a row each. A support thread is short
+ * and is only ever read whole, so a table of individual messages would buy a
+ * join and nothing else.
+ *
+ * Attachments are deliberately NOT stored. An image arrives as a base64 data
+ * URI of a few megabytes and a voice note as a blob URL that means nothing
+ * outside the tab that made it; both are recorded as flags so the transcript
+ * still reads correctly ("you sent a screenshot here") without turning this
+ * table into a file store.
+ */
+export const supportChats = mysqlTable("support_chats", {
+  id: serial("id").primaryKey(),
+  userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+  messages: json("messages")
+    .$type<
+      Array<{
+        role: "user" | "assistant";
+        content: string;
+        /** How many images were attached, so the transcript can say so. */
+        images?: number;
+        /** Whether this turn was sent as a voice note. */
+        note?: boolean;
+      }>
+    >()
+    .default([]),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
+export type SupportChat = typeof supportChats.$inferSelect;
+export type InsertSupportChat = typeof supportChats.$inferInsert;
+
+/**
+ * A request to talk to a person.
+ *
+ * Raised from the support widget when someone asks for a human, or clicks the
+ * option directly. Anonymous visitors can raise one too, which is why `userId`
+ * is nullable and `email` is required: without one or the other there would be
+ * no way to reply.
+ *
+ * `transcript` is a snapshot of the chat at the moment the form was sent, so an
+ * admin opening the ticket sees what the assistant already tried instead of
+ * asking the customer to repeat themselves. A snapshot rather than a live link
+ * to `support_chats`, because the customer may start a new chat afterwards and
+ * the ticket should still show what it was about.
+ */
+export const supportTickets = mysqlTable("support_tickets", {
+  id: serial("id").primaryKey(),
+  /** Null for a visitor with no account. */
+  userId: bigint("userId", { mode: "number", unsigned: true }),
+  email: varchar("email", { length: 320 }).notNull(),
+  name: varchar("name", { length: 255 }),
+  subject: varchar("subject", { length: 200 }).notNull(),
+  message: text("message").notNull(),
+  /** What the assistant and customer had said when the ticket was raised. */
+  transcript: json("transcript")
+    .$type<Array<{ role: "user" | "assistant"; content: string }>>()
+    .default([]),
+  /** Where the customer was, and what their account looked like. */
+  pageUrl: varchar("pageUrl", { length: 500 }),
+  accountSummary: text("accountSummary"),
+  status: mysqlEnum("status", ["open", "in_progress", "waiting", "resolved"])
+    .default("open")
+    .notNull(),
+  /**
+   * The conversation between admin and customer after the ticket was raised.
+   *
+   * Kept on the ticket rather than in `support_chats` so a reply survives the
+   * customer starting a new chat, and so an admin can answer someone who has
+   * closed the tab.
+   */
+  replies: json("replies")
+    .$type<Array<{ from: "admin" | "customer"; content: string; at: string }>>()
+    .default([]),
+  /** Private to admins; never returned to the customer. */
+  internalNote: text("internalNote"),
+  /** Set when the customer has unread admin replies, so the widget can nudge. */
+  unreadForCustomer: int("unreadForCustomer").default(0).notNull(),
+  /**
+   * Secret that lets a visitor with no account poll their own ticket. Held in
+   * the browser only; knowing it is the whole authorisation, so it never goes in
+   * a URL and is never returned by any list endpoint.
+   */
+  accessKey: varchar("accessKey", { length: 64 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
+export type SupportTicket = typeof supportTickets.$inferSelect;
+export type InsertSupportTicket = typeof supportTickets.$inferInsert;

@@ -184,6 +184,15 @@ export function readLogs(options?: {
   level?: LogLevel;
   userId?: number;
   search?: string;
+  /**
+   * Match the `path` field by prefix, e.g. "support" catches both
+   * "supportRouter" and "support.chat".
+   *
+   * Support widget failures were already being written here, but finding them
+   * meant knowing to type the right word into a free-text search. A prefix
+   * filter makes them a listed source instead of folklore.
+   */
+  pathPrefix?: string;
   limit?: number;
 }): { entries: LogEntry[]; total: number; file: string } {
   const dateStr = options?.date || new Date().toISOString().slice(0, 10);
@@ -202,6 +211,7 @@ export function readLogs(options?: {
         // Apply filters
         if (options?.level && entry.level !== options.level) continue;
         if (options?.userId && entry.userId !== options.userId) continue;
+        if (options?.pathPrefix && !(entry.path || "").startsWith(options.pathPrefix)) continue;
         if (options?.search) {
           const searchStr = options.search.toLowerCase();
           const entryStr = JSON.stringify(entry).toLowerCase();

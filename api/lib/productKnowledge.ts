@@ -113,3 +113,110 @@ export function buildGuideSystemPrompt(extra = ""): string {
     .filter(Boolean)
     .join("\n");
 }
+
+/**
+ * Plans, limits and account facts a support conversation needs.
+ *
+ * Kept beside the editor knowledge because the support widget answers both
+ * kinds of question in one thread: someone asking "why is my caption huge"
+ * and someone asking "what do I get on Pro" is the same conversation.
+ *
+ * These numbers are duplicated from src/data/pricing.ts by necessity (that file
+ * is client-side and this prompt is built on the server). If a plan changes,
+ * change it in both places.
+ */
+export const PLANS_AND_LIMITS = `
+Plans:
+- Free: 5 videos a month, 720p export, every aspect ratio, 12 voices
+  (4 of them ultra-realistic), AI script generation, community support.
+- Pro, $25/month or $20/month billed yearly: unlimited videos, 1080p and 4K,
+  ElevenLabs premium voices, copyright check on every screenshot, scene
+  transitions, custom intro and outro, background music, priority render queue.
+- Team, $99/month: everything in Pro, unlimited seats, shared project library,
+  brand templates, SSO, team analytics, dedicated support and an SLA.
+
+Limits and rules:
+- One completed render uses one credit. Re-rendering after an edit costs another.
+- Up to 50 screenshots per project.
+- 50 MB per uploaded file. PNG, JPG, WebP and GIF.
+- Project descriptions must be at least 120 characters: the narration is written
+  from that text, so a one-line description gives a one-line script.
+- Free-plan videos expire after a retention window; download them to keep them.
+- ElevenLabs voices are bring-your-own-key, set in Settings. The 12 built-in
+  voices need nothing from the user.
+- Rendering runs server-side. Closing the tab does not cancel it.
+`.trim();
+
+/**
+ * System prompt for the customer support widget.
+ *
+ * Differs from the in-editor guide in three ways that matter: it may be talking
+ * to someone who has never signed in, it can be shown a screenshot of a problem
+ * and has to reason about the picture, and it must refuse to guess about
+ * billing rather than improvise an answer that costs us a refund.
+ */
+export interface SupportAccountFacts {
+  plan: string;
+  credits: number;
+  videosThisMonth: number;
+  projectCount: number;
+  /** Status of their most recent render, if they have ever run one. */
+  lastRenderStatus?: string | null;
+  /** How long ago that render was, in plain words. */
+  lastRenderWhen?: string | null;
+}
+
+export function buildSupportSystemPrompt(opts?: {
+  /** Set when the user is signed in, so answers can be specific. */
+  plan?: string | null;
+  /**
+   * The signed-in customer's actual numbers.
+   *
+   * Without these the assistant could describe what a plan includes but not
+   * answer "how many videos do I have left", which is the most common billing
+   * question and the one where a guess is most damaging.
+   */
+  account?: SupportAccountFacts | null;
+  /** Set when the widget is open inside the editor on a specific scene. */
+  editorContext?: string | null;
+}): string {
+  return [
+    `You are the support assistant for AIVideo, a tool that turns screenshots into narrated tutorial videos with animated camera moves.`,
+    `You are talking to a customer or a visitor. Be brief, concrete and friendly. Two or three sentences is usually enough. Name the exact panel, tool or setting.`,
+    ``,
+    `Rules you must not break:`,
+    `- Answer only from the knowledge below. If it is not covered, say you are not certain and offer to pass it to a person. Never invent a feature, price, limit, menu or shortcut.`,
+    `- Never promise a refund, a discount, an extension or a plan change. Say that a human will confirm it.`,
+    `- Never ask for a password or a full API key. If a key is involved, point to Settings.`,
+    `- If an image is attached, say what you can actually see in it before advising. If it is unreadable, ask for a clearer screenshot.`,
+    ``,
+    EDITOR_TOOLS,
+    ``,
+    SCENE_TIMING_RULE,
+    ``,
+    APP_MAP,
+    ``,
+    PLANS_AND_LIMITS,
+    ``,
+    GOTCHAS,
+    opts?.account
+      ? [
+          ``,
+          `This customer's account, as of right now. Use these numbers when asked; never estimate them:`,
+          `- Plan: ${opts.account.plan}`,
+          `- Render credits remaining: ${opts.account.credits}`,
+          `- Videos rendered this month: ${opts.account.videosThisMonth}`,
+          `- Projects: ${opts.account.projectCount}`,
+          opts.account.lastRenderStatus
+            ? `- Most recent render: ${opts.account.lastRenderStatus}${opts.account.lastRenderWhen ? `, ${opts.account.lastRenderWhen}` : ""}`
+            : `- They have not rendered anything yet.`,
+          `If a number here contradicts what they believe, say what the account shows and offer to pass it to a person rather than arguing.`,
+        ].join("\n")
+      : opts?.plan
+        ? `\nThis customer is on the ${opts.plan} plan.`
+        : `\nYou do not know whether this person has an account. Do not assume they have paid.`,
+    opts?.editorContext ? `\nThey are in the editor right now:\n${opts.editorContext}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}

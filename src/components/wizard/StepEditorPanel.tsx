@@ -39,7 +39,6 @@ import {
   Wand2,
   Compass,
   Hand,
-  Bot,
   Save,
   ZoomIn,
   ZoomOut,
@@ -94,9 +93,11 @@ import {
   DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
+import { useSupportContext } from "@/components/support/supportContext";
+import { applyEditorOps } from "@/lib/applyEditorOps";
+import type { EditorOp } from "@contracts/editorOps";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 import type { TransitionType } from "@/hooks/useWizardStore";
-import AIGuide from "@/components/wizard/AIGuide";
 import Timeline, { type TimelineClip } from "@/components/wizard/Timeline";
 import { startOnboardingTour } from "@/components/wizard/OnboardingTour";
 import { INTRO_TEMPLATES, OUTRO_TEMPLATES, getTemplate } from "@/components/wizard/introOutroTemplates";
@@ -552,7 +553,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const panScrollRef = useRef<{ left: number; top: number }>({ left: 0, top: 0 });
 
   // Google Vids replica states
-  const [activeRightTab, setActiveRightTab] = useState<"properties" | "script" | "voiceover" | "elevenlabs" | "captions" | "transitions" | "aiguide" | "safety" | "help" | "media" | "introoutro" | null>("properties");
+  const [activeRightTab, setActiveRightTab] = useState<"properties" | "script" | "voiceover" | "elevenlabs" | "captions" | "transitions" | "safety" | "help" | "media" | "introoutro" | null>("properties");
   const [activeTransitionClipId, setActiveTransitionClipId] = useState<number | null>(null);
   const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
   const [projectTitle, setProjectTitle] = useState("Untitled video");
@@ -959,6 +960,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   }, [project?.title]);
 
   const currentStep = steps[currentStepIndex];
+
+  // Latest annotations, for callbacks handed to the support widget. Reading
+  // state directly there would capture a stale snapshot.
+  const annotationsRef = useRef<Record<number, StepAnnotation>>({});
+  useEffect(() => {
+    annotationsRef.current = annotations;
+  }, [annotations]);
 
   const pushHistory = useCallback((nextState: Record<number, StepAnnotation>) => {
     const serialized = JSON.parse(JSON.stringify(nextState));
@@ -2353,6 +2361,76 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
   /* Derived state */
   const currentAnn = currentStep ? annotations[currentStep.id] : null;
+
+  /**
+   * Lend the editor's context to the support widget.
+   *
+   * The widget lives at the app root so it can follow the user everywhere, so it
+   * cannot see this component's state directly. While the editor is open it
+   * publishes two things: a readable summary that goes into the prompt, and a
+   * way to apply operations the model returns.
+   *
+   * The apply path folds through `applyEditorOps` into `pushHistory`, which is
+   * the same route a manual edit takes. That is deliberate: an AI change lands
+   * on the undo stack, so Ctrl+Z reverses it.
+   */
+  const setSupportEditor = useSupportContext((st) => st.setEditor);
+  const clearSupportEditor = useSupportContext((st) => st.clearEditor);
+
+  useEffect(() => {
+    if (!currentStep) {
+      clearSupportEditor();
+      return;
+    }
+
+    const stepId = currentStep.id;
+
+    setSupportEditor({
+      stepId,
+      describe: () => {
+        const ann = annotationsRef.current[stepId] ?? {};
+        const facts = [
+          `Scene ${currentStepIndex + 1} of ${steps.length}.`,
+          `Aspect ratio ${project?.aspectRatio ?? "unknown"}.`,
+          currentStep.description ? `Description: ${currentStep.description}` : "No description yet.",
+          `Zoom points: ${(ann.editorMultiZooms as unknown[] | undefined)?.length ?? 0}.`,
+          `Highlights: ${(ann.editorHighlights as unknown[] | undefined)?.length ?? 0}.`,
+          `Blur regions: ${(ann.editorBlurs as unknown[] | undefined)?.length ?? 0}.`,
+          `Pixelate regions: ${(ann.editorPixelates as unknown[] | undefined)?.length ?? 0}.`,
+          ann.editorColorFilter && ann.editorColorFilter !== "none"
+            ? `Colour filter ${ann.editorColorFilter} at ${ann.editorColorFilterStrength ?? 100}%.`
+            : "No colour filter.",
+          `Captions ${props.captionsEnabled ? "on" : "off"}, size ${props.captionSize ?? "medium"}, position ${props.captionPosition ?? "bottom"}.`,
+        ];
+        return facts.join(" ");
+      },
+      current: () => (annotationsRef.current[stepId] ?? {}) as Record<string, unknown>,
+      applyOps: (ops) => {
+        const base = annotationsRef.current[stepId] ?? {};
+        const next = applyEditorOps(base as Record<string, unknown>, ops as EditorOp[], () =>
+          crypto.randomUUID()
+        );
+        pushHistory({ ...annotationsRef.current, [stepId]: next as StepAnnotation });
+      },
+    });
+
+    return () => clearSupportEditor();
+    // `annotations` is read through a ref so the bridge is not re-registered on
+    // every keystroke; only identity of the scene matters here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    currentStep?.id,
+    currentStepIndex,
+    steps.length,
+    project?.aspectRatio,
+    currentStep?.description,
+    props.captionsEnabled,
+    props.captionSize,
+    props.captionPosition,
+    setSupportEditor,
+    clearSupportEditor,
+    pushHistory,
+  ]);
 
   // Whether an annotation overlay should capture pointer events.
   // Overlays only capture clicks when the user is in "select" mode or the
@@ -4087,7 +4165,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     );
   };
 
-  const toggleRightTab = (tab: "properties" | "script" | "voiceover" | "elevenlabs" | "captions" | "transitions" | "aiguide" | "safety" | "help" | "media" | "introoutro") => {
+  const toggleRightTab = (tab: "properties" | "script" | "voiceover" | "elevenlabs" | "captions" | "transitions" | "safety" | "help" | "media" | "introoutro") => {
     const newTab = activeRightTab === tab ? null : tab;
     setActiveRightTab(newTab);
     // On mobile, open the sidebar overlay when selecting a tab
@@ -5741,16 +5819,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     );
   };
 
-  const renderAIGuideContent = () => {
-    return (
-      <div className="flex flex-col h-full gap-2">
-        <div className="flex-1 min-h-[350px] flex flex-col">
-          <AIGuide />
-        </div>
-      </div>
-    );
-  };
-
   const renderHelpContent = () => {
     return (
       <div className="text-xs text-[var(--sketch-fg-muted)] leading-relaxed space-y-3">
@@ -6379,9 +6447,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               <DropdownMenuItem onClick={() => toggleRightTab("help")}>
                 <HelpCircle className="w-3.5 h-3.5 mr-2" /> Help Guide
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => toggleRightTab("aiguide")}>
-                <Bot className="w-3.5 h-3.5 mr-2" /> AI Guide
-              </DropdownMenuItem>
               <DropdownMenuItem onClick={() => toggleRightTab("safety")}>
                 <Shield className="w-3.5 h-3.5 mr-2" /> Safety & Copyright Check
               </DropdownMenuItem>
@@ -6495,9 +6560,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => { toggleRightTab("introoutro"); setIsMobileSidebarOpen(true); }}>
                 <Clapperboard className="w-3.5 h-3.5 mr-2" /> Intro / Outro
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => { toggleRightTab("aiguide"); setIsMobileSidebarOpen(true); }}>
-                <Bot className="w-3.5 h-3.5 mr-2" /> AI Guide
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => { toggleRightTab("media"); setIsMobileSidebarOpen(true); }}>
                 <Clapperboard className="w-3.5 h-3.5 mr-2" /> Media
@@ -7817,7 +7879,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   {activeRightTab === "captions" && "Captions Settings"}
                   {activeRightTab === "transitions" && "Transitions"}
                   {activeRightTab === "introoutro" && "Intro & Outro"}
-                  {activeRightTab === "aiguide" && "AI Guide"}
                   {activeRightTab === "safety" && "Safety & Copyright"}
                   {activeRightTab === "help" && "Help Guide"}
                   {activeRightTab === "media" && "Pexels Media"}
@@ -7838,7 +7899,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 {activeRightTab === "captions" && renderCaptionsContent()}
                 {activeRightTab === "transitions" && renderTransitionsContent()}
                 {activeRightTab === "introoutro" && renderIntroOutroContent()}
-                {activeRightTab === "aiguide" && renderAIGuideContent()}
                 {activeRightTab === "safety" && renderSafetyContent()}
                 {activeRightTab === "help" && renderHelpContent()}
                 {activeRightTab === "media" && renderMediaContent()}
@@ -7856,7 +7916,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           <RightTabButton active={activeRightTab === "captions"} onClick={() => toggleRightTab("captions")} icon={<Type className="w-4.5 h-4.5" />} label="Captions" />
           <RightTabButton active={activeRightTab === "transitions"} onClick={() => toggleRightTab("transitions")} icon={<Film className="w-4.5 h-4.5" />} label="Transitions" />
           <RightTabButton active={activeRightTab === "introoutro"} onClick={() => toggleRightTab("introoutro")} icon={<Clapperboard className="w-4.5 h-4.5" />} label="Intro/Outro" />
-          <RightTabButton active={activeRightTab === "aiguide"} onClick={() => toggleRightTab("aiguide")} icon={<Bot className="w-4.5 h-4.5" />} label="AI Guide" />
           <RightTabButton active={activeRightTab === "media"} onClick={() => toggleRightTab("media")} icon={<Clapperboard className="w-4.5 h-4.5" />} label="Media" />
           <RightTabButton active={activeRightTab === "safety"} onClick={() => toggleRightTab("safety")} icon={<Shield className="w-4.5 h-4.5" />} label="Safety" />
           <div className="flex-1" />
@@ -7879,7 +7938,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   {activeRightTab === "captions" && "Captions Settings"}
                   {activeRightTab === "transitions" && "Transitions"}
                   {activeRightTab === "introoutro" && "Intro & Outro"}
-                  {activeRightTab === "aiguide" && "AI Guide"}
                   {activeRightTab === "safety" && "Safety & Copyright"}
                   {activeRightTab === "help" && "Help Guide"}
                   {activeRightTab === "media" && "Pexels Media"}
@@ -7899,7 +7957,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 {activeRightTab === "captions" && renderCaptionsContent()}
                 {activeRightTab === "transitions" && renderTransitionsContent()}
                 {activeRightTab === "introoutro" && renderIntroOutroContent()}
-                {activeRightTab === "aiguide" && renderAIGuideContent()}
                 {activeRightTab === "safety" && renderSafetyContent()}
                 {activeRightTab === "help" && renderHelpContent()}
                 {activeRightTab === "media" && renderMediaContent()}
