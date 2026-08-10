@@ -21,6 +21,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { detectGibberish } from "@/lib/gibberish";
+import { ProjectDescription } from "@contracts/constants";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -136,7 +137,7 @@ export default function Dashboard() {
         rawPlatform === "instagram" ? "linkedin" : rawPlatform;
       const result = await createProject.mutateAsync({
         title: newProjectTitle.trim() || "Untitled video",
-        description: newProjectDesc.trim() || "Screenshot tutorial video",
+        description: newProjectDesc.trim(),
         platform,
         aspectRatio: selectedRatio,
       });
@@ -509,23 +510,21 @@ export default function Dashboard() {
                   <textarea
                     value={newProjectDesc}
                     onChange={(e) => setNewProjectDesc(e.target.value)}
-                    placeholder="Describe what this video is about, who the audience is, and what they should be able to do after watching."
+                    placeholder={`Describe what this video covers, who it is for, and what they should be able to do after watching. At least ${ProjectDescription.min} characters, because this is what the narration is written from.`}
                     className="w-full text-sm bg-slate-100/40  border border-[var(--space-border)] focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/30 rounded-xl px-4 py-3 text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)] focus:outline-none resize-none transition-all"
                     rows={5}
                   />
                   <div className="flex items-center justify-between px-1">
                     <span className="text-[10px] text-[var(--space-text-subtle)]">
-                      {newProjectDesc.trim().length === 0 ? (
-                        <span className="text-amber-500 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3" /> Min 10 characters required
-                        </span>
-                      ) : newProjectDesc.trim().length < 10 ? (
+                      {newProjectDesc.trim().length < ProjectDescription.min ? (
                         <span className="text-amber-500 flex items-center gap-1 font-semibold">
-                          <AlertCircle className="w-3 h-3 animate-pulse" /> Description is too short (min 10 chars)
+                          <AlertCircle className="w-3 h-3" />
+                          {ProjectDescription.min - newProjectDesc.trim().length} more character
+                          {ProjectDescription.min - newProjectDesc.trim().length === 1 ? "" : "s"} needed
                         </span>
-                      ) : newProjectDesc.length > 1000 ? (
+                      ) : newProjectDesc.length > ProjectDescription.max ? (
                         <span className="text-red-500 flex items-center gap-1 font-semibold">
-                          <AlertCircle className="w-3 h-3" /> Description is too long (max 1000 chars)
+                          <AlertCircle className="w-3 h-3" /> Description is too long (max {ProjectDescription.max} chars)
                         </span>
                       ) : detectGibberish(newProjectDesc).isGibberish ? (
                         <span className="text-red-500 flex items-center gap-1 font-semibold">
@@ -537,8 +536,8 @@ export default function Dashboard() {
                         </span>
                       )}
                     </span>
-                    <span className={`text-[10px] font-mono ${newProjectDesc.length > 1000 || detectGibberish(newProjectDesc).isGibberish ? 'text-red-500 font-bold' : 'text-[var(--space-text-subtle)]'}`}>
-                      {newProjectDesc.length}/1000
+                    <span className={`text-[10px] font-mono ${newProjectDesc.trim().length < ProjectDescription.min || newProjectDesc.length > ProjectDescription.max || detectGibberish(newProjectDesc).isGibberish ? 'text-red-500 font-bold' : 'text-[var(--space-text-subtle)]'}`}>
+                      {newProjectDesc.length}/{ProjectDescription.max}
                     </span>
                   </div>
                 </div>
@@ -598,8 +597,8 @@ export default function Dashboard() {
                   newProjectTitle.trim().length < 3 || 
                   newProjectTitle.length > 100 || 
                   detectGibberish(newProjectTitle).isGibberish ||
-                  newProjectDesc.trim().length < 10 || 
-                  newProjectDesc.length > 1000 || 
+                  newProjectDesc.trim().length < ProjectDescription.min || 
+                  newProjectDesc.length > ProjectDescription.max || 
                   detectGibberish(newProjectDesc).isGibberish ||
                   creatingProject
                 }

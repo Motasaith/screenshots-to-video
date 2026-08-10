@@ -215,6 +215,7 @@ interface StepAnnotation {
   editorMagnifyScale?: number | null;
   editorMagnifyCorner?: string | null;
   editorColorFilter?: string | null;
+  editorColorFilterStrength?: number | null;
   editorZoomScale?: number | null;
   editorDuration?: number | null;
   editorMultiZooms?: Array<{
@@ -274,6 +275,126 @@ function clamp(n: number, min: number, max: number) {
 /* ------------------------------------------------------------------ */
 /*  Shared resize handle definitions (8-directional)                  */
 /* ------------------------------------------------------------------ */
+
+/**
+ * Applying a censorship strength to a step.
+ *
+ * Each region stores its own `intensity` / `blockSize`, baked in when it was
+ * drawn, and both the canvas preview and the FFmpeg filter read the region's
+ * value in preference to the step-level default:
+ *
+ *     blur(${region.intensity ?? ann.editorBlurIntensity ?? 20}px)
+ *
+ * So moving the step-level slider changed a number nothing looked at once a
+ * region existed, which is why the slider appeared dead. These write the new
+ * value to the step default *and* to every region on that step, so the slider
+ * does what it looks like it does. Per-region values stay in the model, ready
+ * for a per-region control later.
+ */
+function withBlurIntensity(
+  ann: StepAnnotation | undefined,
+  intensity: number
+): StepAnnotation {
+  const base = ann || {};
+  return {
+    ...base,
+    editorBlurIntensity: intensity,
+    editorBlurs: (base.editorBlurs || []).map((r) => ({ ...r, intensity })),
+  };
+}
+
+function withPixelateBlockSize(
+  ann: StepAnnotation | undefined,
+  blockSize: number
+): StepAnnotation {
+  const base = ann || {};
+  return {
+    ...base,
+    editorPixelateBlockSize: blockSize,
+    editorPixelates: (base.editorPixelates || []).map((r) => ({ ...r, blockSize })),
+  };
+}
+
+function withSpotlightIntensity(
+  ann: StepAnnotation | undefined,
+  intensity: number
+): StepAnnotation {
+  const base = ann || {};
+  return {
+    ...base,
+    editorSpotlightIntensity: intensity,
+    editorSpotlights: (base.editorSpotlights || []).map((r) => ({ ...r, intensity })),
+  };
+}
+
+/**
+ * CSS `filter` for the canvas preview, scaled by the step's filter strength.
+ *
+ * Percentages are interpolated from the identity value rather than just
+ * multiplied: `contrast` and `saturate` are neutral at 100%, not 0%, so
+ * scaling those naively would fade the picture to grey instead of fading the
+ * effect out. Kept in one place because the <video> and <img> branches of the
+ * canvas both need it and had drifted into two copies of the same ternary.
+ */
+function colorFilterCss(filter: string | null | undefined, strength: number | null | undefined): string {
+  if (!filter || filter === "none") return "none";
+  const t = Math.max(0, Math.min(100, strength ?? 100)) / 100;
+  if (t === 0) return "none";
+  const lerp = (from: number, to: number) => from + (to - from) * t;
+  switch (filter) {
+    case "grayscale":
+      return `grayscale(${(t * 100).toFixed(0)}%)`;
+    case "sepia":
+      return `sepia(${(t * 100).toFixed(0)}%)`;
+    case "warm":
+      return `sepia(${(t * 50).toFixed(0)}%) saturate(${lerp(100, 140).toFixed(0)}%)`;
+    case "cool":
+      return `hue-rotate(${(t * 180).toFixed(0)}deg) saturate(${lerp(100, 80).toFixed(0)}%)`;
+    case "contrast":
+      return `contrast(${lerp(100, 150).toFixed(0)}%) saturate(${lerp(100, 120).toFixed(0)}%)`;
+    default:
+      return "none";
+  }
+}
+
+/** True when a drag carries media the canvas can accept. */
+function dragCarriesMedia(e: React.DragEvent): boolean {
+  const types = e.dataTransfer?.types;
+  if (!types) return false;
+  return types.includes("Files") || types.includes("application/x-pexels-media");
+}
+
+/**
+ * Scene description cap.
+ *
+ * Matches `description: z.string().max(500)` on api/stepRouter.ts. Without a
+ * limit in the field, an over-long description was only rejected once the save
+ * fired, after the text had been typed.
+ *
+ * The narration script is deliberately uncapped: its length is dictated by how
+ * long the scene needs to be spoken for, and TTS handles long passages fine.
+ */
+/**
+ * Greedy word wrap, mirroring `splitTextIntoLines` in api/lib/ffmpeg.ts.
+ *
+ * The renderer emits one `drawtext` per line, each enabled for its own slice of
+ * the narration, so at any instant the video shows a single line. The preview
+ * used to print the whole narration script at once, which on a vertical frame
+ * filled the picture and made a correctly configured caption look broken.
+ */
+function firstCaptionLine(text: string, maxChars: number): string {
+  const words = text.split(/\s+/).filter(Boolean);
+  let line = "";
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (candidate.length > maxChars) break;
+    line = candidate;
+  }
+  // A single word longer than the limit still has to show something.
+  return line || words[0] || "";
+}
+
+const SCENE_DESC_MAX = 500;
 
 const RESIZE_HANDLES = [
   { name: "nw", style: { top: "-6px", left: "-6px", cursor: "nwse-resize" } },
@@ -467,6 +588,9 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingFilesCount, setUploadingFilesCount] = useState(0);
+  // Drag depth, not a boolean: dragging over child elements fires
+  // dragenter/dragleave pairs constantly, and a plain flag flickers.
+  const [canvasDragDepth, setCanvasDragDepth] = useState(0);
 
   const [history, setHistory] = useState<Record<number, StepAnnotation>[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
@@ -702,6 +826,16 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       audioRef.onended = () => setPlayingId(null);
       await audioRef.play();
       setPlayingId(voiceId);
+
+      // The server substitutes a similar standard voice when the requested
+      // engine is unavailable. Saying so beats letting someone conclude the
+      // previews are simply broken.
+      if (res.substituted) {
+        const label = voices.find((v) => v.id === voiceId)?.name
+          ?? elevenLabsVoices.find((v) => v.id === voiceId)?.name
+          ?? "That voice";
+        toast.info(`${label} is unavailable right now. Playing the closest standard voice instead.`);
+      }
     } catch (err) {
       console.error("Preview failed:", err);
     } finally {
@@ -1390,6 +1524,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           editorMagnifyScale: s.editorMagnifyScale ?? 2,
           editorMagnifyCorner: s.editorMagnifyCorner,
           editorColorFilter: s.editorColorFilter,
+          editorColorFilterStrength: s.editorColorFilterStrength ?? 100,
           editorZoomScale: s.editorZoomScale ?? null,
           editorDuration: s.editorDuration,
           editorMultiZooms: s.editorMultiZooms || [],
@@ -2022,7 +2157,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     "editorSpotlights",
     "editorBadgeNumber", "editorBadgeX", "editorBadgeY", "editorBadgeColor",
     "editorMagnifyX", "editorMagnifyY", "editorMagnifyW", "editorMagnifyH", "editorMagnifyScale", "editorMagnifyCorner",
-    "editorColorFilter",
+    "editorColorFilter", "editorColorFilterStrength",
     "editorZoomScale", "editorDuration",
     "editorMultiZooms",
   ];
@@ -2844,19 +2979,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                     onValueChange={([v]) =>
                       setAnnotations((prev) => ({
                         ...prev,
-                        [currentStep!.id]: {
-                          ...prev[currentStep!.id],
-                          editorBlurIntensity: v,
-                        },
+                        [currentStep!.id]: withBlurIntensity(prev[currentStep!.id], v),
                       }))
                     }
                     onValueCommit={([v]) => {
                       pushHistory({
                         ...annotations,
-                        [currentStep!.id]: {
-                          ...(annotations[currentStep!.id] || {}),
-                          editorBlurIntensity: v,
-                        },
+                        [currentStep!.id]: withBlurIntensity(annotations[currentStep!.id], v),
                       });
                     }}
                     className="flex-1"
@@ -3270,25 +3399,19 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 <div className="flex items-center gap-3 mt-1">
                   <Slider
                     value={[currentAnn?.editorPixelateBlockSize ?? 20]}
-                    min={5}
+                    min={4}
                     max={60}
                     step={1}
                     onValueChange={([v]) =>
                       setAnnotations((prev) => ({
                         ...prev,
-                        [currentStep!.id]: {
-                          ...prev[currentStep!.id],
-                          editorPixelateBlockSize: v,
-                        },
+                        [currentStep!.id]: withPixelateBlockSize(prev[currentStep!.id], v),
                       }))
                     }
                     onValueCommit={([v]) => {
                       pushHistory({
                         ...annotations,
-                        [currentStep!.id]: {
-                          ...(annotations[currentStep!.id] || {}),
-                          editorPixelateBlockSize: v,
-                        },
+                        [currentStep!.id]: withPixelateBlockSize(annotations[currentStep!.id], v),
                       });
                     }}
                     className="flex-1"
@@ -3424,19 +3547,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                     onValueChange={([v]) =>
                       setAnnotations((prev) => ({
                         ...prev,
-                        [currentStep!.id]: {
-                          ...prev[currentStep!.id],
-                          editorSpotlightIntensity: v / 100,
-                        },
+                        [currentStep!.id]: withSpotlightIntensity(prev[currentStep!.id], v / 100),
                       }))
                     }
                     onValueCommit={([v]) => {
                       pushHistory({
                         ...annotations,
-                        [currentStep!.id]: {
-                          ...(annotations[currentStep!.id] || {}),
-                          editorSpotlightIntensity: v / 100,
-                        },
+                        [currentStep!.id]: withSpotlightIntensity(annotations[currentStep!.id], v / 100),
                       });
                     }}
                     className="flex-1"
@@ -3633,6 +3750,45 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   </SelectContent>
                 </Select>
               </div>
+              {/* Strength. A filter at full blast is rarely what you want on a
+                  screenshot: sepia and high contrast both make small UI text
+                  hard to read, so the useful range is well under 100%. */}
+              {currentAnn?.editorColorFilter && currentAnn.editorColorFilter !== "none" && (
+                <div>
+                  <Label className="text-xs font-mono">Filter Opacity</Label>
+                  <div className="flex items-center gap-3 mt-1">
+                    <Slider
+                      value={[currentAnn?.editorColorFilterStrength ?? 100]}
+                      min={0}
+                      max={100}
+                      step={5}
+                      onValueChange={([v]) =>
+                        setAnnotations((prev) => ({
+                          ...prev,
+                          [currentStep!.id]: {
+                            ...prev[currentStep!.id],
+                            editorColorFilterStrength: v,
+                          },
+                        }))
+                      }
+                      onValueCommit={([v]) => {
+                        pushHistory({
+                          ...annotations,
+                          [currentStep!.id]: {
+                            ...(annotations[currentStep!.id] || {}),
+                            editorColorFilterStrength: v,
+                          },
+                        });
+                      }}
+                      className="flex-1"
+                    />
+                    <span className="text-xs font-mono w-10 text-right">
+                      {currentAnn?.editorColorFilterStrength ?? 100}%
+                    </span>
+                  </div>
+                </div>
+              )}
+
               <p className="text-[10px] text-[var(--sketch-fg-muted)]">≡ Applies to the entire screenshot for this step</p>
               {currentAnn?.editorColorFilter && currentAnn.editorColorFilter !== "none" && (
                 <button onClick={() => handleClear("editorColorFilter")} className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"><Trash2 className="w-3 h-3" /> Clear filter</button>
@@ -4183,10 +4339,18 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                               utils.project.getById.invalidate({ id: projectIdNum });
                             }}
                             placeholder="Describe what happens in this scene... Required."
+                            maxLength={SCENE_DESC_MAX}
                             className={`text-sm min-h-[60px] bg-[var(--sketch-card-bg)] border border-[var(--sketch-border-color)]/25 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)] ${
                               (!textState.desc.trim() || /^scene\s+\d+$/i.test(textState.desc.trim()) || gibberish.isGibberish) ? "border-amber-500/50" : ""
                             }`}
                           />
+                          <p className={`text-[10px] mt-0.5 text-right font-mono ${
+                            textState.desc.length >= SCENE_DESC_MAX
+                              ? "text-amber-600 font-bold"
+                              : "text-[var(--sketch-fg-subtle)]"
+                          }`}>
+                            {textState.desc.length}/{SCENE_DESC_MAX}
+                          </p>
                           {(!textState.desc.trim() || /^scene\s+\d+$/i.test(textState.desc.trim())) && (
                             <p className="text-xs font-medium text-amber-600 mt-1 flex items-center gap-1">
                               <AlertTriangle className="w-3.5 h-3.5" /> Description is required for script generation.
@@ -4320,11 +4484,21 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                         }
                       }}
                       placeholder="Describe what happens in this scene (e.g. 'Click the login button'). Required to generate voiceover narration."
+                      maxLength={SCENE_DESC_MAX}
                       className="text-sm min-h-[85px] bg-[var(--sketch-card-bg)] border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg)] placeholder:text-[var(--sketch-fg-muted)]/50 focus:border-blue-500 focus:ring-1 focus:ring-[var(--sketch-accent)]"
                     />
-                    <p className="text-xs text-[var(--sketch-fg-subtle)] mt-1">
-                      Please provide a description. The AI uses this description to write the voiceover narration.
-                    </p>
+                    <div className="flex items-start justify-between gap-3 mt-1">
+                      <p className="text-xs text-[var(--sketch-fg-subtle)]">
+                        The AI uses this description to write the voiceover narration.
+                      </p>
+                      <span className={`text-[10px] font-mono flex-shrink-0 ${
+                        tempDesc.length >= SCENE_DESC_MAX
+                          ? "text-amber-600 font-bold"
+                          : "text-[var(--sketch-fg-subtle)]"
+                      }`}>
+                        {tempDesc.length}/{SCENE_DESC_MAX}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Narration Script (TTS) */}
@@ -5766,8 +5940,16 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 value={projectTitle}
                 onChange={(e) => setProjectTitle(e.target.value)}
                 onBlur={async () => {
-                  if (projectIdNum > 0 && projectTitle.trim()) {
+                  if (!(projectIdNum > 0 && projectTitle.trim())) return;
+                  // Routed through saveState so the single header indicator
+                  // covers a title change too. It used to have its own
+                  // indicator, which is what produced two of them.
+                  setSaveState("saving");
+                  try {
                     await updateProject.mutateAsync({ id: projectIdNum, title: projectTitle });
+                    setSaveState("saved");
+                  } catch {
+                    setSaveState("error");
                   }
                 }}
                 onKeyDown={async (e) => {
@@ -5777,19 +5959,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 }}
                 className="font-medium text-sm text-[var(--sketch-fg)] hover:bg-[var(--sketch-fg-subtle)]/10 focus:bg-[var(--sketch-card-bg)] focus:ring-1 focus:ring-[var(--sketch-accent)] rounded px-1.5 py-0.5 border-none bg-transparent transition-all outline-none min-w-0 w-full truncate"
               />
-              <span className="hidden sm:flex text-[10px] text-[var(--sketch-fg-subtle)] font-medium bg-[var(--sketch-fg-subtle)]/10 px-1.5 py-0.5 rounded items-center gap-1 flex-shrink-0">
-                {updateStep.isPending || updateProject.isPending ? (
-                  <>
-                    <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                    <span>Saving...</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="w-2.5 h-2.5 text-green-500" />
-                    <span>All changes saved</span>
-                  </>
-                )}
-              </span>
             </div>
           </div>
 
@@ -6485,7 +6654,69 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         {/* LEFT COLUMN: Canvas + Timeline stacked vertically */}
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           {/* Canvas area */}
-          <div data-tour="canvas" className="flex-1 flex flex-col bg-[var(--sketch-bg)] relative min-w-0 p-2 sm:p-4 min-h-0">
+          <div
+            data-tour="canvas"
+            className="flex-1 flex flex-col bg-[var(--sketch-bg)] relative min-w-0 p-2 sm:p-4 min-h-0"
+            // Dropping screenshots straight onto the canvas. The timeline
+            // already accepted drops; the canvas is the larger, more obvious
+            // target and is where people try it first.
+            onDragEnter={(e) => {
+              if (!dragCarriesMedia(e)) return;
+              e.preventDefault();
+              setCanvasDragDepth((d) => d + 1);
+            }}
+            onDragOver={(e) => {
+              if (!dragCarriesMedia(e)) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "copy";
+            }}
+            onDragLeave={(e) => {
+              if (!dragCarriesMedia(e)) return;
+              setCanvasDragDepth((d) => Math.max(0, d - 1));
+            }}
+            onDrop={(e) => {
+              if (!dragCarriesMedia(e)) return;
+              e.preventDefault();
+              setCanvasDragDepth(0);
+
+              const pexels = e.dataTransfer.getData("application/x-pexels-media");
+              if (pexels) {
+                try {
+                  handleImportPexelsMedia(JSON.parse(pexels));
+                } catch {
+                  toast.error("Could not read that item.");
+                }
+                return;
+              }
+
+              const files = e.dataTransfer.files;
+              if (!files?.length) return;
+
+              const media = Array.from(files).filter(
+                (f) => f.type.startsWith("image/") || f.type.startsWith("video/")
+              );
+              if (media.length === 0) {
+                toast.error("Drop images or videos.");
+                return;
+              }
+              if (media.length !== files.length) {
+                toast.info(`Skipped ${files.length - media.length} file(s) that were not images or videos.`);
+              }
+
+              const list = new DataTransfer();
+              for (const f of media) list.items.add(f);
+              handleUploadFiles(list.files);
+            }}
+          >
+            {canvasDragDepth > 0 && (
+              <div className="absolute inset-2 sm:inset-4 z-40 pointer-events-none rounded-md border-2 border-dashed border-[var(--sketch-accent)] bg-[var(--sketch-accent)]/5 flex items-center justify-center">
+                <div className="flex flex-col items-center gap-2 rounded-lg bg-[var(--sketch-surface)] px-5 py-4 shadow-lg border border-[var(--sketch-border-color)]">
+                  <Upload className="w-5 h-5 text-[var(--sketch-accent)]" />
+                  <span className="text-sm font-medium text-[var(--sketch-fg)]">Drop to add as new scenes</span>
+                  <span className="text-[11px] text-[var(--sketch-fg-muted)]">Images and videos, sorted by filename</span>
+                </div>
+              </div>
+            )}
             <div className="flex-1 w-full relative min-h-0 flex flex-col overflow-hidden">
               {currentStep ? (
                 <div
@@ -6543,18 +6774,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                             className="w-full h-full object-contain select-none absolute inset-0"
                             style={{
                               zIndex: 0,
-                              filter:
-                                currentAnn?.editorColorFilter === "grayscale"
-                                  ? "grayscale(100%)"
-                                  : currentAnn?.editorColorFilter === "sepia"
-                                    ? "sepia(100%)"
-                                    : currentAnn?.editorColorFilter === "warm"
-                                      ? "sepia(50%) saturate(140%)"
-                                      : currentAnn?.editorColorFilter === "cool"
-                                        ? "hue-rotate(180deg) saturate(80%)"
-                                        : currentAnn?.editorColorFilter === "contrast"
-                                          ? "contrast(150%) saturate(120%)"
-                                          : "none",
+                              filter: colorFilterCss(
+                                currentAnn?.editorColorFilter,
+                                currentAnn?.editorColorFilterStrength
+                              ),
                             }}
                             muted
                             playsInline
@@ -6578,18 +6801,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                             className="w-full h-full object-contain select-none absolute inset-0"
                             style={{
                               zIndex: 0,
-                              filter:
-                                currentAnn?.editorColorFilter === "grayscale"
-                                  ? "grayscale(100%)"
-                                  : currentAnn?.editorColorFilter === "sepia"
-                                    ? "sepia(100%)"
-                                    : currentAnn?.editorColorFilter === "warm"
-                                      ? "sepia(50%) saturate(140%)"
-                                      : currentAnn?.editorColorFilter === "cool"
-                                        ? "hue-rotate(180deg) saturate(80%)"
-                                        : currentAnn?.editorColorFilter === "contrast"
-                                          ? "contrast(150%) saturate(120%)"
-                                          : "none",
+                              filter: colorFilterCss(
+                                currentAnn?.editorColorFilter,
+                                currentAnn?.editorColorFilterStrength
+                              ),
                             }}
                             draggable={false}
                             onLoad={updateBounds}
@@ -6775,7 +6990,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                     top: `${cropRect.y}%`,
                                     width: `${cropRect.w}%`,
                                     height: `${cropRect.h}%`,
-                                    border: "3px solid #00E676",
+                                    border: "2px solid #00E676",
                                     pointerEvents: overlayPointer("crop"),
                                     boxShadow: "0 0 0 1px rgba(255,255,255,0.9)",
                                   }}
@@ -6798,7 +7013,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                     });
                                   }}
                                 >
-                                  <div className="absolute top-1 left-1 bg-[#00E676] text-black text-[10px] font-mono px-1 rounded font-bold">
+                                  <div className="absolute -top-5 left-0 bg-[#00E676] text-black text-[10px] px-1.5 rounded font-medium leading-4 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
                                     Crop: keep this area
                                   </div>
 
@@ -6807,7 +7022,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                     <div
                                       key={h.name}
                                       data-handle={h.name}
-                                      className="absolute w-3 h-3 bg-[var(--sketch-surface)] border-2 border-[#00E676] rounded-sm pointer-events-auto"
+                                      className="absolute w-2.5 h-2.5 bg-[var(--sketch-surface)] border border-[#00E676] rounded-[2px] pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity"
                                       style={{ ...h.style, zIndex: 10 }}
                                       onMouseDown={(e) => {
                                         e.preventDefault();
@@ -6837,15 +7052,15 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                             {(currentAnn?.editorBlurs || []).map((blurRegion, idx) => (
                               <div
                                 key={blurRegion.id}
-                                className="absolute cursor-move overflow-hidden select-none group"
+                                className="absolute cursor-move select-none group"
                                 style={{
                                   left: `${blurRegion.x}%`,
                                   top: `${blurRegion.y}%`,
                                   width: `${blurRegion.w}%`,
                                   height: `${blurRegion.h}%`,
-                                  border: "3px solid #FF4081",
+                                  border: "2px solid #FF4081",
                                   pointerEvents: overlayPointer("blur"),
-                                  boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
+                                  boxShadow: "0 0 0 1px rgba(255,255,255,0.75)",
                                 }}
                                 onMouseDown={(e) => {
                                   if ((e.target as HTMLElement).dataset.handle) return;
@@ -6874,11 +7089,11 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                     backgroundColor: "rgba(255,255,255,0.05)",
                                   }}
                                 />
-                                <div className="absolute top-1 left-1 bg-[#FF4081] text-white text-[10px] font-mono px-1 rounded font-bold">
+                                <div className="absolute -top-5 left-0 bg-[#FF4081] text-white text-[10px] px-1.5 rounded font-medium leading-4 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
                                   Blur {idx + 1}
                                 </div>
                                 <button
-                                  className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                                  className="absolute -top-5 right-0 w-4 h-4 bg-red-600/90 text-white text-[10px] leading-none rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
                                   onMouseDown={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -6898,7 +7113,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                   <div
                                     key={h.name}
                                     data-handle={h.name}
-                                    className="absolute w-3 h-3 bg-white border-2 border-[#FF4081] rounded-sm pointer-events-auto"
+                                    className="absolute w-2.5 h-2.5 bg-white border border-[#FF4081] rounded-[2px] pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity"
                                     style={{ ...h.style, zIndex: 10 }}
                                     onMouseDown={(e) => {
                                       e.preventDefault();
@@ -6934,7 +7149,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                   height: `${redactRect.h}%`,
                                   backgroundColor: currentAnn?.editorRedactColor || "#000000",
                                   pointerEvents: overlayPointer("redact"),
-                                  border: "3px solid #FFFFFF",
+                                  border: "2px solid #FFFFFF",
                                   boxShadow: "0 0 0 1px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.4)",
                                 }}
                                 onMouseDown={(e) => {
@@ -6962,7 +7177,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                   <div
                                     key={h.name}
                                     data-handle={h.name}
-                                    className="absolute w-3 h-3 bg-white border-2 border-gray-900 rounded-sm pointer-events-auto"
+                                    className="absolute w-2.5 h-2.5 bg-white border border-gray-900 rounded-[2px] pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity"
                                     style={{ ...h.style, zIndex: 10 }}
                                     onMouseDown={(e) => {
                                       e.preventDefault();
@@ -7031,15 +7246,15 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                             {(currentAnn?.editorPixelates || []).map((pixRegion, idx) => (
                               <div
                                 key={pixRegion.id}
-                                className="absolute cursor-move overflow-hidden select-none group"
+                                className="absolute cursor-move select-none group"
                                 style={{
                                   left: `${pixRegion.x}%`,
                                   top: `${pixRegion.y}%`,
                                   width: `${pixRegion.w}%`,
                                   height: `${pixRegion.h}%`,
-                                  border: "3px solid #00BCD4",
+                                  border: "2px solid #00BCD4",
                                   pointerEvents: overlayPointer("pixelate"),
-                                  boxShadow: "0 0 0 1px rgba(255,255,255,0.9), 0 4px 12px rgba(0,0,0,0.4)",
+                                  boxShadow: "0 0 0 1px rgba(255,255,255,0.75)",
                                 }}
                                 onMouseDown={(e) => {
                                   if ((e.target as HTMLElement).dataset.handle) return;
@@ -7068,11 +7283,11 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                     opacity: 0.7,
                                   }}
                                 />
-                                <div className="absolute top-1 left-1 bg-[#00BCD4] text-white text-[10px] font-mono px-1 rounded font-bold">
+                                <div className="absolute -top-5 left-0 bg-[#00BCD4] text-white text-[10px] px-1.5 rounded font-medium leading-4 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
                                   Pixelate {idx + 1}
                                 </div>
                                 <button
-                                  className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                                  className="absolute -top-5 right-0 w-4 h-4 bg-red-600/90 text-white text-[10px] leading-none rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
                                   onMouseDown={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -7092,7 +7307,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                   <div
                                     key={h.name}
                                     data-handle={h.name}
-                                    className="absolute w-3 h-3 bg-white border-2 border-[#00BCD4] rounded-sm pointer-events-auto"
+                                    className="absolute w-2.5 h-2.5 bg-white border border-[#00BCD4] rounded-[2px] pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity"
                                     style={{ ...h.style, zIndex: 10 }}
                                     onMouseDown={(e) => {
                                       e.preventDefault();
@@ -7142,7 +7357,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                       top: `${spotRegion.y}%`,
                                       width: `${spotRegion.w}%`,
                                       height: `${spotRegion.h}%`,
-                                      border: "3px solid #FF6D00",
+                                      border: "2px solid #FF6D00",
                                       pointerEvents: overlayPointer("spotlight"),
                                       borderRadius: "4px",
                                       boxShadow: `0 0 0 9999px rgba(0,0,0,${spotRegion.intensity ?? currentAnn?.editorSpotlightIntensity ?? 0.6}), 0 0 0 1px rgba(255,255,255,0.9)`,
@@ -7166,11 +7381,11 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                       });
                                     }}
                                   >
-                                    <div className="absolute top-1 left-1 bg-[#FF6D00] text-white text-[10px] font-mono px-1 rounded font-bold">
+                                    <div className="absolute -top-5 left-0 bg-[#FF6D00] text-white text-[10px] px-1.5 rounded font-medium leading-4 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
                                       Spotlight {idx + 1}
                                     </div>
                                     <button
-                                      className="absolute top-1 right-1 w-5 h-5 bg-red-600 text-white text-[10px] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                                      className="absolute -top-5 right-0 w-4 h-4 bg-red-600/90 text-white text-[10px] leading-none rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
                                       onMouseDown={(e) => {
                                         e.preventDefault();
                                         e.stopPropagation();
@@ -7190,7 +7405,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                       <div
                                         key={h.name}
                                         data-handle={h.name}
-                                        className="absolute w-3 h-3 bg-white border-2 border-[#FF6D00] rounded-sm pointer-events-auto"
+                                        className="absolute w-2.5 h-2.5 bg-white border border-[#FF6D00] rounded-[2px] pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity"
                                         style={{ ...h.style, zIndex: 10 }}
                                         onMouseDown={(e) => {
                                           e.preventDefault();
@@ -7455,29 +7670,73 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                           </div>
                         )}
 
-                        {/* Live caption preview: like the watermark, positioned
-                            against the canvas container, which is the output frame. */}
-                        {(props.captionsEnabled ?? true) && currentStep && (
-                          <div
-                            className="absolute left-1/2 -translate-x-1/2 z-10 pointer-events-none px-3 py-1.5 rounded text-center max-w-[80%]"
-                            style={{
-                              bottom: props.captionPosition === "top" ? "auto" : props.captionPosition === "middle" ? "50%" : "8%",
-                              top: props.captionPosition === "top" ? "8%" : props.captionPosition === "middle" ? "auto" : "auto",
-                              transform: props.captionPosition === "middle" ? "translate(-50%, -50%)" : "translateX(-50%)",
-                              fontSize: props.captionSize === "small" ? "10px" : props.captionSize === "large" ? "18px" : "14px",
-                              color: props.captionColor || "#FFFFFF",
-                              fontFamily: "sans-serif",
-                              fontWeight: 600,
-                              textShadow: props.captionStyle === "standard" ? "0 2px 4px rgba(0,0,0,0.8)" : "none",
-                              WebkitTextStroke: props.captionStyle === "outline" ? "1.5px black" : "none",
-                              backgroundColor: props.captionStyle === "highlight" ? "rgba(0,0,0,0.6)" : "transparent",
-                              borderRadius: props.captionStyle === "highlight" ? "4px" : "0",
-                              padding: props.captionStyle === "highlight" ? "4px 12px" : "0",
-                            }}
-                          >
-                            {(currentStep.userEditedScript ?? currentStep.aiScript) || currentStep.description || "Caption preview will appear here"}
-                          </div>
-                        )}
+                        {/* Live caption preview.
+                            Geometry mirrors buildCaptionsFilter in
+                            api/lib/ffmpeg.ts, because it previously did not:
+                            the preview used a fixed 10/14/18px font and sat 8%
+                            from the bottom, while the render scales the font to
+                            min(width,height) and places the line a fifth of the
+                            frame from the edge. On a 9:16 canvas that made a
+                            "Medium / Bottom" caption preview as a huge block
+                            floating mid-frame, which is why the caption settings
+                            looked like they were being ignored. */}
+                        {(props.captionsEnabled ?? true) && currentStep && (() => {
+                          const frameW = canvasDim.width * canvasScale;
+                          const frameH = canvasDim.height * canvasScale;
+                          const baseDim = Math.min(frameW, frameH);
+                          const sizeFactor =
+                            props.captionSize === "small" ? 0.05
+                              : props.captionSize === "large" ? 0.09
+                                : 0.07;
+                          const fontSize = Math.max(7, baseDim * sizeFactor);
+                          // Same wrap width the renderer uses: 20 characters on
+                          // a vertical frame, 40 on a horizontal one.
+                          const maxChars = frameW < frameH ? 20 : 40;
+                          const isOutline = props.captionStyle === "outline";
+                          const isHighlight = props.captionStyle === "highlight";
+                          const pos = props.captionPosition;
+
+                          return (
+                            <div
+                              className="absolute left-1/2 z-10 pointer-events-none text-center"
+                              style={{
+                                // h/5 from the relevant edge, matching yPos.
+                                bottom: pos === "top" ? "auto" : pos === "middle" ? "50%" : "20%",
+                                top: pos === "top" ? "20%" : "auto",
+                                transform: pos === "middle" ? "translate(-50%, 50%)" : "translateX(-50%)",
+                                // `drawtext` never wraps: the renderer has
+                                // already split the script into lines that fit,
+                                // and draws exactly one at a time. Wrapping here
+                                // would show two lines where the video shows one.
+                                whiteSpace: "nowrap",
+                                fontSize: `${fontSize}px`,
+                                lineHeight: 1.25,
+                                color: props.captionColor || "#FFFFFF",
+                                fontFamily: "sans-serif",
+                                fontWeight: 600,
+                                textShadow: props.captionStyle === "standard" ? "0 2px 4px rgba(0,0,0,0.85)" : "none",
+                                // Stroke scaled to the type and painted behind
+                                // the glyph. A fixed 1.5px stroke drawn over the
+                                // letters ate into the strokes at small sizes,
+                                // which is what made outlined captions look
+                                // smudged rather than outlined.
+                                WebkitTextStrokeWidth: isOutline ? `${Math.max(1, fontSize * 0.08)}px` : "0",
+                                WebkitTextStrokeColor: isOutline ? "#000" : "transparent",
+                                paintOrder: "stroke fill",
+                                backgroundColor: isHighlight ? "rgba(0,0,0,0.6)" : "transparent",
+                                borderRadius: isHighlight ? `${Math.max(2, fontSize * 0.2)}px` : "0",
+                                padding: isHighlight ? `${fontSize * 0.2}px ${fontSize * 0.5}px` : "0",
+                              }}
+                            >
+                              {firstCaptionLine(
+                                (currentStep.userEditedScript ?? currentStep.aiScript) ||
+                                  currentStep.description ||
+                                  "Caption preview will appear here",
+                                maxChars
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>

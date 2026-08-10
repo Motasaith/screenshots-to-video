@@ -13,13 +13,42 @@ const t = initTRPC.context<TrpcContext>().create({
       ip: ctx ? getClientIP(ctx.req.headers) : undefined,
       path: shape.data?.path,
     });
-    // Log all non-client errors (500s) as errors, client errors as debug
-    if (shape.data.code === "INTERNAL_SERVER_ERROR") {
-      log.error("tRPC internal error", error);
+
+    const isInternal = shape.data.code === "INTERNAL_SERVER_ERROR";
+
+    // A short code the user can quote and we can grep for. Cheap to generate
+    // and it means a sanitised message is still actionable in support.
+    const ref = isInternal
+      ? Math.random().toString(36).slice(2, 8).toUpperCase()
+      : undefined;
+
+    if (isInternal) {
+      log.error(`tRPC internal error [${ref}]`, error);
     } else {
       log.debug(`tRPC ${shape.data.code}: ${error.message}`, { code: shape.data.code });
     }
-    return shape;
+
+    // Never ship the stack. It carries absolute source paths (and it was going
+    // out even on a plain 401), and nothing in the client reads it.
+    const data = { ...shape.data } as typeof shape.data & { stack?: string };
+    delete data.stack;
+
+    if (!isInternal) {
+      // Deliberate errors: validation failures, rate limits, "not found",
+      // narration preflight messages. These are written for the user, so they
+      // pass through as-is.
+      return { ...shape, data };
+    }
+
+    // Anything unhandled is an implementation detail. The message on a failed
+    // Drizzle insert is the entire SQL statement plus every bound parameter,
+    // which is unreadable, leaks the schema, and tells the user nothing they
+    // can act on. It is logged in full above against `ref`.
+    return {
+      ...shape,
+      message: `Something went wrong on our side. Quote reference ${ref} if you contact support.`,
+      data,
+    };
   },
 });
 

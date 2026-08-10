@@ -65,7 +65,13 @@ export function useScreenshotUpload() {
 
       const project = await createProject.mutateAsync({
         title: "Imported video",
-        description: "Screenshots imported from the homepage uploader.",
+        // The homepage flow collects no text, so this default is all the
+        // script generator gets to start from. It has to clear the 120
+        // character minimum on project.create and still describe something
+        // real, rather than being a stub that produces a stub script.
+        description:
+          "A step-by-step walkthrough built from screenshots uploaded on the AIVideo homepage. " +
+          "Each scene shows one action in the interface, in the order the files were named.",
         platform: "youtube",
         aspectRatio: "16:9",
       });

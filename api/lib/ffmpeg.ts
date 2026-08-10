@@ -619,6 +619,53 @@ function clampRegion(x: number, y: number, w: number, h: number, imgW: number, i
   return { x: cx, y: cy, w: cw, h: ch };
 }
 
+/**
+ * FFmpeg filter chain for a colour filter at a given strength (0-100).
+ *
+ * Returns the bare chain with no separators; callers add the comma on
+ * whichever side their filter graph needs.
+ *
+ * Every filter is interpolated from its identity value rather than scaled from
+ * zero. `eq=contrast` and `saturation` are neutral at 1.0 and `hue=s` is
+ * neutral at 1.0, so multiplying them by the strength would drive the picture
+ * towards flat grey as the slider came down instead of easing the effect off.
+ * The sepia matrix is lerped against the identity matrix for the same reason.
+ *
+ * This replaces three copies of the same switch that had to be kept in step by
+ * hand, and none of which honoured a strength at all.
+ */
+function buildColorFilterChain(
+  filter: string | null | undefined,
+  strength?: number | null
+): string {
+  if (!filter || filter === "none") return "";
+  const t = Math.max(0, Math.min(100, strength ?? 100)) / 100;
+  if (t <= 0) return "";
+
+  const lerp = (from: number, to: number) => from + (to - from) * t;
+  const n = (v: number) => Number(v.toFixed(4)).toString();
+
+  switch (filter) {
+    case "grayscale":
+      // s=1 is untouched, s=0 is fully desaturated.
+      return `hue=s=${n(1 - t)}`;
+    case "sepia": {
+      const identity = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+      const sepia = [0.393, 0.769, 0.189, 0.349, 0.686, 0.168, 0.272, 0.534, 0.131];
+      const m = identity.map((id, i) => n(lerp(id, sepia[i])));
+      return `colorchannelmixer=${m[0]}:${m[1]}:${m[2]}:0:${m[3]}:${m[4]}:${m[5]}:0:${m[6]}:${m[7]}:${m[8]}`;
+    }
+    case "warm":
+      return `colorbalance=rs=${n(0.1 * t)}:gs=${n(-0.05 * t)}:bs=${n(-0.1 * t)}`;
+    case "cool":
+      return `colorbalance=rs=${n(-0.1 * t)}:gs=${n(0.05 * t)}:bs=${n(0.1 * t)}`;
+    case "contrast":
+      return `eq=contrast=${n(lerp(1, 1.5))}:saturation=${n(lerp(1, 1.2))}`;
+    default:
+      return "";
+  }
+}
+
 function buildBlurFilter(opts: EditorOpts, imgWidth: number, imgHeight: number): string {
   const blurRegions: Array<{ x: number; y: number; w: number; h: number; intensity: number }> = [];
   if (opts.editorBlurs && opts.editorBlurs.length > 0) {
@@ -869,6 +916,7 @@ export async function renderStepVideo(opts: {
   }>;
   // ── Color Filter ──
   editorColorFilter?: string;
+  editorColorFilterStrength?: number;
   // ── Custom zoom filter (injected by multi-waypoint renderer) ──
   customZoomFilter?: string;
   // Force the clip to a specific length (seconds), padding audio with silence.
@@ -1104,26 +1152,8 @@ export async function renderStepVideo(opts: {
   }
 
   // ── Canvas editor: color filter ──
-  let colorFilter = "";
-  if (opts.editorColorFilter && opts.editorColorFilter !== "none") {
-    switch (opts.editorColorFilter) {
-      case "grayscale":
-        colorFilter = "hue=s=0,";
-        break;
-      case "sepia":
-        colorFilter = "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131,";
-        break;
-      case "warm":
-        colorFilter = "colorbalance=rs=0.1:gs=-0.05:bs=-0.1,";
-        break;
-      case "cool":
-        colorFilter = "colorbalance=rs=-0.1:gs=0.05:bs=0.1,";
-        break;
-      case "contrast":
-        colorFilter = "eq=contrast=1.5:saturation=1.2,";
-        break;
-    }
-  }
+  const colorChain = buildColorFilterChain(opts.editorColorFilter, opts.editorColorFilterStrength);
+  const colorFilter = colorChain ? `${colorChain},` : "";
 
   // Zoom target in supersampled-canvas pixels
   const geo = fitGeometry(effW, effH, ssW, ssH);
@@ -1534,26 +1564,8 @@ async function renderStepVideoFallback(
   }
 
   // ── Canvas editor: color filter (fallback) ──
-  let colorFilter = "";
-  if (opts.editorColorFilter && opts.editorColorFilter !== "none") {
-    switch (opts.editorColorFilter) {
-      case "grayscale":
-        colorFilter = "hue=s=0,";
-        break;
-      case "sepia":
-        colorFilter = "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131,";
-        break;
-      case "warm":
-        colorFilter = "colorbalance=rs=0.1:gs=-0.05:bs=-0.1,";
-        break;
-      case "cool":
-        colorFilter = "colorbalance=rs=-0.1:gs=0.05:bs=0.1,";
-        break;
-      case "contrast":
-        colorFilter = "eq=contrast=1.5:saturation=1.2,";
-        break;
-    }
-  }
+  const colorChain = buildColorFilterChain(opts.editorColorFilter, opts.editorColorFilterStrength);
+  const colorFilter = colorChain ? `${colorChain},` : "";
 
   // Effective image dimensions after crop (for zoom/geometry calculations)
   const effW = cropW;
@@ -2319,6 +2331,7 @@ export async function renderVideoSegment(opts: {
   editorWatermarkColor?: string;
   editorWatermarkOpacity?: number;
   editorColorFilter?: string;
+  editorColorFilterStrength?: number;
   /** Time-anchored camera keyframes over the footage. */
   keyframes?: Array<{ atSec: number; targetX: number; targetY: number; zoomScale: number }>;
 }): Promise<string> {
@@ -2338,14 +2351,8 @@ export async function renderVideoSegment(opts: {
 
   const hasSourceAudio = opts.keepSourceAudio !== false && (await hasAudioStream(opts.videoPath));
 
-  let colorFilter = "";
-  switch (opts.editorColorFilter) {
-    case "grayscale": colorFilter = ",hue=s=0"; break;
-    case "sepia": colorFilter = ",colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131"; break;
-    case "warm": colorFilter = ",colorbalance=rs=0.1:gs=-0.05:bs=-0.1"; break;
-    case "cool": colorFilter = ",colorbalance=rs=-0.1:gs=0.05:bs=0.1"; break;
-    case "contrast": colorFilter = ",eq=contrast=1.5:saturation=1.2"; break;
-  }
+  const videoColorChain = buildColorFilterChain(opts.editorColorFilter, opts.editorColorFilterStrength);
+  const colorFilter = videoColorChain ? `,${videoColorChain}` : "";
 
   // Frame furniture, in output space — same rules as the still path.
   const furniture: string[] = [];
@@ -2634,6 +2641,7 @@ export async function renderMultiZoomSegments(opts: {
   editorMagnifyScale?: number;
   editorMagnifyCorner?: string;
   editorColorFilter?: string;
+  editorColorFilterStrength?: number;
   editorHighlights?: Array<{
     id: string;
     x: number;
@@ -2874,6 +2882,7 @@ export async function renderMultiZoomSegments(opts: {
     editorMagnifyScale: opts.editorMagnifyScale,
     editorMagnifyCorner: opts.editorMagnifyCorner,
     editorColorFilter: opts.editorColorFilter,
+    editorColorFilterStrength: opts.editorColorFilterStrength,
     editorHighlights: opts.editorHighlights,
     editorOverlayText: opts.editorOverlayText,
     editorOverlayX: opts.editorOverlayX,

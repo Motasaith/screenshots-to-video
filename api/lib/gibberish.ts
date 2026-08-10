@@ -43,17 +43,54 @@ function vowelRatio(text: string): number {
 /**
  * Longest run of consecutive consonants. Real text rarely has 5+ in a row.
  */
+/**
+ * Consonant clusters that English spells with more than one letter but
+ * pronounces as a single sound. Counting their letters individually is what
+ * made this rule reject ordinary words.
+ *
+ * Longest first, so "tch" is consumed before "ch".
+ */
+const CONSONANT_CLUSTERS = [
+  "sch", "tch", "thr", "shr", "chr", "phr", "ght", "ngh", "str", "spl", "spr", "scr",
+  "th", "ch", "sh", "ph", "gh", "wh", "ck", "ng", "qu", "kn", "wr", "rh", "gn", "ps",
+  "bb", "cc", "dd", "ff", "gg", "ll", "mm", "nn", "pp", "rr", "ss", "tt", "zz",
+];
+
+/**
+ * Longest run of consonant *sounds* in any single word.
+ *
+ * Counting raw letters flagged real words: "walkthrough" spells `lkthr`, five
+ * consonant letters in a row, so at a threshold of five every description
+ * containing the word was rejected as random letters. Since this product is
+ * about walkthroughs, that was close to a guaranteed false positive, and
+ * raising the description minimum made it far more likely to be hit.
+ *
+ * Multi-letter clusters now count as one unit, so "walkthrough" scores 4
+ * (l, k, th, r) and passes, while keyboard mash like "asdkjh" still scores 5
+ * and does not.
+ */
 function longestConsonantRun(text: string): number {
   let max = 0;
-  let current = 0;
-  for (const ch of text) {
-    if (/[a-zA-Z]/.test(ch) && !isVowel(ch)) {
+
+  // Per word: a space already broke the run before, and splitting makes the
+  // cluster lookahead safe at word boundaries.
+  for (const rawWord of text.toLowerCase().split(/[^a-z]+/)) {
+    if (!rawWord) continue;
+    let current = 0;
+    let i = 0;
+    while (i < rawWord.length) {
+      if (isVowel(rawWord[i])) {
+        current = 0;
+        i++;
+        continue;
+      }
+      const cluster = CONSONANT_CLUSTERS.find((c) => rawWord.startsWith(c, i));
+      i += cluster ? cluster.length : 1;
       current++;
       if (current > max) max = current;
-    } else {
-      current = 0;
     }
   }
+
   return max;
 }
 

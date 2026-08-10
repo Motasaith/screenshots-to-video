@@ -227,5 +227,24 @@ export function parseErrorMessage(raw: string): { message: string; retryAfter: n
     };
   }
 
+  // Backstop for anything that still arrives looking like machine output.
+  // The server sanitises unhandled errors now, but this panel renders whatever
+  // string it is handed, and a failed SQL statement rendered as body copy is
+  // how a 2000px wall of column names ended up on screen. Anything that looks
+  // like a query, or is simply too long to be a sentence, is replaced.
+  if (looksLikeInternalError(raw) || raw.length > 300) {
+    return { message: "Something went wrong on our side. Please try again.", retryAfter: 0 };
+  }
+
   return { message: raw, retryAfter: 0 };
+}
+
+/** Heuristics for "this string was written for a machine, not a person". */
+function looksLikeInternalError(raw: string): boolean {
+  return (
+    /\b(insert into|select .* from|update .* set|delete from)\b/i.test(raw) ||
+    /Failed query/i.test(raw) ||
+    /\bECONNREFUSED\b|\bETIMEDOUT\b|\bER_[A-Z_]+\b/.test(raw) ||
+    raw.includes("    at ")
+  );
 }

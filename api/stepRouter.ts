@@ -201,6 +201,7 @@ export const stepRouter = createRouter({
         editorMagnifyScale: z.number().nullish(),
         editorMagnifyCorner: z.string().nullish(),
         editorColorFilter: z.string().nullish(),
+        editorColorFilterStrength: z.number().min(0).max(100).nullish(),
         editorZoomScale: z.number().nullish(),
         editorDuration: z.number().nullish(),
         editorMultiZooms: z
@@ -330,6 +331,7 @@ export const stepRouter = createRouter({
         data.editorMagnifyScale !== undefined ||
         data.editorMagnifyCorner !== undefined ||
         data.editorColorFilter !== undefined ||
+        data.editorColorFilterStrength !== undefined ||
         data.editorZoomScale !== undefined ||
         data.editorDuration !== undefined ||
         data.editorMultiZooms !== undefined ||

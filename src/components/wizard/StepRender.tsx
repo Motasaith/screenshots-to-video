@@ -127,11 +127,9 @@ export default function StepRender() {
   return (
     <div className="max-w-2xl mx-auto text-center">
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-        {!isComplete && !isError && (
-          <div className="font-hand text-xl text-[var(--sketch-fg-muted)] mb-4">
-            Rendering your video…
-          </div>
-        )}
+        {/* "Rendering your video…" used to sit here directly above a heading
+            reading "Generating your video…". Two lines saying the same thing,
+            one of them a decorative script face. The heading below is enough. */}
         <h2 className="font-body font-bold text-3xl tracking-tight text-[var(--sketch-fg)]">
           {isComplete
             ? "Video complete!"
@@ -141,7 +139,7 @@ export default function StepRender() {
         </h2>
         <p className="font-body text-[var(--sketch-fg-muted)] mt-2">
           {isComplete
-            ? "Redirecting to preview..."
+            ? "Taking you to your video."
             : isError
               ? status?.job?.message || "An error occurred during rendering."
               : (

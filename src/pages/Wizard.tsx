@@ -8,6 +8,8 @@ import {
   Loader2,
   ArrowLeft,
   ChevronLeft,
+  ChevronRight,
+  Check,
 } from "lucide-react";
 import StepPreview from "@/components/wizard/StepPreview";
 import StepRender from "@/components/wizard/StepRender";
@@ -109,37 +111,50 @@ export default function Wizard() {
                 <span className="text-sm font-semibold text-[var(--space-text)] leading-tight truncate max-w-[120px] sm:max-w-none">
                   {project.title}
                 </span>
-                {/* Horizontal Stepper */}
-                <div className="flex items-center gap-1.5 mt-0.5">
+                {/* Step indicator.
+                    Was 14px dots with 7.5px numerals and 8.5px mono labels,
+                    and the active label used text-teal-300, a tint meant for a
+                    dark background. On white it was unreadable. Sizes are now
+                    legible and the active step is the accent on a tinted pill
+                    rather than pale text. */}
+                <div className="mt-1 flex items-center gap-1">
                   {stepOrder.map((s, i) => {
                     const isCompleted = i < currentStepIdx;
                     const isActive = i === currentStepIdx;
                     const label = stepLabels[s];
                     // "render" is a process screen, not a place. Landing on it
-                    // starts a render, so it must never be reachable by
-                    // clicking a 14px dot in the header.
+                    // starts a render, so it must never be a navigation target.
                     const canNavigate = isCompleted && s !== "render";
                     return (
                       <div key={s} className="flex items-center gap-1">
                         <button
                           disabled={!canNavigate}
-                          title={canNavigate ? `Back to ${label}` : undefined}
+                          title={canNavigate ? `Back to ${label}` : label}
                           onClick={() => canNavigate && goToStep(s)}
-                          className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[7.5px] font-bold border transition-all ${
-                            isCompleted
-                              ? "bg-teal-500 border-teal-500 text-white shadow-[0_0_4px_rgba(20,184,166,0.3)]"
-                              : isActive
-                                ? "border-teal-400 bg-teal-500/20 text-teal-300 border-2"
-                                : "border-[var(--space-border)] bg-[var(--space-card)] text-[var(--space-text-subtle)]"
-                          } ${canNavigate ? "cursor-pointer hover:opacity-80" : ""}`}
+                          aria-current={isActive ? "step" : undefined}
+                          className={`flex items-center gap-1.5 rounded-full py-0.5 pl-0.5 pr-2 text-[12px] font-medium transition-colors ${
+                            isActive
+                              ? "bg-brand/10 text-brand"
+                              : isCompleted
+                                ? "text-ink-body hover:bg-mat"
+                                : "text-ink-muted"
+                          } ${canNavigate ? "cursor-pointer" : "cursor-default"}`}
                         >
-                          {isCompleted ? "✓" : i + 1}
+                          <span
+                            className={`grid h-[18px] w-[18px] flex-none place-items-center rounded-full text-[10px] font-semibold ${
+                              isCompleted
+                                ? "bg-brand text-white"
+                                : isActive
+                                  ? "bg-brand text-white"
+                                  : "border border-line-strong text-ink-muted"
+                            }`}
+                          >
+                            {isCompleted ? <Check className="h-3 w-3" strokeWidth={3} /> : i + 1}
+                          </span>
+                          <span className="hidden sm:inline">{label}</span>
                         </button>
-                        <span className={`hidden sm:inline text-[8.5px] font-mono tracking-tight ${isActive ? "text-teal-300 font-semibold" : isCompleted ? "text-[var(--space-text-muted)]" : "text-[var(--space-text-muted)]/50"}`}>
-                          {label}
-                        </span>
                         {i < stepOrder.length - 1 && (
-                          <span className="hidden sm:inline text-[8.5px] text-[var(--space-border)]/40 mx-0.5">/</span>
+                          <ChevronRight className="hidden h-3.5 w-3.5 flex-none text-ink-muted/50 sm:inline" />
                         )}
                       </div>
                     );
@@ -147,11 +162,10 @@ export default function Wizard() {
                 </div>
               </div>
             )}
-            <div className="flex items-center gap-3">
-              <span className="hidden sm:inline font-mono text-xs text-[var(--space-text-muted)] bg-teal-500/10 px-2.5 py-1 rounded-md border border-[var(--space-border)]">
-                Step {currentStepIdx + 1} of {stepOrder.length}
-              </span>
-            </div>
+            {/* The stepper beside the title already names the current step and
+                shows the position, so a "Step 2 of 3" badge was the same fact a
+                second time. Kept as a spacer so the title stays centred. */}
+            <div className="w-[92px] flex-shrink-0" aria-hidden />
           </div>
         </div>
       </header>

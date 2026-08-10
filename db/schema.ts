@@ -200,6 +200,10 @@ export const steps = mysqlTable("steps", {
   editorMagnifyCorner: varchar("editorMagnifyCorner", { length: 20 }).default("bottom-right"),
   // ── Color Filter ──
   editorColorFilter: varchar("editorColorFilter", { length: 20 }).default("none"),
+  // How much of the filter to apply, 0-100. The filter used to be all or
+  // nothing at full strength, which made sepia and high-contrast unusable on
+  // screenshots where the UI still had to be readable.
+  editorColorFilterStrength: float("editorColorFilterStrength").default(100),
   editorZoomScale: float("editorZoomScale"),
   editorDuration: float("editorDuration"),
   // ── Multi-Zoom (multiple zoom points on one screenshot) ──

@@ -6,7 +6,7 @@
  * No playhead, no split, no zoom: just a clean strip like the original.
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { isVideoPath } from "@/lib/mediaPath";
 import {
   Trash2,
@@ -84,6 +84,41 @@ export default function Timeline({
   onIntroClick,
   onOutroClick,
 }: TimelineProps) {
+  const stripRef = useRef<HTMLDivElement>(null);
+
+  // Wheel over the scene strip.
+  //
+  // A wheel reports movement as deltaY, and a container that only scrolls
+  // horizontally ignores it, so the strip could previously only be moved by
+  // dragging its scrollbar. This maps vertical wheel movement onto scrollLeft.
+  //
+  // Registered natively rather than as an onWheel prop: React attaches wheel
+  // listeners passively at the root, where preventDefault is ignored, and
+  // without preventDefault the surrounding page scrolls at the same time.
+  //
+  // deltaX is left alone, so trackpad and tilt-wheel horizontal scrolling keeps
+  // its normal behaviour, and the handler steps aside once the strip has hit
+  // an end so the page can scroll again.
+  useEffect(() => {
+    const el = stripRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      if (el.scrollWidth <= el.clientWidth) return;
+
+      const atStart = el.scrollLeft <= 0;
+      const atEnd = Math.ceil(el.scrollLeft + el.clientWidth) >= el.scrollWidth;
+      if ((atStart && e.deltaY < 0) || (atEnd && e.deltaY > 0)) return;
+
+      e.preventDefault();
+      el.scrollLeft += e.deltaY;
+    };
+
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
   // A custom video bumper runs for its own length, which the editor never
   // knows. Printing the project's duration field under it showed "3.0s" beside
   // a 20-second clip, so these chips stay silent about length instead.
@@ -199,6 +234,7 @@ export default function Timeline({
 
       {/* Scene strip */}
       <div
+        ref={stripRef}
         className="flex items-center gap-2 overflow-x-auto p-2 min-h-[80px]"
         onDragOver={handleTrackDragOver}
         onDragLeave={() => setIsDragOver(false)}
@@ -311,12 +347,20 @@ export default function Timeline({
                       <span className="text-[8px] font-mono text-[var(--sketch-fg-subtle)]">
                         {clip.duration.toFixed(1)}s
                       </span>
+                      {/* A bare 10px icon with no hit area or background was
+                          near-invisible against a thumbnail and awkward to
+                          hit. Same hover-reveal, but a real 20px target with
+                          its own surface so it reads as a button. */}
                       <button
-                        onClick={() => onClipDelete(idx)}
-                        className="opacity-0 group-hover/scene:opacity-100 transition-opacity text-red-500 hover:text-red-600 cursor-pointer"
-                        title="Delete scene"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onClipDelete(idx);
+                        }}
+                        className="opacity-0 group-hover/scene:opacity-100 focus-visible:opacity-100 transition-opacity grid place-items-center w-5 h-5 -mr-0.5 rounded text-red-600 bg-red-500/10 hover:bg-red-500/20 cursor-pointer"
+                        title="Delete this scene"
+                        aria-label={`Delete scene ${idx + 1}`}
                       >
-                        <Trash2 className="w-2.5 h-2.5" />
+                        <Trash2 className="w-3 h-3" />
                       </button>
                     </div>
                   </div>

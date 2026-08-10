@@ -549,7 +549,7 @@ export const aiRouter = createRouter({
         const elevenlabsApiKey = input.voice.startsWith("elevenlabs:")
           ? (await getUserElevenLabsKey(ctx.user!.id)) ?? undefined
           : undefined;
-        const { filePath } = await generateTTSAudio(text, {
+        const { filePath, engine, fellBackFrom } = await generateTTSAudio(text, {
           voice: input.voice,
           rate: speedToRate(input.speed),
           elevenlabsApiKey,
@@ -563,7 +563,13 @@ export const aiRouter = createRouter({
         await fs.unlink(filePath).catch(() => {});
 
         const mime = filePath.endsWith(".wav") ? "audio/wav" : "audio/mp3";
-        return { audioData: `data:${mime};base64,${base64}` };
+        // Tell the client when this is a stand-in rather than the requested
+        // voice, so a preview that sounds wrong can say why.
+        return {
+          audioData: `data:${mime};base64,${base64}`,
+          engine,
+          substituted: !!fellBackFrom,
+        };
       } catch (err: any) {
         throw new Error(`Failed to generate voice preview: ${err.message}`);
       }

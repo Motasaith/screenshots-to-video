@@ -37,6 +37,20 @@ const AUDIO_FILE_READY_POLL_MS = 100;
 
 const DEFAULT_EDGE_VOICE = "en-US-AndrewMultilingualNeural";
 
+/**
+ * `engine` names what actually spoke, which is not always what was asked for:
+ * Kokoro can fail to load and a premium voice needs a key. Callers can then
+ * tell the user their preview is a stand-in instead of leaving them wondering
+ * why the voice sounds nothing like the one they picked.
+ */
+export interface TtsResult {
+  filePath: string;
+  duration: number;
+  engine?: "edge" | "kokoro" | "elevenlabs" | "silence";
+  /** Set when `engine` is not the engine the requested voice belongs to. */
+  fellBackFrom?: string;
+}
+
 // ─── Kokoro (lazy singleton — only loaded if a kokoro voice is used) ───
 let kokoroInstance: any = null;
 let kokoroLoadFailed = false;
@@ -258,7 +272,7 @@ export async function generateTTSAudio(
      */
     elevenlabsApiKey?: string;
   }
-): Promise<{ filePath: string; duration: number }> {
+): Promise<TtsResult> {
   const voice = opts?.voice?.trim() || DEFAULT_EDGE_VOICE;
   const outDir = opts?.outputDir || path.join(os.tmpdir(), "aivideo-tts");
   await fs.mkdir(outDir, { recursive: true });
@@ -266,33 +280,68 @@ export async function generateTTSAudio(
   const cleanText = prepareTextForTTS(text);
 
   if (voice.toLowerCase() === "none" || !cleanText) {
-    return generateSilenceAudio(opts?.silenceDuration ?? 3.0, outDir);
+    return { ...(await generateSilenceAudio(opts?.silenceDuration ?? 3.0, outDir)), engine: "silence" };
   }
 
   if (voice.startsWith("elevenlabs:")) {
     // BYOK: premium voices require the user's own key. No key → free Edge TTS.
     if (!opts?.elevenlabsApiKey) {
-      log.warn("Premium voice requested without a user ElevenLabs key; using Edge TTS");
-      return generateEdgeAudio(cleanText, DEFAULT_EDGE_VOICE, opts?.rate, outDir);
+      log.warn("Premium voice requested without a user ElevenLabs key; using Edge TTS", { voice });
+      return { ...(await generateEdgeAudio(cleanText, fallbackVoiceFor(voice), opts?.rate, outDir)), engine: "edge", fellBackFrom: voice };
     }
     try {
-      return await generateElevenLabsAudio(cleanText, voice.slice("elevenlabs:".length), opts?.rate, outDir, opts.elevenlabsApiKey);
+      return { ...(await generateElevenLabsAudio(cleanText, voice.slice("elevenlabs:".length), opts?.rate, outDir, opts.elevenlabsApiKey)), engine: "elevenlabs" };
     } catch (err: any) {
-      log.warn("ElevenLabs failed, falling back to Edge TTS", { error: err.message });
-      return generateEdgeAudio(cleanText, DEFAULT_EDGE_VOICE, opts?.rate, outDir);
+      log.warn("ElevenLabs failed, falling back to Edge TTS", { error: err.message, voice });
+      return { ...(await generateEdgeAudio(cleanText, fallbackVoiceFor(voice), opts?.rate, outDir)), engine: "edge", fellBackFrom: voice };
     }
   }
 
   if (voice.startsWith("kokoro:")) {
     try {
-      return await generateKokoroAudio(cleanText, voice.slice("kokoro:".length), opts?.rate, outDir);
+      return { ...(await generateKokoroAudio(cleanText, voice.slice("kokoro:".length), opts?.rate, outDir)), engine: "kokoro" };
     } catch (err: any) {
-      log.warn("Kokoro failed, falling back to Edge TTS", { error: err.message });
-      return generateEdgeAudio(cleanText, DEFAULT_EDGE_VOICE, opts?.rate, outDir);
+      log.warn("Kokoro failed, falling back to Edge TTS", { error: err.message, voice });
+      return { ...(await generateEdgeAudio(cleanText, fallbackVoiceFor(voice), opts?.rate, outDir)), engine: "edge", fellBackFrom: voice };
     }
   }
 
-  return generateEdgeAudio(cleanText, voice, opts?.rate, outDir);
+  return { ...(await generateEdgeAudio(cleanText, voice, opts?.rate, outDir)), engine: "edge" };
+}
+
+/**
+ * Per-voice fallback to Edge TTS.
+ *
+ * Every fallback path used to land on DEFAULT_EDGE_VOICE, a male US voice. So
+ * when Kokoro could not load, or a premium voice had no key, all of them played
+ * back as the same person: "Heart", "Emma B." and "Bella" are female (and Emma
+ * is British) but every one of them came out as Andrew. That is why the voice
+ * previews did not match the voices.
+ *
+ * Mapping each voice to an Edge voice of the same gender and accent means a
+ * fallback still sounds like the voice that was chosen, and the four
+ * ultra-realistic voices remain distinguishable from one another.
+ */
+const FALLBACK_EDGE_VOICE: Record<string, string> = {
+  // Kokoro (local model)
+  "kokoro:af_heart": "en-US-AvaMultilingualNeural",     // US female
+  "kokoro:af_bella": "en-US-EmmaMultilingualNeural",    // US female, distinct from Ava
+  "kokoro:am_michael": "en-US-BrianMultilingualNeural", // US male
+  "kokoro:bf_emma": "en-GB-SoniaNeural",                // UK female
+};
+
+/**
+ * Best Edge voice to stand in for `voice`. Falls back on gender where the id
+ * is not in the table, so a newly added premium voice still lands on something
+ * closer than "always Andrew".
+ */
+function fallbackVoiceFor(voice: string, femaleHint?: boolean): string {
+  const mapped = FALLBACK_EDGE_VOICE[voice];
+  if (mapped) return mapped;
+  // Kokoro ids encode gender in the second character: af_/bf_ female, am_/bm_ male.
+  const kokoroFemale = /^kokoro:[ab]f_/.test(voice);
+  if (kokoroFemale || femaleHint) return "en-US-AvaMultilingualNeural";
+  return DEFAULT_EDGE_VOICE;
 }
 
 /**

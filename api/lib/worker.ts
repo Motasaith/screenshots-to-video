@@ -736,6 +736,7 @@ async function processRenderJob(
           normalizeAudio: !renderSilently,
           transitionDurationSec: project.transitionDuration || 0.5,
           editorColorFilter: step.editorColorFilter ?? undefined,
+          editorColorFilterStrength: step.editorColorFilterStrength ?? undefined,
           editorWatermarkText: step.editorWatermarkText ?? undefined,
           editorWatermarkPosition: step.editorWatermarkPosition ?? undefined,
           editorWatermarkSize: step.editorWatermarkSize ?? undefined,
@@ -897,6 +898,7 @@ async function processRenderJob(
           editorMagnifyScale: step.editorMagnifyScale ?? undefined,
           editorMagnifyCorner: step.editorMagnifyCorner ?? undefined,
           editorColorFilter: step.editorColorFilter ?? undefined,
+          editorColorFilterStrength: step.editorColorFilterStrength ?? undefined,
           editorHighlights: (step as any).editorHighlights ?? undefined,
           editorOverlayText: step.editorOverlayText ?? undefined,
           editorOverlayX: step.editorOverlayX ?? undefined,
@@ -995,6 +997,7 @@ async function processRenderJob(
           editorMagnifyScale: step.editorMagnifyScale ?? undefined,
           editorMagnifyCorner: step.editorMagnifyCorner ?? undefined,
           editorColorFilter: step.editorColorFilter ?? undefined,
+          editorColorFilterStrength: step.editorColorFilterStrength ?? undefined,
         });
         stepSegments = [segmentPath];
       }

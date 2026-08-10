@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router";
 import { useWizardStore, type TransitionType } from "@/hooks/useWizardStore";
 import { trpc } from "@/providers/trpc";
@@ -13,6 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
+import { detectGibberish } from "@/lib/gibberish";
+import { ProjectDescription } from "@contracts/constants";
 
 export default function StepPreview() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -60,17 +62,59 @@ export default function StepPreview() {
   );
   const { data: steps } = trpc.step.listByProject.useQuery({ projectId: projectIdNum });
 
-  // Sync state from project query when loaded
+  // Seed caption and transition settings from the project ONCE.
+  //
+  // This used to run on every change of the `project` object, which is a new
+  // identity after each refetch. The editor invalidates project.getById on
+  // every annotation autosave, so a few seconds after picking a caption colour
+  // the refetch landed and this effect wrote the database value back over the
+  // choice. That is the "caption colour resets by itself" report, and it is
+  // also why caption settings looked like they did nothing: they were reverted
+  // before anything saved them.
+  const seededFromProject = useRef(false);
   useEffect(() => {
-    if (project) {
-      setTransitionDuration(project.transitionDuration ?? 0.5);
-      setCaptionsEnabled(project.captionsEnabled === 1);
-      setCaptionStyle(project.captionStyle || "standard");
-      setCaptionSize(project.captionSize || "medium");
-      setCaptionPosition(project.captionPosition || "bottom");
-      setCaptionColor(project.captionColor || "#FFFFFF");
-    }
+    if (!project || seededFromProject.current) return;
+    seededFromProject.current = true;
+    setTransitionDuration(project.transitionDuration ?? 0.5);
+    setCaptionsEnabled(project.captionsEnabled === 1);
+    setCaptionStyle(project.captionStyle || "standard");
+    setCaptionSize(project.captionSize || "medium");
+    setCaptionPosition(project.captionPosition || "bottom");
+    setCaptionColor(project.captionColor || "#FFFFFF");
   }, [project]);
+
+  // Persist caption settings when they change.
+  //
+  // They were previously written only by the pre-render save, so between
+  // choosing them and pressing Export they lived nowhere but component state
+  // and any reload lost them. Debounced, and skipped until the seed above has
+  // run so the initial values are not written straight back.
+  useEffect(() => {
+    if (projectIdNum <= 0 || !seededFromProject.current || !project) return;
+
+    const unchanged =
+      project.captionsEnabled === (captionsEnabled ? 1 : 0) &&
+      (project.captionStyle || "standard") === captionStyle &&
+      (project.captionSize || "medium") === captionSize &&
+      (project.captionPosition || "bottom") === captionPosition &&
+      (project.captionColor || "#FFFFFF") === captionColor;
+    if (unchanged) return;
+
+    const timer = setTimeout(() => {
+      updateProject.mutate({
+        id: projectIdNum,
+        captionsEnabled,
+        captionStyle,
+        captionSize,
+        captionPosition,
+        captionColor,
+      });
+    }, 600);
+    return () => clearTimeout(timer);
+    // `project` is intentionally read but not depended on: it changes identity
+    // on every refetch, which would restart the timer forever.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [captionsEnabled, captionStyle, captionSize, captionPosition, captionColor, projectIdNum]);
 
   // Prefill import modal fields if project data is loaded
   useEffect(() => {
@@ -87,6 +131,20 @@ export default function StepPreview() {
     }
   }, [project, showImportModal]);
 
+  // Live validity for the import dialog, so the counter, the hint and the
+  // submit button all read one source instead of the button waiting for a
+  // click to reveal a problem.
+  const descTrimmed = projectDesc.trim();
+  const descShort = descTrimmed.length < ProjectDescription.min;
+  const descGibberish = descTrimmed.length >= ProjectDescription.min
+    ? detectGibberish(projectDesc).reason ?? null
+    : null;
+  const canStartEditing =
+    projectName.trim().length >= 3 &&
+    !descShort &&
+    projectDesc.length <= ProjectDescription.max &&
+    !descGibberish;
+
   const handleSaveImportModal = async (e: React.FormEvent) => {
     e.preventDefault();
     setValidationError("");
@@ -95,8 +153,22 @@ export default function StepPreview() {
       setValidationError("Project title must be at least 3 characters.");
       return;
     }
-    if (projectDesc.trim().length < 10) {
-      setValidationError("Project description must be at least 10 characters.");
+    if (projectDesc.trim().length < ProjectDescription.min) {
+      setValidationError(
+        `Project description must be at least ${ProjectDescription.min} characters.`
+      );
+      return;
+    }
+    if (projectDesc.length > ProjectDescription.max) {
+      setValidationError(
+        `Project description must be under ${ProjectDescription.max} characters.`
+      );
+      return;
+    }
+    if (detectGibberish(projectDesc).isGibberish) {
+      setValidationError(
+        detectGibberish(projectDesc).reason ?? "Please write a real description."
+      );
       return;
     }
 
@@ -258,11 +330,37 @@ export default function StepPreview() {
                 id="import-desc"
                 value={projectDesc}
                 onChange={(e) => setProjectDesc(e.target.value)}
-                placeholder="Describe what this video shows..."
+                placeholder={`Describe what this video covers, who it is for, and what they should be able to do afterwards. At least ${ProjectDescription.min} characters, because the narration is written from this.`}
+                maxLength={ProjectDescription.max}
                 className="bg-slate-100/80  border-[var(--space-border)] focus:border-teal-500/50 rounded-xl min-h-[90px] resize-none text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)]"
                 required
                 disabled={isSavingSettings}
               />
+              {/* Same counter the create dialog shows. This dialog had none, so
+                  the only feedback was an error after pressing Start Editing. */}
+              <div className="flex items-start justify-between gap-3 px-0.5">
+                <span className="text-[10px] leading-4">
+                  {descShort ? (
+                    <span className="text-amber-600 font-semibold">
+                      {ProjectDescription.min - projectDesc.trim().length} more character
+                      {ProjectDescription.min - projectDesc.trim().length === 1 ? "" : "s"} needed
+                    </span>
+                  ) : descGibberish ? (
+                    <span className="text-red-500 font-semibold">{descGibberish}</span>
+                  ) : (
+                    <span className="text-emerald-600 font-semibold">Looks good</span>
+                  )}
+                </span>
+                <span
+                  className={`text-[10px] font-mono flex-shrink-0 ${
+                    descShort || projectDesc.length >= ProjectDescription.max
+                      ? "text-amber-600 font-bold"
+                      : "text-[var(--space-text-subtle)]"
+                  }`}
+                >
+                  {projectDesc.length}/{ProjectDescription.max}
+                </span>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -304,7 +402,7 @@ export default function StepPreview() {
             <Button
               type="submit"
               className="w-full glass-btn glass-btn-primary py-5 text-xs font-bold rounded-xl mt-2 cursor-pointer flex items-center justify-center gap-2"
-              disabled={isSavingSettings}
+              disabled={isSavingSettings || !canStartEditing}
             >
               {isSavingSettings ? (
                 <>

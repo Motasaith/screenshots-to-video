@@ -6,6 +6,7 @@ import { eq, and, desc, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { detectGibberish } from "./lib/gibberish";
 import { getSignedDownloadUrl } from "./lib/r2";
+import { ProjectDescription } from "@contracts/constants";
 
 /**
  * Convert storage keys in step data to signed URLs for frontend display.
@@ -99,7 +100,10 @@ export const projectRouter = createRouter({
     .input(
       z.object({
         title: z.string().min(3).max(100),
-        description: z.string().min(10).max(1000),
+        description: z
+          .string()
+          .min(ProjectDescription.min)
+          .max(ProjectDescription.max),
         platform: z.enum(["youtube", "teams", "tiktok", "linkedin"]),
         aspectRatio: z.enum(["16:9", "9:16", "1:1", "4:5"]).optional(),
       })
@@ -243,7 +247,11 @@ export const projectRouter = createRouter({
       z.object({
         id: z.number(),
         title: z.string().min(3).max(100).optional(),
-        description: z.string().min(10).max(1000).optional(),
+        description: z
+          .string()
+          .min(ProjectDescription.min)
+          .max(ProjectDescription.max)
+          .optional(),
         platform: z.enum(["youtube", "teams", "tiktok", "linkedin"]).optional(),
         voice: z.string().optional(),
         speed: z.number().min(0.8).max(1.3).optional(),
