@@ -22,7 +22,8 @@ import { getDb } from "./queries/connection";
 import { supportChats, supportTickets, projects, renderJobs } from "@db/schema";
 import { eq, desc, lt, and, count, inArray } from "drizzle-orm";
 import { chatCompletion } from "./lib/llm";
-import { buildSupportSystemPrompt } from "./lib/productKnowledge";
+import { buildSupportSystemPrompt, SUGGESTED_QUESTIONS } from "./lib/productKnowledge";
+import { parseSupportReply } from "./lib/supportReply";
 import { generateTTSAudio, speedToRate } from "./lib/tts";
 import { transcribeAudio, whisperAvailable } from "./lib/whisper";
 import { createLogger } from "./lib/logger";
@@ -234,9 +235,19 @@ export const supportRouter = createRouter({
           maxTokens: 600,
         });
 
+        // Markers out, false "I have contacted the team" claims out, so what
+        // the customer reads is only ever something that actually happened.
+        const parsed = parseSupportReply(reply);
+
         return {
-          reply: reply.trim() || "I did not catch that. Could you rephrase?",
+          reply: parsed.reply || "I did not catch that. Could you rephrase?",
           usedVision: hasImages,
+          /** The widget opens the contact form. */
+          needHuman: parsed.needHuman,
+          /** The widget offers example questions instead. */
+          offTopic: parsed.offTopic,
+          /** Only sent when they are worth showing, to keep the payload small. */
+          suggestions: parsed.offTopic ? [...SUGGESTED_QUESTIONS] : [],
         };
       } catch (err) {
         // A degenerate or corrupt image makes the upstream return a bare 500

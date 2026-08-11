@@ -10,6 +10,7 @@ import {
   Plus,
   Trash2,
   UserRound,
+  GripHorizontal,
   Volume2,
   X,
 } from "lucide-react";
@@ -22,6 +23,8 @@ import { useSpeechInput } from "./useSpeechInput";
 import { ChatMarkdown } from "./ChatMarkdown";
 import { HumanHandoffForm } from "./HumanHandoff";
 import { wantsHuman } from "./wantsHuman";
+import { useWidgetDrag, type WidgetDrag } from "./useWidgetDrag";
+import { outOfScopeEdit, outOfScopeNote } from "./editScope";
 
 /**
  * Customer support chat, bottom-right, on every page.
@@ -60,6 +63,14 @@ interface Turn {
    * Renders a short note in place of the image or player.
    */
   restoredAttachment?: "image" | "note";
+  /**
+   * Example questions offered under an answer, as one-tap chips.
+   *
+   * Set when the assistant was asked something unrelated to the product: a bare
+   * "that is not what I do" leaves the visitor no better off, so it comes with
+   * things it can actually answer.
+   */
+  suggestions?: string[];
   /**
    * A reply from an actual person, not the assistant. Labelled, because
    * "someone will get back to you" followed by an unlabelled message is
@@ -156,8 +167,9 @@ const GREETING =
  * the "Edit scene" tab above is the only hint that it does more than answer.
  */
 const GREETING_EDITOR =
-  "Hi. Ask me anything about this scene, or switch to Edit scene and tell me to " +
-  "make a small change, like blurring a face or highlighting a button.";
+  "Hi. Ask me anything about this scene. Switch to Edit scene and I can change what is " +
+  "on the canvas for you: zoom, highlight, blur, redact, overlay text, crop and the like. " +
+  "The script, captions, voice and rendering are panels you use yourself, and I will show you where they are.";
 
 const SUGGESTIONS = [
   "Why is my video shorter than my narration?",
@@ -556,9 +568,14 @@ export function SupportWidget() {
         return;
       }
 
+      // Asked in Edit scene for something the canvas operations cannot do. Send
+      // it down the question path instead of attempting an edit that will
+      // silently do nothing, and say plainly what the edits do cover.
+      const beyondEditing = mode === "edit" && editor ? outOfScopeEdit(body) : null;
+
       // Edit mode goes to the ops endpoint instead of the support model. That
       // endpoint is authenticated and checks scene ownership server-side.
-      if (mode === "edit" && editor) {
+      if (mode === "edit" && editor && !beyondEditing) {
         try {
           const res = await editScene.mutateAsync({
             stepId: editor.stepId,
@@ -616,8 +633,22 @@ Ctrl+Z undoes it if that was not what you wanted.`
 
         setTurns((prev) => [
           ...prev,
-          { id: crypto.randomUUID(), role: "assistant", content: res.reply },
+          {
+            id: crypto.randomUUID(),
+            role: "assistant",
+            content: beyondEditing
+              ? `${outOfScopeNote(beyondEditing.subject)}
+
+${res.reply}`
+              : res.reply,
+            suggestions: res.suggestions?.length ? res.suggestions : undefined,
+          },
         ]);
+
+        // The assistant cannot reach anyone, so when it has nothing useful the
+        // app opens the form that can. This is what makes "a person will pick
+        // this up" true rather than something it merely said.
+        if (res.needHuman) setShowHandoff(true);
       } catch (err) {
         setTurns((prev) => [
           ...prev,
@@ -684,19 +715,28 @@ Ctrl+Z undoes it if that was not what you wanted.`
   );
 
   const inEditor = !!editor;
+
+  /**
+   * Moving the widget is offered in the editor only. That is the one place with
+   * something underneath worth uncovering.
+   */
+  const drag = useWidgetDrag(inEditor, isOpen);
   const isBusy = chat.isPending || editScene.isPending;
   const canSend = (draft.trim().length > 0 || attachments.length > 0) && !isBusy;
 
   /* ------------------------------------------------------------- launcher */
 
   if (!isOpen) {
-    return <SupportLauncher onOpen={open} inEditor={inEditor} />;
+    return <SupportLauncher onOpen={open} inEditor={inEditor} drag={drag} />;
   }
 
   /* ---------------------------------------------------------------- panel */
 
   return (
     <div
+      // The hook writes the transform straight to this node, so a drag does not
+      // re-render the conversation on every pointer move.
+      ref={drag.attachRef}
       className={`fixed bottom-4 ${inEditor ? RIGHT_INSET_EDITOR : RIGHT_INSET} z-[70] flex h-[min(620px,calc(100dvh-2rem))] w-[min(400px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-line bg-white shadow-lift`}
       role="dialog"
       aria-label="Support chat"
@@ -713,6 +753,24 @@ Ctrl+Z undoes it if that was not what you wanted.`
         void addImages(Array.from(e.dataTransfer.files));
       }}
     >
+      {/* The grab bar exists only in the editor, and it says what it is: a grip
+          icon alone is a convention plenty of people have never had to learn. */}
+      {drag.enabled ? (
+        <div
+          onPointerDown={drag.onPointerDown}
+          onDoubleClick={drag.reset}
+          role="separator"
+          aria-label="Drag to move this window. Double click to put it back in the corner."
+          title="Drag to move. Double click to reset."
+          className={`flex flex-none items-center justify-center gap-1.5 border-b border-line bg-mat py-1 text-[11px] font-medium text-ink-muted select-none ${
+            drag.isDragging ? "cursor-grabbing bg-brand-tint text-brand" : "cursor-grab hover:text-ink"
+          }`}
+        >
+          <GripHorizontal className="h-3.5 w-3.5" />
+          Drag to move
+        </div>
+      ) : null}
+
       <header className="flex items-center justify-between gap-2 border-b border-line px-4 py-3">
         <div className="flex items-center gap-2.5 min-w-0">
           <span className="grid h-8 w-8 flex-none place-items-center rounded-full bg-brand-tint">
@@ -801,7 +859,9 @@ Ctrl+Z undoes it if that was not what you wanted.`
             </button>
           ))}
           <span className="ml-auto self-center text-[11.5px] text-ink-muted">
-            {mode === "edit" ? "Changes land on the undo stack" : "Answers only"}
+            {mode === "edit"
+              ? "Canvas only: zoom, highlight, blur, text. Undoable with Ctrl+Z"
+              : "Answers only"}
           </span>
         </div>
       ) : null}
@@ -866,6 +926,23 @@ Ctrl+Z undoes it if that was not what you wanted.`
                 ) : (
                   <p className="whitespace-pre-wrap">{turn.content}</p>
                 )
+              ) : null}
+
+              {/* One tap to ask something answerable, rather than leaving a
+                  visitor to guess what this thing is for. */}
+              {turn.suggestions?.length ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {turn.suggestions.map((q) => (
+                    <button
+                      key={q}
+                      onClick={() => void send(q)}
+                      disabled={isBusy}
+                      className="rounded-full border border-line-strong bg-white px-2.5 py-1 text-left text-[12px] font-medium text-ink-body transition-colors hover:border-brand hover:text-brand disabled:opacity-50"
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
               ) : null}
 
               {turn.role === "assistant" && turn.id !== "greeting" && turn.content ? (
@@ -1106,11 +1183,23 @@ Ctrl+Z undoes it if that was not what you wanted.`
  * Hidden below `sm` in both cases, where a pill wide enough to read would cover
  * a usable part of the page.
  */
-function SupportLauncher({ onOpen, inEditor }: { onOpen: () => void; inEditor: boolean }) {
+function SupportLauncher({
+  onOpen,
+  inEditor,
+  drag,
+}: {
+  onOpen: () => void;
+  inEditor: boolean;
+  drag: WidgetDrag;
+}) {
   const [dismissedLabel, setDismissedLabel] = useState(false);
+  const { attachRef, enabled: canDrag, isDragging, onPointerDown, reset, wasDragged } = drag;
 
   return (
-    <div className={`fixed bottom-4 ${inEditor ? RIGHT_INSET_EDITOR : RIGHT_INSET} z-[70] flex items-center gap-2`}>
+    <div
+      ref={attachRef}
+      className={`fixed bottom-4 ${inEditor ? RIGHT_INSET_EDITOR : RIGHT_INSET} z-[70] flex items-center gap-2`}
+    >
       {!dismissedLabel ? (
         <span
           className={`hidden items-center gap-2 border border-line bg-white py-2 pl-3.5 pr-2 font-medium text-ink shadow-soft sm:flex ${
@@ -1120,7 +1209,12 @@ function SupportLauncher({ onOpen, inEditor }: { onOpen: () => void; inEditor: b
           {inEditor ? (
             <span className="leading-tight">
               <span className="block text-[13.5px]">Ask me anything</span>
-              <span className="block text-[12px] text-ink-muted">or to make a small edit</span>
+              <span className="block text-[12px] text-ink-muted">
+                or to zoom, highlight or blur something
+              </span>
+              <span className="block text-[11px] text-ink-muted">
+                In the way? Drag the grip to move me.
+              </span>
             </span>
           ) : (
             <span className="text-[13.5px]">Ask me anything</span>
@@ -1135,18 +1229,42 @@ function SupportLauncher({ onOpen, inEditor }: { onOpen: () => void; inEditor: b
         </span>
       ) : null}
 
-      <button
-        onClick={onOpen}
-        aria-label={
-          inEditor
-            ? "Open support chat: ask a question or ask for a small edit to this scene"
-            : "Open support chat, ask me anything"
-        }
-        className="grid place-items-center rounded-full bg-brand text-white shadow-lift transition-transform duration-150 hover:scale-105 active:scale-95"
-        style={{ height: 52, width: 52 }}
-      >
-        <MessageCircle className="h-[22px] w-[22px]" />
-      </button>
+      <span className="relative flex-none">
+        <button
+          onClick={() => {
+            // A drag that ends over the button is not a click. Without this the
+            // widget opens every time it is moved.
+            if (wasDragged()) return;
+            onOpen();
+          }}
+          aria-label={
+            inEditor
+              ? "Open support chat: ask a question or ask for a small edit to this scene"
+              : "Open support chat, ask me anything"
+          }
+          className="grid place-items-center rounded-full bg-brand text-white shadow-lift transition-transform duration-150 hover:scale-105 active:scale-95"
+          style={{ height: 52, width: 52 }}
+        >
+          <MessageCircle className="h-[22px] w-[22px]" />
+        </button>
+
+        {/* The grip sits on the bubble rather than beside it, so it cannot be
+            mistaken for a second button that does something else. */}
+        {canDrag ? (
+          <span
+            onPointerDown={onPointerDown}
+            onDoubleClick={reset}
+            role="separator"
+            aria-label="Drag to move the support button. Double click to put it back in the corner."
+            title="Drag to move. Double click to reset."
+            className={`absolute -left-1.5 -top-1.5 grid h-6 w-6 place-items-center rounded-full border border-line bg-white text-ink-muted shadow-soft select-none ${
+              isDragging ? "cursor-grabbing text-brand" : "cursor-grab hover:text-ink"
+            }`}
+          >
+            <GripHorizontal className="h-3.5 w-3.5" />
+          </span>
+        ) : null}
+      </span>
     </div>
   );
 }

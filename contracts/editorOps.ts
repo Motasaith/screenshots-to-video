@@ -56,7 +56,6 @@ export const editorOpSchema = z.discriminatedUnion("op", [
     op: z.literal("setColorFilter"),
     filter: z.enum(["none", "grayscale", "sepia", "warm", "cool", "contrast"]),
   }),
-  z.object({ op: z.literal("setScript"), text: z.string().min(1).max(2000) }),
   z.object({ op: z.literal("setDuration"), seconds: z.number().min(1).max(120) }),
 ]);
 
@@ -95,8 +94,12 @@ w/h are its size.
 - setOverlayText {text, x, y}           label on the screenshot
 - setWatermark   {text, position}       fixed to a frame corner
 - setColorFilter {filter}
-- setScript      {text}                 the scene's narration
 - setDuration    {seconds}
+
+There is deliberately no operation for the scene's narration script, the
+captions, the voice, music, transitions or the intro and outro. Those are panel
+settings, and there is no mechanism here to change them. A per-zoom-point line of
+narration is the exception: pass it as the zoom point's own "script".
 
 Rules:
 - Every zoom point lengthens the scene by at least 2s of hold plus 2.5s of pan.
@@ -151,6 +154,5 @@ const KNOWN_OP_NAMES = new Set([
   "setOverlayText",
   "setWatermark",
   "setColorFilter",
-  "setScript",
   "setDuration",
 ]);

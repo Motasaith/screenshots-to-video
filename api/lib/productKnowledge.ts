@@ -89,6 +89,39 @@ Known traps worth warning about:
 `.trim();
 
 /**
+ * Questions the assistant can actually answer well.
+ *
+ * Offered as one-tap chips when someone asks about something unrelated to the
+ * product, which is more use than a refusal on its own: the visitor learns what
+ * this thing is for instead of just being told what it is not for.
+ */
+export const SUGGESTED_QUESTIONS = [
+  "How do I turn my screenshots into a video?",
+  "Why is my scene longer than my narration?",
+  "How do I add captions?",
+  "What does the Pro plan include?",
+  "How do I blur something sensitive?",
+  "How many credits does a render cost?",
+] as const;
+
+/**
+ * Markers the model appends so the app can act, rather than just talk.
+ *
+ * The assistant has no ability to contact anyone. Left to its own devices it
+ * still said "I have forwarded this to the team", which is a lie the customer
+ * has no way to detect and the single worst thing a support bot can do. So the
+ * prompt forbids the claim outright and gives it these instead: it ends the
+ * reply with a marker, the server strips the marker, and the app does the real
+ * thing, opening the contact form or offering example questions.
+ */
+export const REPLY_MARKERS = {
+  /** Cannot answer a genuine question about AIVideo. The app opens the form. */
+  needHuman: "[[NEED_HUMAN]]",
+  /** Nothing to do with AIVideo. The app offers example questions. */
+  offTopic: "[[OFF_TOPIC]]",
+} as const;
+
+/**
  * The system prompt shared by the proactive nudges and the chat.
  *
  * `extra` lets a call site add its own constraints (length limits, output
@@ -185,10 +218,19 @@ export function buildSupportSystemPrompt(opts?: {
     `You are talking to a customer or a visitor. Be brief, concrete and friendly. Two or three sentences is usually enough. Name the exact panel, tool or setting.`,
     ``,
     `Rules you must not break:`,
-    `- Answer only from the knowledge below. If it is not covered, say you are not certain and offer to pass it to a person. Never invent a feature, price, limit, menu or shortcut.`,
-    `- Never promise a refund, a discount, an extension or a plan change. Say that a human will confirm it.`,
+    `- Answer only from the knowledge below. Never invent a feature, price, limit, menu or shortcut.`,
+    `- You cannot contact anyone. Never say you have forwarded, passed on, escalated, emailed, notified, raised, logged or sent anything to a team, a human or support. You have not, and saying so is a lie the customer cannot check. Never say you will do it either.`,
+    `- Never promise a refund, a discount, an extension or a plan change yourself. A person has to confirm those.`,
     `- Never ask for a password or a full API key. If a key is involved, point to Settings.`,
     `- If an image is attached, say what you can actually see in it before advising. If it is unreadable, ask for a clearer screenshot.`,
+    ``,
+    `End your reply with one of these markers, or with none at all:`,
+    `1. Nothing, when you have answered the question. This is the normal case. If your reply contains the answer, add NO marker, even if you are not completely certain and even if you suggest they check something.`,
+    `2. ${REPLY_MARKERS.needHuman}, only when you have NOT answered because a person is needed: something specific to their account that you cannot see, a payment or charge, a refund, a plan change, a suspected bug, or they asked for a human. Say in one sentence that a person needs to handle it, then the marker alone on the last line. The app opens a short form that reaches a real person. Do not describe the form, do not ask for their email, and never say anything has been sent.`,
+    `3. ${REPLY_MARKERS.offTopic}, only when the question has nothing to do with AIVideo or making tutorial videos: general knowledge, other software, coding help, news, maths, personal advice. Say in one sentence that it is outside what you cover and that you are here for AIVideo, then the marker alone on the last line. The app then shows example questions.`,
+    ``,
+    `Never mark something off topic when it concerns their own account, money, a charge, an invoice, a plan, a failed render, a lost video or anything else about using AIVideo. That is this product's business: use ${REPLY_MARKERS.needHuman} instead.`,
+    `Markers are instructions to the app, not text for the reader. Use at most one, on its own last line, and never mention or explain it.`,
     ``,
     EDITOR_TOOLS,
     ``,
@@ -210,7 +252,7 @@ export function buildSupportSystemPrompt(opts?: {
           opts.account.lastRenderStatus
             ? `- Most recent render: ${opts.account.lastRenderStatus}${opts.account.lastRenderWhen ? `, ${opts.account.lastRenderWhen}` : ""}`
             : `- They have not rendered anything yet.`,
-          `If a number here contradicts what they believe, say what the account shows and offer to pass it to a person rather than arguing.`,
+          `If a number here contradicts what they believe, say what the account shows and add ${REPLY_MARKERS.needHuman} rather than arguing.`,
         ].join("\n")
       : opts?.plan
         ? `\nThis customer is on the ${opts.plan} plan.`

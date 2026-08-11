@@ -94,11 +94,6 @@ export function applyEditorOps<T extends Record<string, unknown>>(
       case "setDuration":
         next.editorDuration = op.seconds;
         break;
-
-      case "setScript":
-        // Script lives on the step, not the annotation; surfaced separately.
-        next.__scriptUpdate = op.text;
-        break;
     }
   }
 
@@ -118,7 +113,6 @@ export function describeOp(op: EditorOp): string {
     case "setOverlayText": return `Add text: "${op.text}"`;
     case "setWatermark": return `Watermark "${op.text}" (${op.position})`;
     case "setColorFilter": return `Colour filter: ${op.filter}`;
-    case "setScript": return "Rewrite the narration";
     case "setDuration": return `Set duration to ${op.seconds}s`;
     default: return "Edit the scene";
   }

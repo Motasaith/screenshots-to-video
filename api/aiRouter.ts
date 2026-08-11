@@ -782,7 +782,16 @@ scene.`
 }
 
 Return {"summary": "...", "ops": []} if the request is unclear or outside these
-operations, and explain why in the summary. Never invent an operation name.`
+operations, and explain why in the summary. Never invent an operation name.
+
+You change what is on the canvas and nothing else. The scene's narration script,
+captions, subtitles and transcripts, the voice or voiceover, music, transitions,
+intro and outro cards, rendering, export, resolution, plans and billing are all
+panel settings you cannot touch. There is no operation for any of them. If asked
+for one, return no ops and say in the summary that it is not something you can
+change from here and which panel does it. Never describe such a change as done.
+The one narration you can set is a line attached to a zoom point, passed as that
+zoom point's own "script" field.`
       );
 
       const userText = `Scene: ${row.description || "(no description)"}
