@@ -1,6 +1,10 @@
-import { env } from "./env";
+import { env } from "./env";
+
 import { buildGuideSystemPrompt } from "./productKnowledge";
 import { createLogger } from "./logger";
+import { parseMediaRef } from "./mediaRef";
+import { loadMediaAsDataUri } from "./mediaSource";
+import { localFilePath } from "./localStore";
 
 const log = createLogger({ path: "llm" });
 
@@ -176,37 +180,35 @@ The array MUST have exactly ${steps.length} entries, in the same order as the st
  * Load an image from a URL or local path and return a base64 data URL.
  * Reuses the same logic as checkMediaSafety.
  */
+/**
+ * Load a stored screenshot for a vision prompt.
+ *
+ * Every reference goes through `parseMediaRef`, which accepts only this
+ * application's own storage keys. Before that, this function resolved the string
+ * with `path.resolve` and read it off disk, so a step whose `screenshotPath` was
+ * `"../../.env"` had that file's contents sent to the model as its screenshot.
+ * It also fetched any http(s) URL, which is a request forgery into the host's
+ * own network. Both branches are gone; neither was ever needed, because remote
+ * media is downloaded at import time by the host-allowlisted `ai.importMedia`.
+ */
 async function loadImageAsDataUrl(mediaPath: string): Promise<{ dataUrl: string } | null> {
-  const fs = await import("fs/promises");
-  const path = await import("path");
-
   try {
-    const isVideo = mediaPath.toLowerCase().endsWith(".mp4") || mediaPath.toLowerCase().endsWith(".webm") || mediaPath.toLowerCase().endsWith(".mov");
+    const ref = parseMediaRef(mediaPath);
+    if (!ref) return null;
 
+    const isVideo = /\.(mp4|webm|mov)$/i.test(ref.key);
     if (isVideo) {
-      const buffers = await extractVideoFrames(mediaPath, 2);
+      // Frame extraction needs a real path, and only a local key has one.
+      const abs = ref.kind === "local" ? await localFilePath(ref.key) : null;
+      if (!abs) return null;
+      const buffers = await extractVideoFrames(abs, 2);
       if (buffers.length === 0) return null;
       return { dataUrl: `data:image/jpeg;base64,${buffers[0].toString("base64")}` };
     }
 
-    let buffer: Buffer;
-    let mime = "image/jpeg";
-
-    if (mediaPath.startsWith("http://") || mediaPath.startsWith("https://")) {
-      const resp = await fetch(mediaPath);
-      if (!resp.ok) return null;
-      const contentType = resp.headers.get("content-type") || "";
-      if (contentType.includes("png")) mime = "image/png";
-      else if (contentType.includes("webp")) mime = "image/webp";
-      buffer = Buffer.from(await resp.arrayBuffer());
-    } else {
-      const fullPath = path.resolve(mediaPath);
-      buffer = await fs.readFile(fullPath);
-      if (fullPath.toLowerCase().endsWith(".png")) mime = "image/png";
-      else if (fullPath.toLowerCase().endsWith(".webp")) mime = "image/webp";
-    }
-
-    return { dataUrl: `data:${mime};base64,${buffer.toString("base64")}` };
+    const loaded = await loadMediaAsDataUri(mediaPath);
+    if (!loaded) return null;
+    return { dataUrl: loaded.dataUri };
   } catch (e) {
     log.warn("Failed to load image as data URL", { path: mediaPath, error: e instanceof Error ? e.message : String(e) });
     return null;
@@ -625,9 +627,6 @@ export async function checkMediaSafety(mediaPath: string): Promise<{ isSafe: boo
 
 
   try {
-    const fs = await import("fs/promises");
-    const path = await import("path");
-
     const promptText = `You are a strict trust, safety, and copyright reviewer for a video creation platform. Analyze this image.
 1. Safety: Does this image contain any prohibited content? This includes NSFW content (nudity, sexual content), graphic violence, gore, weapons, illegal acts, or anything that violates standard YouTube community guidelines.
 2. Copyright: Are there any obvious copyrighted materials prominently featured, such as major movie characters, well-known video game assets (unless it's a generic UI), or registered logos that are the main subject? (Generic desktop UI, basic websites, and stock photos are clear).
@@ -652,33 +651,25 @@ If there is ANY safety violation, set isSafe to false. If there is a copyright v
           });
         }
       } else {
-        let buffer: Buffer;
-        let mime = "image/jpeg";
-
-        if (mediaPath.startsWith("http://") || mediaPath.startsWith("https://")) {
-          log.info(`Fetching remote image: ${mediaPath.substring(0, 80)}...`);
-          const resp = await fetch(mediaPath);
-          if (!resp.ok) {
-            log.warn(`Failed to fetch image (${resp.status})`, { path: mediaPath });
-            return { isSafe: true, isClear: true, reason: "Could not fetch image for checking." };
-          }
-          const contentType = resp.headers.get("content-type") || "";
-          if (contentType.includes("png")) mime = "image/png";
-          else if (contentType.includes("webp")) mime = "image/webp";
-          const arrayBuf = await resp.arrayBuffer();
-          buffer = Buffer.from(arrayBuf);
-        } else {
-          const fullPath = path.resolve(mediaPath);
-          buffer = await fs.readFile(fullPath);
-          if (fullPath.toLowerCase().endsWith(".png")) mime = "image/png";
-          else if (fullPath.toLowerCase().endsWith(".webp")) mime = "image/webp";
+        /*
+         * Through the storage layer, never the filesystem or the network.
+         *
+         * This was the third and worst instance of the same flaw: it did
+         * `fs.readFile(path.resolve(mediaPath))` on a string taken straight from the
+         * request body, so any signed-in account could send `"../../.env"` and have
+         * the file's contents described back to them by the vision model. The http
+         * branch beside it was a request forgery into the host's own network.
+         *
+         * `loadMediaAsDataUri` accepts only this application's own storage keys.
+         */
+        const loaded = await loadMediaAsDataUri(mediaPath);
+        if (!loaded) {
+          log.warn("Safety check skipped: not a readable storage key");
+          return { isSafe: true, isClear: true, reason: "Could not read the image for checking." };
         }
-
-        const base64 = buffer.toString("base64");
-        contentParts.push({
-          type: "image_url",
-          image_url: { url: `data:${mime};base64,${base64}` },
-        });
+        // The data URI is already `data:<mime>;base64,<payload>`, which is exactly the
+        // shape the vision request wants, so it is passed through whole.
+        contentParts.push({ type: "image_url", image_url: { url: loaded.dataUri } });
       }
     } catch (e) {
       log.warn("Could not load image", { path: mediaPath, error: e instanceof Error ? e.message : String(e) });

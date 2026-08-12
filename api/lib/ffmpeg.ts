@@ -1808,7 +1808,15 @@ export async function renderTextSegment(
   template: string,
   text: string,
   outputRes: string,
-  durationSec: number = 3.0
+  durationSec: number = 3.0,
+  /**
+   * A team's brand colours, which take precedence over the template.
+   *
+   * Hex in `#rrggbb`, converted here to the `0xrrggbb` form Windows FFmpeg needs.
+   * Absent means the template decides, which is the behaviour every existing
+   * project keeps.
+   */
+  brand?: { background?: string | null; text?: string | null }
 ): Promise<string> {
   await ensureWorkDir();
   const outputPath = path.join(WORK_DIR, `text_${nanoid(12)}.mp4`);
@@ -1843,6 +1851,25 @@ export async function renderTextSegment(
       textColor = "0x1e293b"; // Dark slate
       break;
   }
+
+  // A brand kit overrides the template. Validated rather than trusted: an
+  // unchecked value here goes into an FFmpeg filter string.
+  const toFfmpegHex = (value: string | null | undefined) =>
+    value && /^#[0-9a-fA-F]{6}$/.test(value) ? `0x${value.slice(1).toLowerCase()}` : null;
+
+  const brandBg = toFfmpegHex(brand?.background);
+  if (brandBg) {
+    color1 = brandBg;
+    // Keep the text readable on whatever colour the brand is, using the same
+    // luminance rule a designer would apply by eye.
+    const r = parseInt(brandBg.slice(2, 4), 16);
+    const g = parseInt(brandBg.slice(4, 6), 16);
+    const b = parseInt(brandBg.slice(6, 8), 16);
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    textColor = luminance > 0.6 ? "0x14181d" : "white";
+  }
+  const brandText = toFfmpegHex(brand?.text);
+  if (brandText) textColor = brandText;
 
   // Use the downloaded Roboto font
   const fontFile = getFontPath();

@@ -1,39 +1,34 @@
 /**
- * Outbound notifications.
+ * Notifications about things that already happened.
  *
- * This project has no mail transport. There is no mail library in
- * package.json, no SMTP or API credentials in the environment, and nothing that
- * has ever sent an email. Adding one is a decision with consequences beyond
- * code: which provider, which sending domain, and the SPF/DKIM records that stop
- * the mail landing in spam.
+ * A thin layer over `mailer.ts`, kept separate because callers here are announcing
+ * an event rather than composing a message: the render finished, a ticket arrived,
+ * support replied. Every one returns a boolean instead of throwing, since the thing
+ * being announced has already succeeded and a failed notification must not undo it.
  *
- * So this module is the seam, not the implementation. Right now a new ticket is
- * written to the log, which the admin dashboard already surfaces under the
- * "Support widget" source, and the customer is answered inside the widget, which
- * needs no email at all.
+ * Everything is a no-op until Brevo's credentials are set, and the send is logged
+ * either way, so a ticket is still discoverable in the admin log viewer.
  *
- * To turn email on, install a provider, set the two variables below, and fill in
- * `sendEmail`. Nothing else in the codebase needs to change: every caller
- * already goes through here and already tolerates failure.
- *
- *   SUPPORT_NOTIFY_EMAIL=you@example.com     where new tickets are announced
- *   MAIL_FROM="AIVideo <support@yourdomain>"  the envelope sender
+ *   SUPPORT_NOTIFY_EMAIL=you@example.com   where new tickets are announced
  */
 
 import { createLogger } from "./logger";
+import { emailConfigured as mailerConfigured, sendTransactional } from "./mailer";
 
 const log = createLogger({ path: "notify" });
 
 export interface OutboundEmail {
   to: string;
   subject: string;
-  /** Plain text. Whatever provider goes in here can add HTML later. */
+  /** Plain text. The mailer generates a plain HTML part from it. */
   body: string;
+  /** Shown before the address in the recipient header. */
+  name?: string | null;
 }
 
 /** Whether email can actually be sent in this deployment. */
 export function emailConfigured(): boolean {
-  return false;
+  return mailerConfigured();
 }
 
 /**
@@ -45,16 +40,11 @@ export function emailConfigured(): boolean {
  * because the mail server was down.
  */
 export async function sendEmail(mail: OutboundEmail): Promise<boolean> {
-  if (!emailConfigured()) {
-    log.info("Email not configured; notification skipped", {
-      to: mail.to,
-      subject: mail.subject.slice(0, 80),
-    });
-    return false;
-  }
-
-  // Provider call goes here once one is chosen.
-  return false;
+  return sendTransactional({
+    to: { email: mail.to, name: mail.name ?? null },
+    subject: mail.subject,
+    text: mail.body,
+  });
 }
 
 /**

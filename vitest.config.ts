@@ -10,6 +10,9 @@ export default defineConfig({
       "@": path.resolve(templateRoot, "src"),
       "@contracts": path.resolve(templateRoot, "contracts"),
       "@assets": path.resolve(templateRoot, "attached_assets"),
+      // Present in vite.config.ts but missing here, so any test whose subject
+      // imported the schema failed to resolve rather than failing an assertion.
+      "@db": path.resolve(templateRoot, "db"),
     },
   },
   test: {

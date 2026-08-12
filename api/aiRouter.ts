@@ -1,8 +1,10 @@
 import { z } from "zod";
+import { isStorableMediaRef } from "./lib/mediaRef";
 import { TRPCError } from "@trpc/server";
 import { createRouter, authedQuery, rateLimitByUser, userError } from "./middleware";
 import { getDb } from "./queries/connection";
 import { projects, steps } from "@db/schema";
+import { projectAccessWhere } from "./lib/teams";
 import { eq, and } from "drizzle-orm";
 import {
   isLLMConfigured,
@@ -162,12 +164,12 @@ export const aiRouter = createRouter({
         .where(
           and(
             eq(projects.id, input.projectId),
-            eq(projects.userId, ctx.user!.id)
+            projectAccessWhere(ctx.user!)
           )
         )
         .limit(1);
 
-      if (!project) throw new Error("Project not found");
+      if (!project) throw userError("Project not found", "NOT_FOUND");
 
       const projectSteps = await getDb()
         .select()
@@ -268,7 +270,7 @@ export const aiRouter = createRouter({
         .where(eq(steps.id, input.stepId))
         .limit(1);
 
-      if (!step) throw new Error("Step not found");
+      if (!step) throw userError("Scene not found", "NOT_FOUND");
 
       const [project] = await getDb()
         .select()
@@ -276,12 +278,12 @@ export const aiRouter = createRouter({
         .where(
           and(
             eq(projects.id, step.projectId),
-            eq(projects.userId, ctx.user!.id)
+            projectAccessWhere(ctx.user!)
           )
         )
         .limit(1);
 
-      if (!project) throw new Error("Not authorized");
+      if (!project) throw userError("Project not found", "NOT_FOUND");
 
       // Reject gibberish descriptions so the LLM never writes troll narration.
       const g = detectGibberish(step.description);
@@ -351,12 +353,12 @@ export const aiRouter = createRouter({
         .where(
           and(
             eq(projects.id, input.projectId),
-            eq(projects.userId, ctx.user!.id)
+            projectAccessWhere(ctx.user!)
           )
         )
         .limit(1);
 
-      if (!project) throw new Error("Project not found");
+      if (!project) throw userError("Project not found", "NOT_FOUND");
 
       const projectSteps = await getDb()
         .select()
@@ -400,12 +402,35 @@ export const aiRouter = createRouter({
 
   checkMediaSafety: authedQuery
     .use(rateLimitByUser(60_000, 10))
-    .input(z.object({ stepId: z.number().optional(), mediaUrl: z.string() }))
-    .mutation(async ({ input }) => {
-      // Send to Vision LLM for check
+    .input(
+      z.object({
+        stepId: z.number().optional(),
+        // A storage key, despite the name. Validated here so a path or a URL is
+        // refused at the boundary rather than deep inside the vision call.
+        mediaUrl: z.string().refine(isStorableMediaRef, "Not a valid uploaded file reference"),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      /**
+       * Ownership first, and it was missing entirely.
+       *
+       * This handler did not even take `ctx`: it wrote `isSafe` and `safetyReason` to
+       * whatever step id it was given, so any signed-in account could mark a stranger's
+       * scenes unsafe and block their render, or mark an unsafe one safe. An automated
+       * probe found it; a manual read had not.
+       */
+      if (input.stepId) {
+        const [owned] = await getDb()
+          .select({ id: steps.id })
+          .from(steps)
+          .innerJoin(projects, eq(steps.projectId, projects.id))
+          .where(and(eq(steps.id, input.stepId), projectAccessWhere(ctx.user!)))
+          .limit(1);
+        if (!owned) throw userError("Scene not found", "NOT_FOUND");
+      }
+
       const result = await checkMediaSafety(input.mediaUrl);
 
-      // Save the result to the step in the database if stepId is provided
       if (input.stepId) {
         await getDb()
           .update(steps)
@@ -601,17 +626,17 @@ export const aiRouter = createRouter({
         .where(eq(steps.id, input.stepId))
         .limit(1);
 
-      if (!step) throw new Error("Step not found");
+      if (!step) throw userError("Scene not found", "NOT_FOUND");
 
       const [project] = await getDb()
         .select()
         .from(projects)
         .where(
-          and(eq(projects.id, step.projectId), eq(projects.userId, ctx.user!.id))
+          and(eq(projects.id, step.projectId), projectAccessWhere(ctx.user!))
         )
         .limit(1);
 
-      if (!project) throw new Error("Not authorized");
+      if (!project) throw userError("Project not found", "NOT_FOUND");
 
       const script = step.userEditedScript || step.aiScript || step.description;
       const elevenlabsApiKey = input.voice.startsWith("elevenlabs:")
@@ -656,11 +681,11 @@ export const aiRouter = createRouter({
         .select()
         .from(projects)
         .where(
-          and(eq(projects.id, input.projectId), eq(projects.userId, ctx.user!.id))
+          and(eq(projects.id, input.projectId), projectAccessWhere(ctx.user!))
         )
         .limit(1);
 
-      if (!project) throw new Error("Not authorized");
+      if (!project) throw userError("Project not found", "NOT_FOUND");
 
       const projectSteps = await getDb()
         .select()

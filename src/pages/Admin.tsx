@@ -4,6 +4,8 @@ import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
 import Navbar from "@/components/Navbar";
 import { SupportTab } from "./admin/SupportTab";
+import { SettingsTab } from "./admin/SettingsTab";
+import { EmailTab } from "./admin/EmailTab";
 import {
   ShieldAlert,
   Users,
@@ -25,6 +27,8 @@ import {
   UserPlus,
   Video,
   MessageSquare,
+  SlidersHorizontal,
+  Send,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -397,6 +401,20 @@ export default function Admin() {
               className="font-dm text-sm h-10 px-6 data-[state=active]:bg-primary/10 data-[state=active]:border-2 data-[state=active]:border-border font-medium"
             >
               Cleanup
+            </TabsTrigger>
+            <TabsTrigger
+              value="email"
+              className="font-dm text-sm h-10 px-6 data-[state=active]:bg-primary/10 data-[state=active]:border-2 data-[state=active]:border-border font-medium"
+            >
+              <Send className="mr-1.5 h-3.5 w-3.5" />
+              Email
+            </TabsTrigger>
+            <TabsTrigger
+              value="settings"
+              className="font-dm text-sm h-10 px-6 data-[state=active]:bg-primary/10 data-[state=active]:border-2 data-[state=active]:border-border font-medium"
+            >
+              <SlidersHorizontal className="mr-1.5 h-3.5 w-3.5" />
+              Settings
             </TabsTrigger>
             <TabsTrigger
               value="support"
@@ -849,6 +867,14 @@ export default function Admin() {
           </TabsContent>
 
           {/* ── Logs Tab ── */}
+          <TabsContent value="email">
+            <EmailTab />
+          </TabsContent>
+
+          <TabsContent value="settings">
+            <SettingsTab />
+          </TabsContent>
+
           <TabsContent value="support">
             <SupportTab />
           </TabsContent>

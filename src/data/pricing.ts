@@ -30,7 +30,7 @@ export const plans: Plan[] = [
     period: "forever",
     tagline: "Enough to find out whether this works for you.",
     features: [
-      "5 videos a month",
+      "6 free videos a month, more during promotions",
       "720p export",
       "Every aspect ratio",
       "12 voices, 4 of them ultra-realistic",

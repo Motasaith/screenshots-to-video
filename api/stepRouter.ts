@@ -1,7 +1,9 @@
 import { z } from "zod";
-import { createRouter, authedQuery, rateLimitByUser } from "./middleware";
+import { isStorableMediaRef } from "./lib/mediaRef";
+import { createRouter, authedQuery, rateLimitByUser, userError} from "./middleware";
 import { getDb } from "./queries/connection";
 import { steps, projects } from "@db/schema";
+import { projectAccessWhere } from "./lib/teams";
 import { eq, and } from "drizzle-orm";
 import { detectGibberish } from "./lib/gibberish";
 import { checkMediaSafety } from "./lib/llm";
@@ -14,7 +16,10 @@ export const stepRouter = createRouter({
         projectId: z.number(),
         order: z.number(),
         description: z.string().max(500).default(""),
-        screenshotPath: z.string().optional(),
+        screenshotPath: z
+          .string()
+          .refine(isStorableMediaRef, "Not a valid uploaded file reference")
+          .optional(),
         isSafe: z.boolean().optional(),
         safetyReason: z.string().optional(),
       })
@@ -26,12 +31,12 @@ export const stepRouter = createRouter({
         .where(
           and(
             eq(projects.id, input.projectId),
-            eq(projects.userId, ctx.user!.id)
+            projectAccessWhere(ctx.user!)
           )
         )
         .limit(1);
 
-      if (!project) throw new Error("Project not found");
+      if (!project) throw userError("Project not found", "NOT_FOUND");
 
       // Reject keyboard-mash / troll input.
       const g = detectGibberish(input.description);
@@ -73,12 +78,12 @@ export const stepRouter = createRouter({
         .where(
           and(
             eq(projects.id, input.projectId),
-            eq(projects.userId, ctx.user!.id)
+            projectAccessWhere(ctx.user!)
           )
         )
         .limit(1);
 
-      if (!project) throw new Error("Project not found");
+      if (!project) throw userError("Project not found", "NOT_FOUND");
 
       return getDb()
         .select()
@@ -94,7 +99,10 @@ export const stepRouter = createRouter({
         id: z.number(),
         order: z.number().optional(),
         description: z.string().min(1).max(500).optional(),
-        screenshotPath: z.string().optional(),
+        screenshotPath: z
+          .string()
+          .refine(isStorableMediaRef, "Not a valid uploaded file reference")
+          .optional(),
         aiScript: z.string().optional(),
         userEditedScript: z.string().optional(),
         zoomTargetX: z.number().min(0).max(100).nullish(),
@@ -237,17 +245,17 @@ export const stepRouter = createRouter({
         .where(eq(steps.id, id))
         .limit(1);
 
-      if (!step) throw new Error("Step not found");
+      if (!step) throw userError("Scene not found", "NOT_FOUND");
 
       const [project] = await getDb()
         .select()
         .from(projects)
         .where(
-          and(eq(projects.id, step.projectId), eq(projects.userId, ctx.user!.id))
+          and(eq(projects.id, step.projectId), projectAccessWhere(ctx.user!))
         )
         .limit(1);
 
-      if (!project) throw new Error("Not authorized");
+      if (!project) throw userError("Project not found", "NOT_FOUND");
 
       const updateData: any = { ...data };
       if (data.isSafe !== undefined) {
@@ -369,17 +377,17 @@ export const stepRouter = createRouter({
         .where(eq(steps.id, input.id))
         .limit(1);
 
-      if (!step) throw new Error("Step not found");
+      if (!step) throw userError("Scene not found", "NOT_FOUND");
 
       const [project] = await getDb()
         .select()
         .from(projects)
         .where(
-          and(eq(projects.id, step.projectId), eq(projects.userId, ctx.user!.id))
+          and(eq(projects.id, step.projectId), projectAccessWhere(ctx.user!))
         )
         .limit(1);
 
-      if (!project) throw new Error("Not authorized");
+      if (!project) throw userError("Project not found", "NOT_FOUND");
 
       await getDb().delete(steps).where(eq(steps.id, input.id));
       return { success: true };
@@ -397,17 +405,17 @@ export const stepRouter = createRouter({
         .where(eq(steps.id, input.stepId))
         .limit(1);
 
-      if (!step) throw new Error("Step not found");
+      if (!step) throw userError("Scene not found", "NOT_FOUND");
 
       const [project] = await getDb()
         .select()
         .from(projects)
         .where(
-          and(eq(projects.id, step.projectId), eq(projects.userId, ctx.user!.id))
+          and(eq(projects.id, step.projectId), projectAccessWhere(ctx.user!))
         )
         .limit(1);
 
-      if (!project) throw new Error("Not authorized");
+      if (!project) throw userError("Project not found", "NOT_FOUND");
 
       // Run the Vision LLM safety check
       const result = await checkMediaSafety(input.mediaUrl);

@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { createRouter, authedQuery, rateLimitByUser } from "./middleware";
 import { getDb } from "./queries/connection";
+import { freeVideoAllowance, getSettings, promoActive } from "./lib/appSettings";
 import { projects, steps, renderJobs, users } from "@db/schema";
+import { projectAccessWhere, projectDeleteWhere } from "./lib/teams";
 import { eq, and, desc, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { detectGibberish } from "./lib/gibberish";
@@ -38,7 +40,7 @@ export const projectRouter = createRouter({
       const userProjects = await getDb()
         .select()
         .from(projects)
-        .where(eq(projects.userId, ctx.user!.id))
+        .where(projectAccessWhere(ctx.user!))
         .orderBy(desc(projects.createdAt));
 
       // Sign final video URLs for completed projects
@@ -67,7 +69,7 @@ export const projectRouter = createRouter({
         .where(
           and(
             eq(projects.id, input.id),
-            eq(projects.userId, ctx.user!.id)
+            projectAccessWhere(ctx.user!)
           )
         )
         .limit(1);
@@ -125,23 +127,31 @@ export const projectRouter = createRouter({
         });
       }
 
-      // Free tier enforcement: 14 videos per week
+      // Free tier enforcement. The allowance and the reset window come from the
+      // settings an admin edits, so a promotion is a number in the dashboard
+      // rather than a deploy, and there is one limit instead of three different
+      // ones in the code, the dashboard copy and the support assistant.
       if (ctx.user!.plan === "free") {
+        const settings = await getSettings();
+        const allowance = freeVideoAllowance(settings);
+        const resetDays = Math.max(1, Math.floor(settings.freeResetDays));
+
         const [userRow] = await getDb()
           .select({ videosCreatedThisMonth: users.videosCreatedThisMonth, monthlyResetAt: users.monthlyResetAt })
           .from(users)
           .where(eq(users.id, ctx.user!.id))
           .limit(1);
 
-        // Check if the weekly reset period has passed — if so, reset counter
-        const resetDays = 7; // free users: weekly reset
         const shouldReset = userRow && new Date(userRow.monthlyResetAt) < new Date(Date.now() - resetDays * 24 * 60 * 60 * 1000);
         const currentCount = shouldReset ? 0 : (userRow?.videosCreatedThisMonth ?? 0);
 
-        if (currentCount >= 14) {
+        if (currentCount >= allowance) {
+          const promo = promoActive(settings);
           throw new TRPCError({
             code: "FORBIDDEN",
-            message: "Free tier limit: 14 videos per week. Upgrade to create more.",
+            message: `Free plan: ${allowance} videos every ${resetDays} days${
+              promo ? " (promotion included)" : ""
+            }. Upgrade to create more.`,
           });
         }
         await getDb()
@@ -157,7 +167,7 @@ export const projectRouter = createRouter({
       const existingProjects = await getDb()
         .select({ title: projects.title })
         .from(projects)
-        .where(eq(projects.userId, ctx.user!.id));
+        .where(projectAccessWhere(ctx.user!));
 
       const existingTitles = new Set(existingProjects.map((p) => p.title));
 
@@ -173,6 +183,10 @@ export const projectRouter = createRouter({
         .insert(projects)
         .values({
           userId: ctx.user!.id,
+          // A team member's new work is shared with the team by default, which is
+          // what a shared library means. Existing personal projects are untouched;
+          // sharing those is an explicit choice on the project itself.
+          teamId: ctx.user!.teamId ?? null,
           title: finalTitle,
           description: input.description,
           platform: input.platform,
@@ -208,6 +222,7 @@ export const projectRouter = createRouter({
         .insert(projects)
         .values({
           userId: ctx.user!.id,
+          teamId: ctx.user!.teamId ?? null,
           title: "Sample: how this works",
           description:
             "A ready-made example project. Edit anything, or render it as-is to see the finished result.",
@@ -300,6 +315,26 @@ export const projectRouter = createRouter({
         });
       }
 
+      /**
+       * Ownership, checked once, before anything is written or read.
+       *
+       * This used to be checked only on the `projects` update below, which meant two
+       * things were reachable with somebody else's project id: the `steps` writes
+       * that follow cleared their cached narration and video segments, and the
+       * read-back at the end returned their whole project row.
+       *
+       * An automated probe found it. A manual read had not, because a
+       * `projectAccessWhere` was present in the handler and that looked like enough.
+       */
+      const [permitted] = await getDb()
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(eq(projects.id, id), projectAccessWhere(ctx.user!)))
+        .limit(1);
+      if (!permitted) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
+      }
+
       // If voice, speed, captions, or resolution changes, clear cached step video/audio segments
       const voiceOrSpeedChanged = data.voice !== undefined || data.speed !== undefined;
       const captionsOrResolutionChanged =
@@ -311,6 +346,9 @@ export const projectRouter = createRouter({
         data.captionColor !== undefined;
 
       if (voiceOrSpeedChanged) {
+        // Only scenes using the generated voice. A recording the customer made
+        // themselves must survive a voice or speed change: nulling `audioPath` there
+        // would delete their take, and no setting on this screen asked for that.
         await getDb()
           .update(steps)
           .set({
@@ -318,7 +356,13 @@ export const projectRouter = createRouter({
             audioDuration: null,
             videoSegmentPath: null,
           })
-          .where(eq(steps.projectId, id));
+          .where(and(eq(steps.projectId, id), eq(steps.audioSource, "tts")));
+
+        // Their own recordings keep their audio; only the rendered frames go.
+        await getDb()
+          .update(steps)
+          .set({ videoSegmentPath: null })
+          .where(and(eq(steps.projectId, id), eq(steps.audioSource, "upload")));
       } else if (captionsOrResolutionChanged) {
         await getDb()
           .update(steps)
@@ -332,7 +376,7 @@ export const projectRouter = createRouter({
         .update(projects)
         .set(updateData)
         .where(
-          and(eq(projects.id, id), eq(projects.userId, ctx.user!.id))
+          and(eq(projects.id, id), projectAccessWhere(ctx.user!))
         );
 
       const [updated] = await getDb()
@@ -348,11 +392,13 @@ export const projectRouter = createRouter({
     .use(rateLimitByUser(60_000, 20))
     .input(z.object({ id: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      // Verify ownership BEFORE deleting children to prevent IDOR data loss.
+      // Deleting is stricter than editing. A team shares its library, but an
+      // ordinary member removing a colleague's project is not something to allow by
+      // accident, so this is the creator, a team admin, or the owner.
       const [owned] = await getDb()
         .select({ id: projects.id })
         .from(projects)
-        .where(and(eq(projects.id, input.id), eq(projects.userId, ctx.user!.id)));
+        .where(and(eq(projects.id, input.id), projectDeleteWhere(ctx.user!)));
       if (!owned) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
       }
@@ -365,7 +411,7 @@ export const projectRouter = createRouter({
       await getDb()
         .delete(projects)
         .where(
-          and(eq(projects.id, input.id), eq(projects.userId, ctx.user!.id))
+          and(eq(projects.id, input.id), projectDeleteWhere(ctx.user!))
         );
       return { success: true };
     }),
@@ -373,6 +419,13 @@ export const projectRouter = createRouter({
   deleteAll: authedQuery
     .use(rateLimitByUser(60_000, 10))
     .mutation(async ({ ctx }) => {
+      /**
+       * Only the caller's own projects, never the team's.
+       *
+       * `projectAccessWhere` is the read rule and includes everything shared with
+       * the team, so using it here would let any member press "Delete all" on the
+       * dashboard and destroy every colleague's work at once.
+       */
       const userProjects = await getDb()
         .select({ id: projects.id })
         .from(projects)
@@ -401,7 +454,7 @@ export const projectRouter = createRouter({
       const [owned] = await getDb()
         .select({ id: projects.id })
         .from(projects)
-        .where(and(eq(projects.id, input.projectId), eq(projects.userId, ctx.user!.id)));
+        .where(and(eq(projects.id, input.projectId), projectAccessWhere(ctx.user!)));
       if (!owned) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
       }
@@ -435,7 +488,7 @@ export const projectRouter = createRouter({
       const [owned] = await getDb()
         .select({ id: projects.id })
         .from(projects)
-        .where(and(eq(projects.id, input.projectId), eq(projects.userId, ctx.user!.id)));
+        .where(and(eq(projects.id, input.projectId), projectAccessWhere(ctx.user!)));
       if (!owned) {
         throw new TRPCError({ code: "NOT_FOUND", message: "Project not found" });
       }

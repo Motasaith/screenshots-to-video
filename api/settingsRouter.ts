@@ -21,6 +21,32 @@ import { Session } from "@contracts/constants";
  * masked last-4 hint and live credit balance are exposed).
  */
 export const settingsRouter = createRouter({
+  /** Whether this account has opted in to marketing email. */
+  emailPreferences: authedQuery.query(async ({ ctx }) => {
+    const [row] = await getDb()
+      .select({ marketingEmails: users.marketingEmails })
+      .from(users)
+      .where(eq(users.id, ctx.user!.id))
+      .limit(1);
+    return { marketingEmails: row?.marketingEmails ?? false };
+  }),
+
+  /**
+   * Opt in or out of marketing email.
+   *
+   * Only marketing. Messages about their own renders are not a preference, they
+   * are the product telling them what it did.
+   */
+  setEmailPreferences: authedQuery
+    .input(z.object({ marketingEmails: z.boolean() }))
+    .mutation(async ({ ctx, input }) => {
+      await getDb()
+        .update(users)
+        .set({ marketingEmails: input.marketingEmails })
+        .where(eq(users.id, ctx.user!.id));
+      return { marketingEmails: input.marketingEmails };
+    }),
+
   /** Whether the user has a saved key + a masked hint for display. Cheap (no external call). */
   elevenLabsKeyStatus: authedQuery
     .use(rateLimitByUser(60_000, 60))

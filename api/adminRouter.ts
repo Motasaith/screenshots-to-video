@@ -1,8 +1,28 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
-import { createRouter, adminQuery, authedQuery, isMaintenanceMode, setMaintenanceMode, rateLimitByUser } from "./middleware";
+import { createRouter, adminQuery, authedQuery, isMaintenanceMode, setMaintenanceMode, rateLimitByUser, userError} from "./middleware";
+import { auditRecent, recordAudit } from "./lib/audit";
+import {
+  emailConfigured,
+  promotionalAudience,
+  sendPromotional,
+  sendTransactional,
+  verifyMailer,
+} from "./lib/mailer";
+import { ensureUnsubscribeToken, publicBaseUrl } from "./lib/mailIdentity";
+import {
+  announcementLive,
+  creditsForDollars,
+  freeVideoAllowance,
+  getSettings,
+  promoActive,
+  setSetting,
+  type AppSettingsShape,
+} from "./lib/appSettings";
 import { getDb } from "./queries/connection";
-import { users, projects, renderJobs, supportTickets } from "@db/schema";
+import { users, projects, renderJobs, supportTickets,
+  emailCampaigns,
+} from "@db/schema";
 import { desc, count, eq, and, gte, sql, like, or } from "drizzle-orm";
 import { signSessionToken } from "./kimi/session";
 import { env } from "./lib/env";
@@ -196,7 +216,25 @@ export const adminRouter = createRouter({
         .where(eq(users.id, input.userId))
         .limit(1);
 
-      if (!targetUser) throw new Error("User not found");
+      if (!targetUser) throw userError("User not found", "NOT_FOUND");
+
+      /**
+       * Recorded before the token is minted, not after.
+       *
+       * This endpoint issues a valid session as any user in the system, which makes
+       * it the most powerful action in the application. It previously left no trace
+       * at all, so there was no way to answer "who looked at this customer's account
+       * and when". Written first so a failure later in the handler still leaves the
+       * attempt on record.
+       */
+      await recordAudit({
+        action: "impersonation.started",
+        actorUserId: ctx.user!.id,
+        targetType: "user",
+        targetId: targetUser.id,
+        metadata: { targetEmail: targetUser.email, targetPlan: targetUser.plan },
+        ip: ctx.ip,
+      });
 
       // Generate a session token for the target user allowing admin to log in as them
       const token = await signSessionToken({
@@ -504,6 +542,294 @@ export const adminRouter = createRouter({
         .where(eq(supportTickets.status, "open"));
 
       return { tickets: rows, openCount: openCount?.value ?? 0 };
+    }),
+
+  /**
+   * Everything editable from the dashboard, with its current values.
+   *
+   * Returns the effective free allowance as well as the raw numbers, so the admin
+   * sees "6 x 4 = 24" rather than having to work the promotion out.
+   */
+  getAppSettings: adminLimited.query(async () => {
+    const settings = await getSettings();
+    return {
+      settings,
+      effective: {
+        freeVideosPerPeriod: freeVideoAllowance(settings),
+        promoActive: promoActive(settings),
+        announcementLive: announcementLive(settings.announcement),
+      },
+    };
+  }),
+
+  /**
+   * Change one or more settings.
+   *
+   * Every field is optional so the UI can save one section without sending the
+   * rest, and each is bounded here rather than trusted from the form. A
+   * multiplier of 400 or a negative allowance is a mistake, not a promotion.
+   */
+  updateAppSettings: adminLimited
+    .input(
+      z.object({
+        maintenanceMode: z.boolean().optional(),
+        freeVideosPerMonth: z.number().int().min(0).max(1000).optional(),
+        freeResetDays: z.number().int().min(1).max(365).optional(),
+        promoMultiplier: z.number().int().min(1).max(20).optional(),
+        promoLabel: z.string().max(120).optional(),
+        promoEndsAt: z.string().max(40).optional(),
+        creditDollarValue: z.number().min(0.01).max(100).optional(),
+        teamSeatsIncluded: z.number().int().min(1).max(100).optional(),
+        announcement: z
+          .object({
+            message: z.string().max(300),
+            level: z.enum(["info", "warning", "success"]),
+            linkUrl: z.string().max(500),
+            linkLabel: z.string().max(60),
+            active: z.boolean(),
+            dismissible: z.boolean(),
+            startsAt: z.string().max(40),
+            endsAt: z.string().max(40),
+          })
+          .optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const adminId = ctx.user!.id;
+
+      for (const [key, value] of Object.entries(input)) {
+        if (value === undefined) continue;
+        await setSetting(key as keyof AppSettingsShape, value as never, adminId);
+      }
+
+      await recordAudit({
+        action: "settings.changed",
+        actorUserId: adminId,
+        metadata: { keys: Object.keys(input) },
+        ip: ctx.ip,
+      });
+
+      log.info("App settings updated", { adminId, keys: Object.keys(input) });
+      const settings = await getSettings();
+      return { settings, effective: { freeVideosPerPeriod: freeVideoAllowance(settings) } };
+    }),
+
+  /**
+   * Give a user credits, priced in dollars or counted directly.
+   *
+   * Two ways in because both come up: a refund is "give them back $10", while a
+   * goodwill gesture is "give them 5 renders". `creditDollarValue` in settings is
+   * what converts the first into the second.
+   */
+  grantCredits: adminLimited
+    .input(
+      z.object({
+        userId: z.number(),
+        credits: z.number().int().min(-1000).max(1000).optional(),
+        dollars: z.number().min(-1000).max(1000).optional(),
+        reason: z.string().max(200),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      if (input.credits === undefined && input.dollars === undefined) {
+        throw userError("Give either an amount of credits or a dollar value");
+      }
+
+      const settings = await getSettings();
+      const amount =
+        input.credits !== undefined
+          ? input.credits
+          : Math.sign(input.dollars!) * creditsForDollars(settings, Math.abs(input.dollars!));
+
+      const db = getDb();
+      const [target] = await db
+        .select({ id: users.id, email: users.email, credits: users.credits })
+        .from(users)
+        .where(eq(users.id, input.userId))
+        .limit(1);
+      if (!target) throw userError("User not found", "NOT_FOUND");
+
+      // Never leave a negative balance, whatever was deducted.
+      const next = Math.max(0, target.credits + amount);
+      await db.update(users).set({ credits: next }).where(eq(users.id, target.id));
+
+      await recordAudit({
+        action: "credits.granted",
+        actorUserId: ctx.user!.id,
+        targetType: "user",
+        targetId: target.id,
+        metadata: { amount, dollars: input.dollars, reason: input.reason, from: target.credits, to: next },
+        ip: ctx.ip,
+      });
+
+      log.info("Admin granted credits", {
+        adminId: ctx.user!.id,
+        targetUserId: target.id,
+        amount,
+        dollars: input.dollars,
+        from: target.credits,
+        to: next,
+        reason: input.reason,
+      });
+
+      return { credits: next, granted: amount, worthDollars: amount * settings.creditDollarValue };
+    }),
+
+  /**
+   * Everything privileged that has happened, newest first.
+   *
+   * The reason the audit table exists: impersonation could previously mint a session
+   * as any user with no record of it.
+   */
+  auditTrail: adminLimited
+    .input(z.object({ limit: z.number().int().min(1).max(500).default(200) }).optional())
+    .query(async ({ input }) => auditRecent(input?.limit ?? 200)),
+
+  /** Whether mail can be sent, and whether the credentials actually work. */
+  mailStatus: adminLimited.query(async () => {
+    if (!emailConfigured()) {
+      return {
+        configured: false,
+        ok: false,
+        error: "Set SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_KEY and MAIL_FROM, then restart.",
+        audienceSize: 0,
+      };
+    }
+    const [check, audience] = await Promise.all([verifyMailer(), promotionalAudience()]);
+    return { configured: true, ok: check.ok, error: check.error, audienceSize: audience.length };
+  }),
+
+  /** Campaigns, newest first. */
+  listCampaigns: adminLimited.query(async () => {
+    const rows = await getDb()
+      .select()
+      .from(emailCampaigns)
+      .orderBy(desc(emailCampaigns.id))
+      .limit(50);
+    return rows;
+  }),
+
+  saveCampaign: adminLimited
+    .input(
+      z.object({
+        id: z.number().optional(),
+        subject: z.string().min(3).max(200),
+        body: z.string().min(10).max(20_000),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const db = getDb();
+      if (input.id) {
+        const [existing] = await db
+          .select({ status: emailCampaigns.status })
+          .from(emailCampaigns)
+          .where(eq(emailCampaigns.id, input.id))
+          .limit(1);
+        if (!existing) throw userError("Campaign not found", "NOT_FOUND");
+        // A sent campaign is a record of what went out; editing it would make that
+        // record a lie.
+        if (existing.status !== "draft") throw userError("That campaign has already been sent");
+
+        await db
+          .update(emailCampaigns)
+          .set({ subject: input.subject, body: input.body })
+          .where(eq(emailCampaigns.id, input.id));
+        return { id: input.id };
+      }
+
+      const [row] = await db
+        .insert(emailCampaigns)
+        .values({ subject: input.subject, body: input.body, createdBy: ctx.user!.id })
+        .$returningId();
+      return { id: row.id };
+    }),
+
+  /** Send one copy to a chosen address. Always do this before a real send. */
+  sendTestEmail: adminLimited
+    .input(z.object({ to: z.string().email(), subject: z.string().min(1).max(200), body: z.string().min(1).max(20_000) }))
+    .mutation(async ({ input }) => {
+      const sent = await sendTransactional({
+        to: { email: input.to },
+        subject: `[test] ${input.subject}`,
+        text: input.body,
+      });
+      if (!sent) throw userError("The test did not send. Check the mail status above.");
+      return { ok: true as const };
+    }),
+
+  /**
+   * Send a campaign to everyone who consented.
+   *
+   * Sequential with a small gap rather than all at once: a burst of hundreds of
+   * messages is what makes a relay throttle you, and Brevo's free tier has a daily
+   * cap worth respecting. Progress is written as it goes, so a send that dies
+   * halfway is visible rather than mysterious.
+   */
+  sendCampaign: adminLimited
+    .input(z.object({ id: z.number() }))
+    .mutation(async ({ ctx, input }) => {
+      const db = getDb();
+      const [campaign] = await db
+        .select()
+        .from(emailCampaigns)
+        .where(eq(emailCampaigns.id, input.id))
+        .limit(1);
+      if (!campaign) throw userError("Campaign not found", "NOT_FOUND");
+      if (campaign.status !== "draft") throw userError("That campaign has already been sent");
+      if (!emailConfigured()) throw userError("Mail is not configured yet");
+
+      const audience = await promotionalAudience();
+      if (audience.length === 0) {
+        throw userError("Nobody has opted in to marketing email yet");
+      }
+
+      await db
+        .update(emailCampaigns)
+        .set({ status: "sending", recipientCount: audience.length, sentCount: 0, failedCount: 0 })
+        .where(eq(emailCampaigns.id, campaign.id));
+
+      log.info("Campaign send started", {
+        adminId: ctx.user!.id,
+        campaignId: campaign.id,
+        recipients: audience.length,
+      });
+
+      // Deliberately not awaited into the response: a thousand recipients would
+      // outlive the request. The row carries the progress.
+      void (async () => {
+        let sent = 0;
+        let failed = 0;
+        for (const person of audience) {
+          const token = await ensureUnsubscribeToken(person.id);
+          const ok = await sendPromotional(
+            {
+              to: { email: person.email, name: person.name },
+              subject: campaign.subject,
+              text: campaign.body,
+            },
+            `${publicBaseUrl()}/api/unsubscribe?token=${token}`
+          );
+          if (ok) sent += 1;
+          else failed += 1;
+
+          await db
+            .update(emailCampaigns)
+            .set({ sentCount: sent, failedCount: failed })
+            .where(eq(emailCampaigns.id, campaign.id));
+
+          // Gentle pacing. Brevo throttles bursts and the free tier has a daily cap.
+          await new Promise((resolve) => setTimeout(resolve, 250));
+        }
+
+        await db
+          .update(emailCampaigns)
+          .set({ status: failed >= audience.length ? "failed" : "sent", sentAt: new Date() })
+          .where(eq(emailCampaigns.id, campaign.id));
+
+        log.info("Campaign send finished", { campaignId: campaign.id, sent, failed });
+      })();
+
+      return { started: true as const, recipients: audience.length };
     }),
 
   /**

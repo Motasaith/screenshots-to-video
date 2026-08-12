@@ -1,4 +1,5 @@
 import { lazy, Suspense } from "react";
+import AnnouncementBar from "./components/AnnouncementBar";
 import { Routes, Route, useLocation } from "react-router";
 import LandingPage from "./pages/LandingPage";
 import { trpc } from "./providers/trpc";
@@ -32,6 +33,8 @@ const Feedback = lazy(() => import("./pages/Feedback"));
 const Privacy = lazy(() => import("./pages/Privacy"));
 const Terms = lazy(() => import("./pages/Terms"));
 const Videos = lazy(() => import("./pages/Videos"));
+const Team = lazy(() => import("./pages/Team"));
+const Join = lazy(() => import("./pages/Join"));
 const Careers = lazy(() => import("./pages/Careers"));
 const Legal = lazy(() => import("./pages/Legal"));
 const Admin = lazy(() => import("./pages/Admin"));
@@ -77,6 +80,10 @@ export default function App() {
 
   return (
     <>
+      {/* Above the navbar in the document, so it pushes the page down rather
+          than covering the navigation. */}
+      <AnnouncementBar announcement={config?.announcement ?? null} />
+
       <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<LandingPage />} />
@@ -105,6 +112,8 @@ export default function App() {
           <Route path="/videos" element={<Videos />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/team" element={<Team />} />
+          <Route path="/join" element={<Join />} />
           <Route path="/create/:projectId/:step" element={<Wizard />} />
           <Route path="/admin" element={<Admin />} />
           <Route path="*" element={<NotFound />} />

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createRouter, authedQuery, rateLimitByUser, userError } from "./middleware";
 import { getDb } from "./queries/connection";
 import { projects, steps, renderJobs, users } from "@db/schema";
+import { projectAccessWhere } from "./lib/teams";
 import { eq, and, desc, inArray, count } from "drizzle-orm";
 import { getSignedDownloadUrl, isR2Configured } from "./lib/r2";
 import { notifyRenderJobQueued } from "./lib/worker";
@@ -31,7 +32,7 @@ export const renderRouter = createRouter({
         .where(
           and(
             eq(projects.id, input.projectId),
-            eq(projects.userId, ctx.user!.id)
+            projectAccessWhere(ctx.user!)
           )
         )
         .limit(1);
@@ -89,7 +90,7 @@ export const renderRouter = createRouter({
         .where(
           and(
             eq(projects.id, input.projectId),
-            eq(projects.userId, ctx.user!.id)
+            projectAccessWhere(ctx.user!)
           )
         )
         .limit(1);
@@ -161,7 +162,7 @@ export const renderRouter = createRouter({
         .leftJoin(projects, eq(renderJobs.projectId, projects.id))
         .where(
           and(
-            eq(projects.userId, ctx.user!.id),
+            projectAccessWhere(ctx.user!),
             inArray(renderJobs.status, ["queued", "processing"])
           )
         );
@@ -239,6 +240,7 @@ export const renderRouter = createRouter({
       // Create a render job: the background worker will pick it up
       await getDb().insert(renderJobs).values({
         projectId: input.projectId,
+        priority: queuePriority(ctx.user!.plan),
         status: "queued",
         currentStep: 0,
         totalSteps: projectSteps.length,
@@ -280,7 +282,7 @@ export const renderRouter = createRouter({
         .where(
           and(
             eq(projects.id, input.projectId),
-            eq(projects.userId, ctx.user!.id)
+            projectAccessWhere(ctx.user!)
           )
         )
         .limit(1);
@@ -312,7 +314,7 @@ export const renderRouter = createRouter({
         .select()
         .from(projects)
         .where(
-          and(eq(projects.id, step.projectId), eq(projects.userId, ctx.user!.id))
+          and(eq(projects.id, step.projectId), projectAccessWhere(ctx.user!))
         )
         .limit(1);
 
@@ -338,6 +340,7 @@ export const renderRouter = createRouter({
 
       await getDb().insert(renderJobs).values({
         projectId: project.id,
+        priority: queuePriority(ctx.user!.plan),
         status: "queued",
         currentStep: 0,
         totalSteps: allSteps.length,
@@ -350,3 +353,16 @@ export const renderRouter = createRouter({
       return { success: true };
     }),
 });
+
+/**
+ * Where a plan sits in the render queue. Higher goes first.
+ *
+ * Recorded on the job rather than looked up when the worker claims it, so a
+ * customer keeps the position their plan promised at the moment they pressed
+ * render, even if their plan changes while they wait.
+ */
+function queuePriority(plan: string): number {
+  if (plan === "team") return 20;
+  if (plan === "pro") return 10;
+  return 0;
+}

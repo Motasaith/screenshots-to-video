@@ -9,6 +9,7 @@ import {
   bigint,
   int,
   json,
+  boolean,
 } from "drizzle-orm/mysql-core";
 
 export const users = mysqlTable("users", {
@@ -21,6 +22,21 @@ export const users = mysqlTable("users", {
   plan: mysqlEnum("plan", ["free", "pro", "team"]).default("free").notNull(),
   credits: int("credits").default(14).notNull(),
   videosCreatedThisMonth: int("videosCreatedThisMonth").default(0).notNull(),
+
+  /**
+   * Consent for campaigns, separate from transactional mail.
+   *
+   * Off by default: an account existing is not consent to be marketed to. A render
+   * finishing still emails them, because they asked for that by pressing render.
+   */
+  marketingEmails: boolean("marketingEmails").default(false).notNull(),
+  /**
+   * Secret in the unsubscribe link, so one click works without a login.
+   *
+   * Random per user rather than derived from the id, so the link cannot be guessed
+   * to unsubscribe somebody else.
+   */
+  unsubscribeToken: varchar("unsubscribeToken", { length: 40 }),
   monthlyResetAt: timestamp("monthlyResetAt").defaultNow().notNull(),
   // ── Bring-your-own-key: ElevenLabs (encrypted at rest, never sent to client) ──
   elevenlabsApiKey: text("elevenlabsApiKey"),
@@ -40,6 +56,19 @@ export type InsertUser = typeof users.$inferInsert;
 export const projects = mysqlTable("projects", {
   id: serial("id").primaryKey(),
   userId: bigint("userId", { mode: "number", unsigned: true }).notNull(),
+
+  /**
+   * The team this project is shared with, or null for a personal project.
+   *
+   * Set at creation from the creator's team, so a member's work is visible to the
+   * team by default. `userId` stays as the creator, because "who made this" is
+   * still worth knowing and is what personal projects are scoped by.
+   *
+   * Every query that used to be scoped by `userId` alone must go through
+   * `projectAccessWhere` in api/lib/teams.ts instead; that is the single place the
+   * "mine or my team's" rule lives.
+   */
+  teamId: bigint("teamId", { mode: "number", unsigned: true }),
   title: varchar("title", { length: 255 }).notNull(),
   description: text("description"),
   platform: mysqlEnum("platform", ["youtube", "teams", "tiktok", "linkedin"])
@@ -238,6 +267,15 @@ export const steps = mysqlTable("steps", {
       atSec?: number;
     }>
   >(),
+  /**
+   * Where this scene's narration audio came from.
+   *
+   * `tts` is generated on every render and overwritten each time. `upload` is a
+   * recording the person made themselves, so the render must use it as-is and never
+   * regenerate over it. Without this flag the next render silently replaces a human
+   * take with a robot one.
+   */
+  audioSource: mysqlEnum("audioSource", ["tts", "upload"]).default("tts").notNull(),
   audioPath: text("audioPath"),
   audioDuration: float("audioDuration"),
   transition: varchar("transition", { length: 30 }).default("fade"),
@@ -260,6 +298,14 @@ export type InsertStep = typeof steps.$inferInsert;
 export const renderJobs = mysqlTable("render_jobs", {
   id: serial("id").primaryKey(),
   projectId: bigint("projectId", { mode: "number", unsigned: true }).notNull(),
+  /**
+   * Queue position. Higher goes first, and equal priorities keep arrival order.
+   *
+   * Paid plans render before free ones, which is the whole promise of "priority
+   * queue" and is why one number here is a feature. Not a plan lookup at claim
+   * time: the plan at the moment of queueing is what the customer was told.
+   */
+  priority: int("priority").default(0).notNull(),
   status: mysqlEnum("status", ["queued", "processing", "complete", "error"])
     .default("queued")
     .notNull(),
@@ -380,3 +426,166 @@ export const supportTickets = mysqlTable("support_tickets", {
 
 export type SupportTicket = typeof supportTickets.$inferSelect;
 export type InsertSupportTicket = typeof supportTickets.$inferInsert;
+
+/**
+ * Settings an admin changes from the dashboard instead of by deploying.
+ *
+ * Key and value rather than a column per setting: adding a setting should not need
+ * a migration. `api/lib/appSettings.ts` owns the shape, the defaults and the
+ * validation, so a row here is only storage.
+ *
+ * It also gives maintenance mode somewhere to live. It used to be a variable in
+ * `middleware.ts`, which forgot itself on restart and, once the render worker
+ * became its own process, would have let the two disagree.
+ */
+export const appSettings = mysqlTable("app_settings", {
+  key: varchar("key", { length: 64 }).primaryKey(),
+  value: json("value").$type<unknown>(),
+  updatedBy: bigint("updatedBy", { mode: "number", unsigned: true }),
+  updatedAt: timestamp("updatedAt")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
+export type AppSetting = typeof appSettings.$inferSelect;
+
+/**
+ * Addresses that must not be mailed.
+ *
+ * Hard bounces land here automatically, and an admin can add one by hand. Trying
+ * a dead address again every campaign is exactly what ruins a sending domain's
+ * reputation, and Brevo will start rejecting on our behalf if we do it.
+ */
+export const emailSuppressions = mysqlTable("email_suppressions", {
+  email: varchar("email", { length: 320 }).primaryKey(),
+  reason: varchar("reason", { length: 255 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+/**
+ * A promotional campaign an admin wrote.
+ *
+ * Kept as a record rather than fired and forgotten, so there is an answer to "what
+ * did we send, to how many, and did it work". Sending is deliberately a separate
+ * step from saving: `status` starts as draft and a test send happens before the
+ * real one.
+ */
+export const emailCampaigns = mysqlTable("email_campaigns", {
+  id: serial("id").primaryKey(),
+  subject: varchar("subject", { length: 200 }).notNull(),
+  body: text("body").notNull(),
+  status: mysqlEnum("status", ["draft", "sending", "sent", "failed"]).default("draft").notNull(),
+  /** Filled in as the send progresses, so a half-finished campaign is visible. */
+  recipientCount: int("recipientCount").default(0).notNull(),
+  sentCount: int("sentCount").default(0).notNull(),
+  failedCount: int("failedCount").default(0).notNull(),
+  createdBy: bigint("createdBy", { mode: "number", unsigned: true }),
+  sentAt: timestamp("sentAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
+export type EmailCampaign = typeof emailCampaigns.$inferSelect;
+
+/**
+ * A team, which is a group of people sharing one subscription.
+ *
+ * A user belongs to at most one team. That constraint is deliberate: with multiple
+ * memberships, every query about "my projects" has to ask which team is meant, and
+ * every permission check gains a dimension. A company buying seats is the case
+ * being served, and one team per person covers it.
+ *
+ * The billing owner is `ownerUserId` rather than a role on the membership row, so
+ * there is always exactly one, and deleting the last admin cannot leave a team with
+ * nobody able to pay for it.
+ */
+export const teams = mysqlTable("teams", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 120 }).notNull(),
+  ownerUserId: bigint("ownerUserId", { mode: "number", unsigned: true }).notNull(),
+  /** Seats the plan includes before any are bought. */
+  seatsIncluded: int("seatsIncluded").default(3).notNull(),
+  /** Extra seats bought on top. Total allowed is the two added together. */
+  seatsPurchased: int("seatsPurchased").default(0).notNull(),
+  /**
+   * Logo, colours and intro/outro defaults, applied to this team's renders.
+   *
+   * JSON rather than columns because it is a bag of presentation settings that will
+   * grow, and nothing queries inside it.
+   */
+  brandKit: json("brandKit").$type<{
+    logoKey?: string | null;
+    primaryColor?: string | null;
+    accentColor?: string | null;
+    introText?: string | null;
+    outroText?: string | null;
+    watermarkText?: string | null;
+  } | null>(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt")
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
+});
+
+/**
+ * Who is in a team, and what they may do.
+ *
+ * `owner` is the billing owner and mirrors `teams.ownerUserId`. `admin` may invite
+ * and remove people. `member` may use the shared library but not change the team.
+ */
+export const teamMembers = mysqlTable("team_members", {
+  id: serial("id").primaryKey(),
+  teamId: bigint("teamId", { mode: "number", unsigned: true }).notNull(),
+  userId: bigint("userId", { mode: "number", unsigned: true }).notNull().unique(),
+  role: mysqlEnum("role", ["owner", "admin", "member"]).default("member").notNull(),
+  joinedAt: timestamp("joinedAt").defaultNow().notNull(),
+});
+
+/**
+ * An outstanding invitation.
+ *
+ * By email rather than by user id, because the person invited usually has no
+ * account yet. The token is what the accept link carries, so it is random and long
+ * enough not to be guessable.
+ */
+export const teamInvites = mysqlTable("team_invites", {
+  id: serial("id").primaryKey(),
+  teamId: bigint("teamId", { mode: "number", unsigned: true }).notNull(),
+  email: varchar("email", { length: 320 }).notNull(),
+  role: mysqlEnum("role", ["admin", "member"]).default("member").notNull(),
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  invitedBy: bigint("invitedBy", { mode: "number", unsigned: true }).notNull(),
+  expiresAt: timestamp("expiresAt").notNull(),
+  acceptedAt: timestamp("acceptedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+/**
+ * What happened, who did it, and when.
+ *
+ * Sold as a Team feature, but it exists because admin impersonation could mint a
+ * session as any user with no record of it, which is the highest-value action in
+ * the application. `teamId` is null for platform-level events such as that one.
+ */
+export const auditLogs = mysqlTable("audit_logs", {
+  id: serial("id").primaryKey(),
+  teamId: bigint("teamId", { mode: "number", unsigned: true }),
+  actorUserId: bigint("actorUserId", { mode: "number", unsigned: true }),
+  /** Dotted and past tense: `member.invited`, `impersonation.started`. */
+  action: varchar("action", { length: 64 }).notNull(),
+  targetType: varchar("targetType", { length: 32 }),
+  targetId: varchar("targetId", { length: 64 }),
+  metadata: json("metadata").$type<Record<string, unknown> | null>(),
+  ip: varchar("ip", { length: 64 }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type Team = typeof teams.$inferSelect;
+export type TeamMember = typeof teamMembers.$inferSelect;
+export type TeamInvite = typeof teamInvites.$inferSelect;
+export type AuditLog = typeof auditLogs.$inferSelect;

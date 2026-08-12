@@ -10,7 +10,8 @@
  */
 
 import { downloadFromR2 } from "./r2";
-import { isLocalKey, localContentType, readLocalFile } from "./localStore";
+import { localContentType, readLocalFile } from "./localStore";
+import { parseMediaRef } from "./mediaRef";
 import { createLogger } from "./logger";
 
 const log = createLogger({ path: "mediaSource" });
@@ -49,20 +50,20 @@ export async function loadMediaAsDataUri(
     let buffer: Buffer;
     let mime = "image/png";
 
-    if (key.startsWith("http://") || key.startsWith("https://")) {
-      const res = await fetch(key, { signal: AbortSignal.timeout(20_000) });
-      if (!res.ok) {
-        log.warn("Could not fetch remote media", { status: res.status });
-        return null;
-      }
-      const contentType = res.headers.get("content-type") || "";
-      if (contentType.startsWith("image/")) mime = contentType.split(";")[0];
-      buffer = Buffer.from(await res.arrayBuffer());
-    } else if (isLocalKey(key)) {
-      buffer = await readLocalFile(key);
-      mime = localContentType(key);
+    // Anything that is not one of our own storage keys is refused. This used to
+    // fetch any http(s) URL, which a client could set as a step's screenshot
+    // path, making the server issue requests into its own network.
+    const ref = parseMediaRef(key);
+    if (!ref) {
+      log.warn("Refusing a media reference that is not a storage key");
+      return null;
+    }
+
+    if (ref.kind === "local") {
+      buffer = await readLocalFile(ref.key);
+      mime = localContentType(ref.key);
     } else {
-      buffer = await downloadFromR2(key);
+      buffer = await downloadFromR2(ref.key);
       if (/\.webp$/i.test(key)) mime = "image/webp";
       else if (/\.jpe?g$/i.test(key)) mime = "image/jpeg";
       else if (/\.gif$/i.test(key)) mime = "image/gif";

@@ -18,9 +18,11 @@ import {
   LogOut,
   X,
   Coins,
+  Users,
   ShieldAlert,
 } from "lucide-react";
 import { detectGibberish } from "@/lib/gibberish";
+import { toast } from "sonner";
 import { ProjectDescription } from "@contracts/constants";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +34,18 @@ import {
 } from "@/components/ui/dialog";
 
 export default function Dashboard() {
+  /**
+   * The free-plan sentence, from the live allowance.
+   *
+   * Hard-coded as "5 videos/month" while the code allowed 14 a week, so a free
+   * user was told one thing and limited by another.
+   */
+  const { data: siteConfig } = trpc.config.useQuery(undefined, { staleTime: 60_000 });
+  const freeAllowance = siteConfig?.promo?.freeVideos;
+  const freePlanLine = freeAllowance
+    ? `You're on the Free plan (${freeAllowance} videos a month, 720p, 7-day expiry).`
+    : "You're on the Free plan (720p, 7-day expiry).";
+
   const { user, logout, isLoading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [deleteProjectInfo, setDeleteProjectInfo] = useState<{ id: number } | null>(null);
@@ -53,9 +67,26 @@ export default function Dashboard() {
     enabled: !!user,
   });
 
-  const projects = [
+  /**
+   * Team context, so the list can separate your own work from the team's.
+   *
+   * `project.list` returns everything you may see, which for a team member includes
+   * colleagues' shared projects. Without a way to narrow that, a member of a busy
+   * team cannot find their own work.
+   */
+  const { data: myTeam } = trpc.team.mine.useQuery(undefined, { enabled: !!user });
+  const [scope, setScope] = useState<"all" | "mine" | "team">("all");
+  const setProjectShared = trpc.team.setProjectShared.useMutation();
+
+  const allProjects = [
     ...(standardProjects?.map((p) => ({ ...p, type: "tutorial" as const })) || []),
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  const projects = allProjects.filter((p) => {
+    if (!myTeam || scope === "all") return true;
+    if (scope === "mine") return p.userId === user?.id;
+    return p.teamId !== null;
+  });
 
   const isLoading = standardLoading;
 
@@ -171,7 +202,12 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen relative overflow-x-hidden font-sans">
       <div className="relative z-10">
-        <header className="fixed top-0 left-0 right-0 z-50 px-4 pt-4 transition-all duration-300">
+        {/* Offset by the announcement bar's height, which the bar publishes, so a
+            site-wide message is never painted over by this header. */}
+        <header
+          className="fixed left-0 right-0 z-50 px-4 pt-4 transition-all duration-300"
+          style={{ top: "var(--announcement-height, 0px)" }}
+        >
           <div className="max-w-6xl mx-auto rounded-full bg-[var(--space-card)]/85 backdrop-blur-lg border border-[var(--space-border)] shadow-[0_10px_35px_rgba(0,0,0,0.06)] px-3 sm:px-6 py-1">
             <div className="flex items-center justify-between h-14">
               <div
@@ -193,6 +229,20 @@ export default function Dashboard() {
                 >
                   <Film className="w-4 h-4" />
                   <span className="hidden sm:inline">My Videos</span>
+                </Button>
+                {/* Named when they have a team, so the shared library is
+                    discoverable, and a plain invitation when they do not. */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate("/team")}
+                  className="glass-btn glass-btn-secondary p-2 rounded-lg"
+                  title={myTeam ? myTeam.team.name : "Work with your colleagues"}
+                >
+                  <Users className="w-4 h-4" />
+                  <span className="hidden sm:inline ml-1.5">
+                    {myTeam ? myTeam.team.name : "Team"}
+                  </span>
                 </Button>
                 <Button
                   variant="ghost"
@@ -232,7 +282,7 @@ export default function Dashboard() {
           {user?.plan === "free" && (
             <div className="mb-6 p-4 bg-teal-500/5 border border-teal-500/20 rounded-2xl">
               <p className="text-sm text-[var(--space-text-muted)] leading-relaxed">
-                You're on the Free plan (5 videos/month, 720p, 7-day expiry).
+                {freePlanLine}
                 <button
                   onClick={() => navigate("/pricing")}
                   className="underline ml-1 font-semibold text-teal-600 "
@@ -253,6 +303,32 @@ export default function Dashboard() {
               </p>
             </div>
             <div className="flex items-center gap-3">
+              {/* Only worth showing when a team exists; otherwise every project is
+                  yours and the choice is meaningless. */}
+              {myTeam ? (
+                <div className="flex items-center rounded-xl border border-[var(--space-border)] p-0.5">
+                  {(
+                    [
+                      ["all", "All"],
+                      ["mine", "Mine"],
+                      ["team", myTeam.team.name.slice(0, 18)],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      onClick={() => setScope(value)}
+                      className={`rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
+                        scope === value
+                          ? "bg-teal-500/15 text-teal-700"
+                          : "text-[var(--space-text-muted)] hover:text-[var(--space-text)]"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+
               {projects && projects.length > 0 && (
                 <Button
                   onClick={() => setShowDeleteAllDialog(true)}
@@ -362,6 +438,49 @@ export default function Dashboard() {
                       <p className="text-xs text-[var(--space-text-subtle)] mt-1 capitalize font-mono">
                         {project.platform} · {project.resolution}
                       </p>
+
+                      {/* Sharing is the creator's decision, so the control only
+                          appears on your own projects. A colleague's shared project
+                          gets a label instead, which is also how you tell whose is
+                          whose in a shared library. */}
+                      {myTeam ? (
+                        project.userId === user.id ? (
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              try {
+                                await setProjectShared.mutateAsync({
+                                  projectId: project.id,
+                                  shared: project.teamId === null,
+                                });
+                                await utils.project.list.invalidate();
+                                toast.success(
+                                  project.teamId === null
+                                    ? `Shared with ${myTeam.team.name}.`
+                                    : "Made private again.",
+                                );
+                              } catch (err) {
+                                toast.error(
+                                  err instanceof Error ? err.message : "Could not change sharing.",
+                                );
+                              }
+                            }}
+                            className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                              project.teamId !== null
+                                ? "bg-teal-500/15 text-teal-700 hover:bg-teal-500/25"
+                                : "bg-[var(--space-bg)] text-[var(--space-text-muted)] hover:text-[var(--space-text)]"
+                            }`}
+                          >
+                            <Users className="w-3 h-3" />
+                            {project.teamId !== null ? "Shared with team" : "Private, share it"}
+                          </button>
+                        ) : (
+                          <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[var(--space-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--space-text-muted)]">
+                            <Users className="w-3 h-3" />
+                            Team project
+                          </span>
+                        )
+                      ) : null}
                     </div>
 
                     {/* A finished project used to open straight into export,

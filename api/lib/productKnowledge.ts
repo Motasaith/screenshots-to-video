@@ -160,7 +160,7 @@ export function buildGuideSystemPrompt(extra = ""): string {
  */
 export const PLANS_AND_LIMITS = `
 Plans:
-- Free: 5 videos a month, 720p export, every aspect ratio, 12 voices
+- Free: {{FREE_VIDEOS}}, 720p export, every aspect ratio, 12 voices
   (4 of them ultra-realistic), AI script generation, community support.
 - Pro, $25/month or $20/month billed yearly: unlimited videos, 1080p and 4K,
   ElevenLabs premium voices, copyright check on every screenshot, scene
@@ -212,7 +212,21 @@ export function buildSupportSystemPrompt(opts?: {
   account?: SupportAccountFacts | null;
   /** Set when the widget is open inside the editor on a specific scene. */
   editorContext?: string | null;
+  /** The live free allowance, including any promotion. */
+  freeVideos?: number | null;
+  /** The promotion's name, so the assistant can explain why the number is high. */
+  promoLabel?: string | null;
 }): string {
+  // The free allowance is editable from the admin dashboard, so the prompt is
+  // built with the live number rather than a figure typed here that later
+  // disagrees with what the app enforces.
+  const plans = PLANS_AND_LIMITS.replace(
+    "{{FREE_VIDEOS}}",
+    opts?.freeVideos
+      ? `${opts.freeVideos} videos per period${opts.promoLabel ? ` (${opts.promoLabel})` : ""}`
+      : "a limited number of videos per period"
+  );
+
   return [
     `You are the support assistant for AIVideo, a tool that turns screenshots into narrated tutorial videos with animated camera moves.`,
     `You are talking to a customer or a visitor. Be brief, concrete and friendly. Two or three sentences is usually enough. Name the exact panel, tool or setting.`,
@@ -238,7 +252,7 @@ export function buildSupportSystemPrompt(opts?: {
     ``,
     APP_MAP,
     ``,
-    PLANS_AND_LIMITS,
+    plans,
     ``,
     GOTCHAS,
     opts?.account

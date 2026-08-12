@@ -40,6 +40,60 @@ app.onError((err, c) => {
 
 app.use(bodyLimit({ maxSize: 50 * 1024 * 1024 }));
 
+/**
+ * Refuse cross-site state-changing requests.
+ *
+ * `SameSite=Lax` on the session cookie is the primary defence and this is the
+ * second one, for clients that mishandle SameSite and for the day someone needs
+ * to set it back to `None` for an embed.
+ *
+ * Absent `Origin` is allowed: browsers always send it on cross-origin requests,
+ * so a missing header means a non-browser client such as curl, our own scripts or
+ * a mobile app, none of which carry an ambient session cookie to abuse. Present
+ * but mismatched is refused, which is exactly the forgery case.
+ */
+app.use(async (c, next) => {
+  const method = c.req.method.toUpperCase();
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return next();
+
+  const origin = c.req.header("origin");
+  if (!origin) return next();
+
+  const host = c.req.header("host");
+  let originHost: string;
+  try {
+    originHost = new URL(origin).host;
+  } catch {
+    return c.json({ error: "Bad origin" }, 403);
+  }
+
+  if (!host || originHost !== host) {
+    createLogger({ path: "origin-check" }).warn("Refused a cross-site write", {
+      originHost,
+      host: host ?? "(none)",
+      route: new URL(c.req.url).pathname,
+    });
+    return c.json({ error: "Cross-site requests are not allowed" }, 403);
+  }
+
+  return next();
+});
+
+/**
+ * Response headers that cost nothing and close whole classes of attack.
+ *
+ * `nosniff` matters here specifically: uploads are served from `/api/file` with a
+ * Content-Type derived from the stored extension, and without this a browser is
+ * free to sniff the bytes and decide otherwise.
+ */
+app.use(async (c, next) => {
+  await next();
+  c.header("X-Content-Type-Options", "nosniff");
+  c.header("X-Frame-Options", "SAMEORIGIN");
+  c.header("Referrer-Policy", "strict-origin-when-cross-origin");
+  c.header("Cross-Origin-Opener-Policy", "same-origin");
+});
+
 // Rate limit the OAuth callback to prevent abuse
 app.get(Paths.oauthCallback, async (c, next) => {
   const ip = getClientIP(c.req.raw.headers);
@@ -132,6 +186,20 @@ app.post("/api/upload", async (c) => {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
+
+    // `file.type` above is the browser's claim and nothing more. This is the check
+    // that the bytes agree with it.
+    const { verifyDeclaredType } = await import("./lib/fileType");
+    const typeCheck = verifyDeclaredType(buffer, file.type);
+    if (!typeCheck.ok) {
+      log.warn("Upload refused: contents do not match the declared type", {
+        userId: user.id,
+        declared: file.type,
+        detected: typeCheck.detected,
+      });
+      return c.json({ error: typeCheck.error }, 400);
+    }
+
     const folder = (body["folder"] as string) || "screenshots";
 
     // Render inputs stay on local disk. The worker runs in this process, so
@@ -151,6 +219,144 @@ app.post("/api/upload", async (c) => {
     log.error("Upload error", err, { userId: user.id });
     const message = err instanceof Error ? err.message : "Upload failed";
     return c.json({ error: message }, 500);
+  }
+});
+
+/**
+ * One-click unsubscribe.
+ *
+ * A GET with no login, because that is what a link in an email can do, and because
+ * mail clients increasingly expect one-click to work. The token is the whole
+ * authorisation, which is why it is random per user rather than derived from an id.
+ *
+ * Only marketing consent is withdrawn. Transactional mail about their own renders
+ * keeps working, since that is not what they unsubscribed from.
+ */
+app.get("/api/unsubscribe", async (c) => {
+  const token = c.req.query("token") ?? "";
+  const { userByUnsubscribeToken } = await import("./lib/mailer");
+  const { users } = await import("@db/schema");
+  const { eq } = await import("drizzle-orm");
+
+  const page = (title: string, body: string) =>
+    c.html(
+      `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
+        `<title>${title}</title>` +
+        `<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:34rem;margin:12vh auto;padding:0 1.5rem;color:#14181d">` +
+        `<h1 style="font-size:1.5rem;margin:0 0 .75rem">${title}</h1>` +
+        `<p style="line-height:1.6;color:#3d3a36">${body}</p>` +
+        `<p style="margin-top:2rem"><a href="/" style="color:#0d6b6b">Back to AIVideo</a></p></div>`
+    );
+
+  const user = await userByUnsubscribeToken(token);
+  if (!user) {
+    // Also the case where they already unsubscribed, which is not an error worth
+    // alarming anyone about.
+    return page("Nothing to change", "That link is not valid, or you have already unsubscribed.");
+  }
+
+  await getDb().update(users).set({ marketingEmails: false }).where(eq(users.id, user.id));
+  createLogger({ path: "/api/unsubscribe" }).info("User unsubscribed", { userId: user.id });
+
+  return page(
+    "You are unsubscribed",
+    "You will not receive any more marketing email from us. You will still get messages about your own renders, such as when one finishes or fails.",
+  );
+});
+
+/**
+ * Upload a narration recording for one scene.
+ *
+ * Its own route rather than a branch of /api/upload, because audio needs different
+ * validation, a transcode, and a duration measured from the result. Returning the
+ * duration matters: scene length is computed from it, so the editor can show the
+ * effect straight away.
+ */
+app.post("/api/voiceover", async (c) => {
+  const ip = getClientIP(c.req.raw.headers);
+  const log = createLogger({ ip, path: "/api/voiceover" });
+
+  const limit = checkRateLimit(`ip:${ip}:voiceover`, 60_000, 20);
+  if (!limit.allowed) {
+    return c.json({ error: "Too many uploads. Wait a moment and try again." }, 429);
+  }
+
+  let user;
+  try {
+    user = await authenticateRequest(c.req.raw.headers);
+  } catch {
+    return c.json({ error: "Sign in to upload a voiceover." }, 401);
+  }
+
+  try {
+    const body = await c.req.parseBody();
+    const file = body["file"];
+    const stepId = Number(body["stepId"]);
+    // Going back to the generated voice is the same operation in reverse, so it
+    // shares this route's ownership check rather than needing its own.
+    const clearing = body["clear"] === "1";
+
+    if (!Number.isInteger(stepId) || stepId <= 0) {
+      return c.json({ error: "Which scene is this for?" }, 400);
+    }
+    if (!clearing && (!file || !(file instanceof File))) {
+      return c.json({ error: "No file provided. Send a 'file' field." }, 400);
+    }
+
+    // Ownership before anything expensive: transcoding a stranger's upload against
+    // somebody else's scene is work done for an attacker.
+    const { steps, projects } = await import("@db/schema");
+    const { eq, and } = await import("drizzle-orm");
+    const { projectAccessWhere } = await import("./lib/teams");
+    const { teamForUser } = await import("./lib/teams");
+
+    const team = await teamForUser(user.id);
+    const [scene] = await getDb()
+      .select({ id: steps.id, order: steps.order })
+      .from(steps)
+      .innerJoin(projects, eq(steps.projectId, projects.id))
+      .where(
+        and(
+          eq(steps.id, stepId),
+          projectAccessWhere({ id: user.id, teamId: team?.teamId ?? null })
+        )
+      )
+      .limit(1);
+
+    if (!scene) return c.json({ error: "Scene not found" }, 404);
+
+    if (clearing) {
+      // The next render regenerates the narration, so the audio fields are cleared
+      // rather than left pointing at a file nothing will use.
+      await getDb()
+        .update(steps)
+        .set({ audioSource: "tts", audioPath: null, audioDuration: null })
+        .where(eq(steps.id, stepId));
+      log.info("Voiceover removed from a scene", { userId: user.id, stepId });
+      return c.json({ cleared: true });
+    }
+
+    const { ingestVoiceover } = await import("./lib/voiceover");
+    const buffer = Buffer.from(await (file as File).arrayBuffer());
+    const { key, duration } = await ingestVoiceover(buffer, (file as File).name, user.id);
+
+    await getDb()
+      .update(steps)
+      .set({ audioSource: "upload", audioPath: key, audioDuration: duration })
+      .where(eq(steps.id, stepId));
+
+    log.info("Voiceover attached to a scene", { userId: user.id, stepId, duration });
+    return c.json({ key, duration });
+  } catch (err) {
+    // Messages from ingestVoiceover are written for the person uploading, so they
+    // are passed through. Anything else is logged and generalised.
+    const message = err instanceof Error ? err.message : "";
+    const isUserFacing = /recording|file|audio|scene|limit|MB|short|convert/i.test(message);
+    if (!isUserFacing) log.error("Voiceover upload failed", err, { userId: user.id });
+    return c.json(
+      { error: isUserFacing ? message : "That upload could not be processed." },
+      isUserFacing ? 400 : 500
+    );
   }
 });
 
@@ -369,9 +575,28 @@ if (env.isProduction) {
     logger.info(`Server running on http://localhost:${port}/`, { port });
   });
 
-  // Start the background render worker in production
-  startRenderWorker();
+  startWorkerUnlessExternal();
 } else {
-  // In dev mode, also start the worker
+  startWorkerUnlessExternal();
+}
+
+/**
+ * Run the render worker in this process, unless a separate one is handling it.
+ *
+ * Set `WORKER_MODE=external` where `api/worker-boot.ts` runs as its own pm2
+ * process, which is what keeps ffmpeg from competing with the web server for CPU.
+ *
+ * The default is deliberately in-process. A deploy that forgets to start the
+ * separate worker then renders slowly, which is the old behaviour, rather than not
+ * rendering at all and looking like every customer's queue has silently died. The
+ * mode is logged either way so the wrong one is visible in the first line of the
+ * log.
+ */
+function startWorkerUnlessExternal(): void {
+  if (process.env.WORKER_MODE === "external") {
+    logger.info("Render worker not started here: WORKER_MODE=external");
+    return;
+  }
+  logger.info("Render worker running inside the API process. Set WORKER_MODE=external to separate them.");
   startRenderWorker();
 }

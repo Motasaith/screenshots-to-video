@@ -61,6 +61,7 @@ import {
 } from "lucide-react";
 import { stepThumbUrl } from "@/lib/thumbUrl";
 import { ScenePreview } from "./ScenePreview";
+import OwnVoiceRecorder from "./OwnVoiceRecorder";
 import { CaptureDialog } from "./CaptureDialog";
 import { computeSceneTiming, estimateNarrationSeconds, MW_MIN_HOLD } from "@contracts/sceneTiming";
 import { Input } from "@/components/ui/input";
@@ -4905,6 +4906,20 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     return (
       <div className="flex flex-col h-full relative overflow-hidden">
         <div className="flex-1 overflow-y-auto py-1 pr-1 space-y-4 min-h-0">
+          {/* First, because it decides whether the voice settings below apply to
+              this scene at all. */}
+          <OwnVoiceRecorder
+            stepId={currentStep.id}
+            sceneNumber={currentStep.order}
+            state={{
+              audioSource: (currentStep as { audioSource?: "tts" | "upload" }).audioSource ?? "tts",
+              audioDuration: currentStep.audioDuration ?? null,
+            }}
+            onChanged={async () => {
+              await utils.step.listByProject.invalidate();
+            }}
+          />
+
           {/* Tester for preview */}
           <div className="p-3 rounded-xl border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)]/50">
             <div className="flex items-center justify-between mb-1.5">

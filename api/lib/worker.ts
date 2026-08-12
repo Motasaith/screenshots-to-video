@@ -1,6 +1,6 @@
 import { getDb } from "../queries/connection";
-import { projects, steps, renderJobs, users } from "@db/schema";
-import { eq, and, lt } from "drizzle-orm";
+import { projects, steps, renderJobs, users, teams} from "@db/schema";
+import { eq, and, lt, desc } from "drizzle-orm";
 import { uploadToR2, downloadFromR2, deleteFromR2 } from "./r2";
 import { generateTTSAudio, speedToRate } from "./tts";
 import {
@@ -70,7 +70,16 @@ async function mapWithConcurrency<T>(
   if (failure) throw failure;
 }
 
-const POLL_INTERVAL_MS = 5000;
+/**
+ * How often to look for queued work.
+ *
+ * 5s in-process, where `notifyRenderJobQueued` wakes the worker the instant a job
+ * is enqueued and this is only a safety net. A worker in its own process cannot be
+ * woken that way, so it sets `WORKER_POLL_INTERVAL_MS` lower and the poll becomes
+ * the primary path. The query is a single indexed lookup, so a shorter interval
+ * costs nothing worth measuring.
+ */
+const POLL_INTERVAL_MS = Number(process.env.WORKER_POLL_INTERVAL_MS) || 5000;
 const JOB_HEARTBEAT_INTERVAL_MS = 30_000;
 let pollCount = 0;
 
@@ -226,11 +235,21 @@ export function startRenderWorker(): void {
 /**
  * Stop the render worker.
  */
-export function stopRenderWorker(): void {
+export async function stopRenderWorker(): Promise<void> {
   if (pollTimer) clearTimeout(pollTimer);
   pollTimer = null;
   activeWorkerPoll = null;
   (globalThis as any).__aivideo_worker_id__ = null;
+
+  // Drain rather than abandon. A job killed mid-render stays `processing` until
+  // the stuck-job sweep reclaims it, which is up to RENDER_TIMEOUT_MS of the
+  // customer waiting for nothing. Waiting here means an ordinary deploy costs
+  // them only the render they were already waiting for.
+  if (polling) {
+    logger.info("Waiting for the render in flight before stopping");
+    while (polling) await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
   logger.info("Render worker stopped");
 }
 
@@ -306,12 +325,13 @@ async function abortStuckJobs(): Promise<void> {
  * Find and process the next queued render job.
  */
 async function processNextJob(): Promise<boolean> {
-  // Find the oldest queued job
+  // Highest priority first, then oldest. Paid plans set a priority above zero at
+  // queue time, which is what makes their renders start before free ones.
   const [job] = await getDb()
     .select()
     .from(renderJobs)
     .where(eq(renderJobs.status, "queued"))
-    .orderBy(renderJobs.id)
+    .orderBy(desc(renderJobs.priority), renderJobs.id)
     .limit(1);
 
   if (!job) return false; // No work to do
@@ -577,6 +597,40 @@ async function processRenderJob(
     await mapWithConcurrency(projectSteps, ttsConcurrency, async (step, i) => {
       await updateStepStatus(step.id, "generating");
 
+      /**
+       * A recording the customer made themselves is used as it is.
+       *
+       * Everything below regenerates the narration and overwrites `audioPath`, so
+       * without this branch the first render after someone uploaded their own voice
+       * would quietly replace it with a synthesised one. `audioSource` exists to say
+       * which of the two this scene is.
+       */
+      const uploaded =
+        step.audioSource === "upload" && step.audioPath
+          ? await localFilePath(step.audioPath)
+          : null;
+
+      if (uploaded) {
+        const uploadedDuration =
+          typeof step.audioDuration === "number" && step.audioDuration > 0
+            ? step.audioDuration
+            : ((await probeMediaDuration(uploaded)) ?? 3);
+
+        (projectSteps[i] as any)._audioLocalPath = uploaded;
+        (projectSteps[i] as any)._audioDuration = uploadedDuration;
+
+        audioDone++;
+        await updateJob(jobId, {
+          stage: "generating_audio",
+          currentStep: audioDone,
+          message: `Using your recording for scene ${step.order} (${audioDone} of ${totalSteps})...`,
+        });
+        logger.info(
+          `Step ${i + 1}/${totalSteps}: using the uploaded voiceover (${uploadedDuration.toFixed(1)}s)`
+        );
+        return;
+      }
+
       const { filePath: audioLocalPath, duration: audioDuration } =
         await generateTTSAudio(renderSilently ? "" : (step as any)._narrationScript, {
           voice: renderSilently ? "none" : project.voice!,
@@ -614,6 +668,8 @@ async function processRenderJob(
         .set({
           audioPath: audioKey,
           audioDuration: audioDuration,
+          // Back to generated, so the two fields never disagree about what this is.
+          audioSource: "tts",
         })
         .where(eq(steps.id, step.id));
 
@@ -737,7 +793,7 @@ async function processRenderJob(
           transitionDurationSec: project.transitionDuration || 0.5,
           editorColorFilter: step.editorColorFilter ?? undefined,
           editorColorFilterStrength: step.editorColorFilterStrength ?? undefined,
-          editorWatermarkText: step.editorWatermarkText ?? undefined,
+          editorWatermarkText: step.editorWatermarkText ?? brandKit?.watermarkText ?? undefined,
           editorWatermarkPosition: step.editorWatermarkPosition ?? undefined,
           editorWatermarkSize: step.editorWatermarkSize ?? undefined,
           editorWatermarkColor: step.editorWatermarkColor ?? undefined,
@@ -870,7 +926,7 @@ async function processRenderJob(
           editorRedactW: step.editorRedactW ?? undefined,
           editorRedactH: step.editorRedactH ?? undefined,
           editorRedactColor: step.editorRedactColor ?? undefined,
-          editorWatermarkText: step.editorWatermarkText ?? undefined,
+          editorWatermarkText: step.editorWatermarkText ?? brandKit?.watermarkText ?? undefined,
           editorWatermarkPosition: step.editorWatermarkPosition ?? undefined,
           editorWatermarkSize: step.editorWatermarkSize ?? undefined,
           editorWatermarkColor: step.editorWatermarkColor ?? undefined,
@@ -969,7 +1025,7 @@ async function processRenderJob(
           editorRedactW: step.editorRedactW ?? undefined,
           editorRedactH: step.editorRedactH ?? undefined,
           editorRedactColor: step.editorRedactColor ?? undefined,
-          editorWatermarkText: step.editorWatermarkText ?? undefined,
+          editorWatermarkText: step.editorWatermarkText ?? brandKit?.watermarkText ?? undefined,
           editorWatermarkPosition: step.editorWatermarkPosition ?? undefined,
           editorWatermarkSize: step.editorWatermarkSize ?? undefined,
           editorWatermarkColor: step.editorWatermarkColor ?? undefined,
@@ -1051,6 +1107,15 @@ async function processRenderJob(
       transitions.push(projectSteps[i].transition || "fade");
     }
 
+    /**
+     * The team's brand kit, used only where the project has said nothing.
+     *
+     * A default, never an override: someone who set their own intro text on this
+     * project meant it, and having the team's wording replace it at render time
+     * would be baffling. Personal projects have no team and get nothing here.
+     */
+    const brandKit = await loadBrandKit(project.teamId);
+
     if (project.introVideoPath) {
       // Custom intro. Normalised rather than used as-is: an arbitrary upload
       // shares none of the codec parameters the concat assumes, and may have no
@@ -1067,8 +1132,14 @@ async function processRenderJob(
       transitions.unshift("fade");
     } else if (project.introTemplate && project.introTemplate !== "none") {
       const introDuration = project.introDuration || 3.0;
-      const text = project.introText || project.title || "";
-      const introPath = await renderTextSegment(project.introTemplate, text, outputRes, introDuration);
+      const text = project.introText || brandKit?.introText || project.title || "";
+      const introPath = await renderTextSegment(
+        project.introTemplate,
+        text,
+        outputRes,
+        introDuration,
+        { background: brandKit?.primaryColor, text: brandKit?.accentColor }
+      );
       segmentPaths.unshift(introPath);
       segmentDurations.unshift(introDuration);
       transitions.unshift("fade");
@@ -1087,8 +1158,14 @@ async function processRenderJob(
       transitions.push("fade");
     } else if (project.outroTemplate && project.outroTemplate !== "none") {
       const outroDuration = project.outroDuration || 3.0;
-      const text = project.outroText || "Thanks for watching!";
-      const outroPath = await renderTextSegment(project.outroTemplate, text, outputRes, outroDuration);
+      const text = project.outroText || brandKit?.outroText || "Thanks for watching!";
+      const outroPath = await renderTextSegment(
+        project.outroTemplate,
+        text,
+        outputRes,
+        outroDuration,
+        { background: brandKit?.primaryColor, text: brandKit?.accentColor }
+      );
       segmentPaths.push(outroPath);
       segmentDurations.push(outroDuration);
       transitions.push("fade");
@@ -1201,6 +1278,11 @@ async function processRenderJob(
     });
 
     logger.info(`Job #${jobId} complete! Final video: ${finalKey}`);
+
+    // Tell them it is ready. A render takes minutes, so most people have gone to do
+    // something else and will not see the tab finish. Never awaited into the render
+    // path: a mail failure must not mark a finished video as failed.
+    void notifyRenderFinished(projectId).catch(() => {});
   } finally {
     // Cleanup temp files
     await cleanupTempFiles(tempFiles);
@@ -1237,4 +1319,73 @@ async function updateStepStatus(
     .update(steps)
     .set({ status })
     .where(eq(steps.id, stepId));
+}
+
+
+/**
+ * Email the owner that their video is ready.
+ *
+ * Transactional, so it ignores marketing consent: pressing render is the request
+ * for this message. Silent when mail is not configured.
+ */
+async function notifyRenderFinished(projectId: number): Promise<void> {
+  const { sendEmail, emailConfigured } = await import("./notify");
+  if (!emailConfigured()) return;
+
+  const { publicBaseUrl } = await import("./mailIdentity");
+  const [row] = await getDb()
+    .select({
+      title: projects.title,
+      email: users.email,
+      name: users.name,
+    })
+    .from(projects)
+    .innerJoin(users, eq(projects.userId, users.id))
+    .where(eq(projects.id, projectId))
+    .limit(1);
+
+  if (!row?.email) return;
+
+  const title = row.title || "your video";
+  await sendEmail({
+    to: row.email,
+    name: row.name,
+    subject: `${title} is ready to download`,
+    body: [
+      `${row.name ? `Hi ${row.name},` : "Hi,"}`,
+      ``,
+      `${title} has finished rendering and is ready to download.`,
+      ``,
+      `${publicBaseUrl()}/dashboard`,
+      ``,
+      `Free plan videos are kept for 7 days, so download it while it is there.`,
+    ].join("\n"),
+  });
+}
+
+
+/**
+ * A team's brand kit, or null.
+ *
+ * Read once per render rather than per scene: it is one row and it cannot change
+ * halfway through a job.
+ */
+async function loadBrandKit(teamId: number | null) {
+  if (!teamId) return null;
+  try {
+    const [row] = await getDb()
+      .select({ brandKit: teams.brandKit })
+      .from(teams)
+      .where(eq(teams.id, teamId))
+      .limit(1);
+    return row?.brandKit ?? null;
+  } catch (err) {
+    // A brand kit that cannot be read is a cosmetic loss, not a reason to fail a
+    // render somebody paid a credit for.
+    logger.warn("Could not read the team brand kit", {
+      teamId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
 }

@@ -64,6 +64,17 @@ else
 fi
 
 echo "🔄 Restarting..."
-pm2 restart narrashot
+# startOrReload, not restart: the render worker is now a second process defined in
+# ecosystem.config.cjs, and this creates it on the first deploy after the split
+# instead of failing because there is nothing called narrashot-worker yet.
+#
+# Reload rather than restart so the API stays up through the swap, and so the
+# worker gets its SIGTERM drain window to finish the render in flight.
+pm2 startOrReload ecosystem.config.cjs --update-env
+pm2 save
+
+echo ""
+echo "   Processes:"
+pm2 list | grep -E "narrashot|name" || true
 
 echo "✅ Deploy complete!"

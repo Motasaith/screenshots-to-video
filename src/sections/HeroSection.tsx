@@ -1,11 +1,28 @@
 import { Link } from "react-router";
+import { trpc } from "@/providers/trpc";
 import { ArrowRight, Check } from "lucide-react";
 import { Reveal } from "@/components/site/Reveal";
 import { UploadDropzone } from "./hero/UploadDropzone";
 
-const promises = ["No credit card", "5 videos a month, free", "Voiceover included"];
+/**
+ * The middle promise is the live free allowance, including any promotion.
+ *
+ * It used to say "5 videos a month" while the code allowed 14 a week and the
+ * support assistant said something else again. There is one number now and this
+ * asks for it.
+ */
+function usePromises(): string[] {
+  const { data: config } = trpc.config.useQuery(undefined, { staleTime: 60_000 });
+  const free = config?.promo?.freeVideos;
+  return [
+    "No credit card",
+    free ? `${free} free videos a month` : "Free to start",
+    "Voiceover included",
+  ];
+}
 
 export default function HeroSection() {
+  const promises = usePromises();
   return (
     <section className="relative overflow-hidden border-b border-line">
       {/* One flat gradient wash. Static, so it costs a single paint at load

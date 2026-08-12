@@ -23,6 +23,7 @@ import { supportChats, supportTickets, projects, renderJobs } from "@db/schema";
 import { eq, desc, lt, and, count, inArray } from "drizzle-orm";
 import { chatCompletion } from "./lib/llm";
 import { buildSupportSystemPrompt, SUGGESTED_QUESTIONS } from "./lib/productKnowledge";
+import { freeVideoAllowance, getSettings, promoActive } from "./lib/appSettings";
 import { parseSupportReply } from "./lib/supportReply";
 import { generateTTSAudio, speedToRate } from "./lib/tts";
 import { transcribeAudio, whisperAvailable } from "./lib/whisper";
@@ -190,6 +191,7 @@ export const supportRouter = createRouter({
       }
 
       const account = ctx.user ? await loadAccountFacts(ctx.user) : null;
+      const settings = await getSettings();
 
       const hasImages = input.messages.some((m) => m.images?.length);
 
@@ -209,6 +211,11 @@ export const supportRouter = createRouter({
             plan: ctx.user?.plan ?? null,
             account,
             editorContext: input.editorContext ?? null,
+            // Read live, so the assistant stops quoting a limit the app does not
+            // enforce. It used to say "5 videos a month" while the code allowed 14
+            // a week.
+            freeVideos: freeVideoAllowance(settings),
+            promoLabel: promoActive(settings) ? settings.promoLabel : null,
           }),
         },
         ...input.messages.map((m) => {
@@ -666,10 +673,23 @@ export const supportRouter = createRouter({
     .use(rateLimitByUser(60_000, 60))
     .input(z.object({ ticketId: z.number() }))
     .mutation(async ({ ctx, input }) => {
-      await getDb()
+      const result = await getDb()
         .update(supportTickets)
         .set({ unreadForCustomer: 0 })
         .where(and(eq(supportTickets.id, input.ticketId), eq(supportTickets.userId, ctx.user!.id)));
+
+      /*
+       * Report what happened rather than always claiming success.
+       *
+       * The condition above already meant somebody else's ticket was never touched,
+       * but the endpoint answered `{ ok: true }` either way, so a caller could not
+       * tell "marked as read" from "that is not your ticket". Nothing was leaking; the
+       * answer was just untrue.
+       */
+      const header = Array.isArray(result) ? result[0] : result;
+      const affected = Number((header as { affectedRows?: number } | undefined)?.affectedRows ?? 0);
+      if (affected === 0) throw userError("Ticket not found", "NOT_FOUND");
+
       return { ok: true as const };
     }),
 });
