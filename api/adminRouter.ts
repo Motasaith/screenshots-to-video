@@ -580,6 +580,7 @@ export const adminRouter = createRouter({
         promoEndsAt: z.string().max(40).optional(),
         creditDollarValue: z.number().min(0.01).max(100).optional(),
         teamSeatsIncluded: z.number().int().min(1).max(100).optional(),
+        proRendersPerMonth: z.number().int().min(0).max(10_000).optional(),
         announcement: z
           .object({
             message: z.string().max(300),

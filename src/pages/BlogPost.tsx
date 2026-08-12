@@ -271,7 +271,7 @@ export default function BlogPost() {
           <div className="card card-pad mt-14">
             <h2 className="text-[17px] font-semibold text-ink">Try it on your own screenshots</h2>
             <p className="mt-2 text-[15px] leading-relaxed text-ink-body">
-              Five videos a month on the free plan, no card needed.
+              Free videos every month, no card needed.
             </p>
             <Link to="/signup" className="btn btn-primary mt-5">
               Start free

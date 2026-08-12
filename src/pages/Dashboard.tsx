@@ -41,7 +41,7 @@ export default function Dashboard() {
    * user was told one thing and limited by another.
    */
   const { data: siteConfig } = trpc.config.useQuery(undefined, { staleTime: 60_000 });
-  const freeAllowance = siteConfig?.promo?.freeVideos;
+  const freeAllowance = siteConfig?.plan?.freeVideos;
   const freePlanLine = freeAllowance
     ? `You're on the Free plan (${freeAllowance} videos a month, 720p, 7-day expiry).`
     : "You're on the Free plan (720p, 7-day expiry).";

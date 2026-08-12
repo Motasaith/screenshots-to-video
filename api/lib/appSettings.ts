@@ -67,6 +67,15 @@ export interface AppSettingsShape {
   creditDollarValue: number;
 
   /**
+   * Renders a Pro account may start per calendar month.
+   *
+   * Here rather than in code because it is a pricing decision, and because the number
+   * on the pricing page and the number enforced at render time have to be the same
+   * one. 0 means no cap.
+   */
+  proRendersPerMonth: number;
+
+  /**
    * Seats a new team starts with, before any are bought.
    *
    * Here rather than in code so the Team plan's inclusive seat count can change with
@@ -85,6 +94,7 @@ export const DEFAULT_SETTINGS: AppSettingsShape = {
   promoLabel: "",
   promoEndsAt: "",
   creditDollarValue: 0.5,
+  proRendersPerMonth: 30,
   teamSeatsIncluded: 3,
   announcement: {
     message: "",

@@ -8,6 +8,7 @@ import { eq, and, desc, inArray } from "drizzle-orm";
 import { TRPCError } from "@trpc/server";
 import { detectGibberish } from "./lib/gibberish";
 import { getSignedDownloadUrl } from "./lib/r2";
+import { MAX_RESOLUTION, planAllowsResolution } from "./lib/render-config";
 import { ProjectDescription } from "@contracts/constants";
 
 /**
@@ -301,11 +302,17 @@ export const projectRouter = createRouter({
         ...(captionsEnabled !== undefined ? { captionsEnabled: captionsEnabled ? 1 : 0 } : {}),
       };
 
-      // Free tier enforcement
-      if (ctx.user!.plan === "free" && data.resolution && data.resolution !== "720p") {
+      // Resolution ceiling by plan: 720p free, 1080p Pro, 4K Team. Previously only
+      // the free case was blocked, so Pro could render 4K, which is the Team
+      // differentiator and four times the pixels for the same credit.
+      if (data.resolution && !planAllowsResolution(ctx.user!.plan, data.resolution)) {
+        const ceiling = MAX_RESOLUTION[ctx.user!.plan];
         throw new TRPCError({
           code: "FORBIDDEN",
-          message: "Free tier: only 720p resolution is allowed. Upgrade to unlock higher resolutions.",
+          message:
+            ctx.user!.plan === "free"
+              ? "The free plan exports at 720p. Upgrade to Pro for 1080p."
+              : `Your plan exports up to ${ceiling}. 4K is part of the Team plan.`,
         });
       }
       if (ctx.user!.plan === "free" && data.musicEnabled) {

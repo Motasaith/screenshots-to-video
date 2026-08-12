@@ -2,9 +2,17 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { Check } from "lucide-react";
 import { Reveal } from "@/components/site/Reveal";
-import { teaserPlans } from "@/data/pricing";
+import { plansWithLiveLimits } from "@/data/pricing";
+import { trpc } from "@/providers/trpc";
 
 export default function PricingTeaserSection() {
+  const { data: config } = trpc.config.useQuery(undefined, { staleTime: 60_000 });
+  const teaserPlans = plansWithLiveLimits(
+    config?.plan?.freeVideos,
+    config?.plan?.promoLabel,
+    config?.plan?.proRenders
+  ).filter((plan) => plan.teaser);
+
   const [yearly, setYearly] = useState(false);
 
   return (
@@ -13,8 +21,9 @@ export default function PricingTeaserSection() {
         <Reveal className="max-w-2xl">
           <h2 className="h2">Free until it is worth paying for</h2>
           <p className="lede mt-4">
-            Five videos a month costs nothing and needs no card. Upgrade when five stops being
-            enough.
+            {config?.plan?.freeVideos
+              ? `${config.plan.freeVideos} videos a month costs nothing and needs no card. Upgrade when that stops being enough.`
+              : "The free plan costs nothing and needs no card. Upgrade when it stops being enough."}
           </p>
         </Reveal>
 

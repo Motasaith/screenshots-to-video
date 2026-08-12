@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Link } from "react-router";
 import { Check } from "lucide-react";
 import { PageShell } from "@/components/site/PageShell";
-import { plans } from "@/data/pricing";
+import { plansWithLiveLimits } from "@/data/pricing";
+import { trpc } from "@/providers/trpc";
 
 const faqs = [
   {
@@ -24,6 +25,17 @@ const faqs = [
 ];
 
 export default function Pricing() {
+  /**
+   * The free allowance comes from the server, not from this file.
+   *
+   * It is editable in the admin dashboard and multiplied while a promotion runs, so a
+   * number typed here would be wrong the moment an offer starts. That is the same
+   * mistake that had this page saying five a month while the code allowed fourteen a
+   * week.
+   */
+  const { data: config } = trpc.config.useQuery(undefined, { staleTime: 60_000 });
+  const plans = plansWithLiveLimits(config?.plan?.freeVideos, config?.plan?.promoLabel, config?.plan?.proRenders);
+
   const [yearly, setYearly] = useState(false);
 
   return (
@@ -31,7 +43,13 @@ export default function Pricing() {
       title="Pricing"
       description="AIVideo pricing: a free plan, Pro at $25 a month, and Team at $99."
       canonical="https://aivideo.ai/pricing"
-      lede="Start free. Upgrade when five videos a month stops being enough."
+      lede={
+        // The last hardcoded free-tier number on the site. It said five while the
+        // code allowed fourteen a week, and then twenty-four under the promotion.
+        config?.plan?.freeVideos
+          ? `Start free. Upgrade when ${config.plan.freeVideos} videos a month stops being enough.`
+          : "Start free. Upgrade when the free plan stops being enough."
+      }
       wide
     >
       <div className="inline-flex rounded-full border border-line bg-mat p-1">

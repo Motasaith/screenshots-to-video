@@ -45,9 +45,20 @@ export const appRouter = createRouter({
           linkLabel: banner.linkLabel,
           dismissible: banner.dismissible,
         },
-        promo: promoActive(settings)
-          ? { label: settings.promoLabel, freeVideos: freeVideoAllowance(settings) }
-          : null,
+        /**
+         * The free allowance, always, with the promotion named separately.
+         *
+         * It used to live inside `promo`, which is null when no offer is running, so
+         * every surface that showed the number lost it the moment a promotion ended.
+         * The allowance is a fact about the plan; the promotion is why it is currently
+         * larger.
+         */
+        plan: {
+          freeVideos: freeVideoAllowance(settings),
+          promoLabel: promoActive(settings) ? settings.promoLabel : null,
+          // So the pricing page quotes the number that is actually enforced.
+          proRenders: settings.proRendersPerMonth,
+        },
       };
     }),
   auth: authRouter,

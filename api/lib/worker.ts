@@ -19,7 +19,7 @@ import { cleanupExpiredProjects } from "./cleanup";
 import { getUserElevenLabsKey } from "../queries/users";
 import { localFilePath, saveLocalFile } from "./localStore";
 import { logger } from "./logger";
-import { RETENTION_DAYS, RENDER_TIMEOUT_MS, STUCK_JOB_CHECK_INTERVAL_POLLS, CREDIT_COST, SEGMENT_CONCURRENCY } from "./render-config";
+import { RETENTION_DAYS, RENDER_TIMEOUT_MS, STUCK_JOB_CHECK_INTERVAL_POLLS, CREDIT_COST, SEGMENT_CONCURRENCY, clampResolution } from "./render-config";
 import {
   getNarrationScript,
   hasSelectedVoice,
@@ -37,6 +37,9 @@ import { nanoid } from "nanoid";
  * is to overlap network waits, not to saturate anything.
  */
 const TTS_CONCURRENCY = 4;
+
+/** What a free plan's videos are stamped with. Removed by upgrading, not by editing. */
+const FREE_PLAN_WATERMARK = process.env.FREE_PLAN_WATERMARK?.trim() || "narrashot.com";
 
 /**
  * Run `fn` over `items` with at most `limit` in flight.
@@ -538,6 +541,25 @@ async function processRenderJob(
     // owner's key once; generateTTSAudio falls back to free Edge TTS if absent.
     const userElevenLabsKey = (await getUserElevenLabsKey(project.userId)) ?? undefined;
 
+    /**
+     * The owner's plan, resolved before any scene renders.
+     *
+     * It was only looked up near the end, to pick a retention window, which was far
+     * too late for anything that has to affect the frames themselves. Both the free
+     * plan's watermark and the resolution ceiling need it up here.
+     */
+    const [ownerRow] = await getDb()
+      .select({ plan: users.plan })
+      .from(users)
+      .where(eq(users.id, project.userId))
+      .limit(1);
+    const ownerPlan = ownerRow?.plan ?? "free";
+    const projectBrandKit = await loadBrandKit(project.teamId);
+    const forcedWatermark = planWatermark(ownerPlan);
+    if (forcedWatermark) {
+      logger.info(`Free plan render: stamping every scene with "${FREE_PLAN_WATERMARK}"`);
+    }
+
     const renderSilently = queuedAsSilent || isExplicitSilentVoice(project.voice);
     if (!renderSilently && !hasSelectedVoice(project.voice)) {
       throw new Error(
@@ -555,7 +577,19 @@ async function processRenderJob(
     if (projectSteps.length === 0) throw new Error("No steps in project");
 
     const totalSteps = projectSteps.length;
-    const outputRes = resolutionToSize(project.resolution || "1080p", project.aspectRatio || "16:9");
+    /**
+     * The resolution the plan actually allows, not whatever the project asked for.
+     *
+     * A project set to 4K on a Team plan keeps that setting after a downgrade, and the
+     * setting is what the renderer reads, so without clamping here a cancelled Team
+     * subscription would still produce 4K forever.
+     */
+    const requestedRes = project.resolution || "1080p";
+    const allowedRes = clampResolution(ownerPlan, requestedRes);
+    if (allowedRes !== requestedRes) {
+      logger.info(`Resolution clamped for the ${ownerPlan} plan: ${requestedRes} -> ${allowedRes}`);
+    }
+    const outputRes = resolutionToSize(allowedRes, project.aspectRatio || "16:9");
 
     // Mark job as processing
     await updateJob(jobId, {
@@ -793,7 +827,11 @@ async function processRenderJob(
           transitionDurationSec: project.transitionDuration || 0.5,
           editorColorFilter: step.editorColorFilter ?? undefined,
           editorColorFilterStrength: step.editorColorFilterStrength ?? undefined,
-          editorWatermarkText: step.editorWatermarkText ?? brandKit?.watermarkText ?? undefined,
+          // A free plan's stamp replaces the scene's own watermark entirely; a paid
+          // plan keeps theirs, falling back to the team's brand kit.
+          ...(forcedWatermark ?? {
+            editorWatermarkText: step.editorWatermarkText ?? brandKit?.watermarkText ?? undefined,
+          }),
           editorWatermarkPosition: step.editorWatermarkPosition ?? undefined,
           editorWatermarkSize: step.editorWatermarkSize ?? undefined,
           editorWatermarkColor: step.editorWatermarkColor ?? undefined,
@@ -926,7 +964,11 @@ async function processRenderJob(
           editorRedactW: step.editorRedactW ?? undefined,
           editorRedactH: step.editorRedactH ?? undefined,
           editorRedactColor: step.editorRedactColor ?? undefined,
-          editorWatermarkText: step.editorWatermarkText ?? brandKit?.watermarkText ?? undefined,
+          // A free plan's stamp replaces the scene's own watermark entirely; a paid
+          // plan keeps theirs, falling back to the team's brand kit.
+          ...(forcedWatermark ?? {
+            editorWatermarkText: step.editorWatermarkText ?? brandKit?.watermarkText ?? undefined,
+          }),
           editorWatermarkPosition: step.editorWatermarkPosition ?? undefined,
           editorWatermarkSize: step.editorWatermarkSize ?? undefined,
           editorWatermarkColor: step.editorWatermarkColor ?? undefined,
@@ -1025,7 +1067,11 @@ async function processRenderJob(
           editorRedactW: step.editorRedactW ?? undefined,
           editorRedactH: step.editorRedactH ?? undefined,
           editorRedactColor: step.editorRedactColor ?? undefined,
-          editorWatermarkText: step.editorWatermarkText ?? brandKit?.watermarkText ?? undefined,
+          // A free plan's stamp replaces the scene's own watermark entirely; a paid
+          // plan keeps theirs, falling back to the team's brand kit.
+          ...(forcedWatermark ?? {
+            editorWatermarkText: step.editorWatermarkText ?? brandKit?.watermarkText ?? undefined,
+          }),
           editorWatermarkPosition: step.editorWatermarkPosition ?? undefined,
           editorWatermarkSize: step.editorWatermarkSize ?? undefined,
           editorWatermarkColor: step.editorWatermarkColor ?? undefined,
@@ -1114,7 +1160,8 @@ async function processRenderJob(
      * project meant it, and having the team's wording replace it at render time
      * would be baffling. Personal projects have no team and get nothing here.
      */
-    const brandKit = await loadBrandKit(project.teamId);
+    // Loaded here rather than at the concat, because the scene loop above needs it.
+    const brandKit = projectBrandKit;
 
     if (project.introVideoPath) {
       // Custom intro. Normalised rather than used as-is: an arbitrary upload
@@ -1388,4 +1435,33 @@ async function loadBrandKit(teamId: number | null) {
     });
     return null;
   }
+}
+
+
+/**
+ * The watermark a free plan's videos carry.
+ *
+ * Returned as a complete set of options rather than merged with the scene's own, so
+ * a free account cannot hide it by setting the opacity to nothing or moving it off
+ * frame. A paid plan gets null and keeps whatever watermark they chose themselves,
+ * including none.
+ *
+ * Bottom right at 3% of frame height: readable on a phone, and out of the way of the
+ * top-left where interface screenshots put their menus.
+ */
+function planWatermark(plan: string): {
+  editorWatermarkText: string;
+  editorWatermarkPosition: string;
+  editorWatermarkSize: string;
+  editorWatermarkColor: string;
+  editorWatermarkOpacity: number;
+} | null {
+  if (plan !== "free") return null;
+  return {
+    editorWatermarkText: FREE_PLAN_WATERMARK,
+    editorWatermarkPosition: "bottom-right",
+    editorWatermarkSize: "small",
+    editorWatermarkColor: "#FFFFFF",
+    editorWatermarkOpacity: 0.55,
+  };
 }

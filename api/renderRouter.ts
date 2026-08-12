@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { createRouter, authedQuery, rateLimitByUser, userError } from "./middleware";
 import { getDb } from "./queries/connection";
+import { getSettings } from "./lib/appSettings";
 import { projects, steps, renderJobs, users } from "@db/schema";
 import { projectAccessWhere } from "./lib/teams";
-import { eq, and, desc, inArray, count } from "drizzle-orm";
+import { eq, and, desc, inArray, count, gte, ne} from "drizzle-orm";
 import { getSignedDownloadUrl, isR2Configured } from "./lib/r2";
 import { notifyRenderJobQueued } from "./lib/worker";
 import { createLogger } from "./lib/logger";
@@ -187,6 +188,31 @@ export const renderRouter = createRouter({
         );
       }
 
+      /**
+       * The Pro monthly render cap.
+       *
+       * Counted from `render_jobs` rather than a column on the user, so it cannot
+       * drift out of step with what actually happened, and so it resets on the
+       * calendar month with no scheduled job to run. Failed renders are excluded:
+       * charging somebody's allowance for our own failure is indefensible.
+       *
+       * Free is capped at project creation instead, which is where its counter lives.
+       * Team is deliberately uncapped.
+       */
+      if (ctx.user!.plan === "pro") {
+        const settings = await getSettings();
+        const cap = Math.max(0, Math.floor(settings.proRendersPerMonth));
+        if (cap > 0) {
+          const used = await rendersThisMonth(ctx.user!.id);
+          if (used >= cap) {
+            throw userError(
+              `The Pro plan includes ${cap} renders a month and you have used ${used}. The count resets on the 1st, or a Team plan removes the limit.`,
+              "FORBIDDEN"
+            );
+          }
+        }
+      }
+
       // ── SAFETY CHECK 4: Credit check ──
       const creditCost = CREDIT_COST[project.resolution] ?? CREDIT_COST["1080p"];
       if (ctx.user!.credits < MIN_CREDITS_TO_RENDER) {
@@ -365,4 +391,31 @@ function queuePriority(plan: string): number {
   if (plan === "team") return 20;
   if (plan === "pro") return 10;
   return 0;
+}
+
+
+/**
+ * Renders this calendar month for one account.
+ *
+ * Counts jobs that were queued, are running, or finished. A job that errored is not
+ * counted, because a render that failed for our reasons should not consume an
+ * allowance the customer paid for.
+ */
+async function rendersThisMonth(userId: number): Promise<number> {
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const rows = await getDb()
+    .select({ id: renderJobs.id })
+    .from(renderJobs)
+    .innerJoin(projects, eq(renderJobs.projectId, projects.id))
+    .where(
+      and(
+        eq(projects.userId, userId),
+        gte(renderJobs.createdAt, monthStart),
+        ne(renderJobs.status, "error")
+      )
+    );
+
+  return rows.length;
 }

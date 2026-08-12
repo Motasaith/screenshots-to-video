@@ -160,13 +160,27 @@ export function buildGuideSystemPrompt(extra = ""): string {
  */
 export const PLANS_AND_LIMITS = `
 Plans:
-- Free: {{FREE_VIDEOS}}, 720p export, every aspect ratio, 12 voices
-  (4 of them ultra-realistic), AI script generation, community support.
-- Pro, $25/month or $20/month billed yearly: unlimited videos, 1080p and 4K,
-  ElevenLabs premium voices, copyright check on every screenshot, scene
-  transitions, custom intro and outro, background music, priority render queue.
-- Team, $99/month: everything in Pro, unlimited seats, shared project library,
-  brand templates, SSO, team analytics, dedicated support and an SLA.
+- Free: {{FREE_VIDEOS}}, 720p export, a small narrashot.com watermark on the
+  video, every aspect ratio, 12 voices (4 of them ultra-realistic), AI script
+  generation, videos kept 7 days, community support.
+- Pro, $24/month or $19/month billed yearly: {{PRO_RENDERS}}, 1080p export with
+  no watermark, record or upload your own voice, ElevenLabs voices with your own
+  key, copyright check on every screenshot, scene transitions, custom intro and
+  outro, background music, priority render queue, videos kept 90 days.
+- Team, $79/month: everything in Pro with no monthly render cap, 4K export, 3
+  seats included and $19 for each extra seat, shared project library, a brand kit
+  applied to every video, an activity log of who changed what, videos kept a year,
+  dedicated support.
+
+Resolution is capped by plan: Free exports 720p, Pro exports up to 1080p, and 4K
+is part of the Team plan. The watermark is removed by upgrading, not by editing the
+video. There is no SSO, no SAML and no team analytics: those were advertised once
+and never built, so say they are not available rather than describing where to find
+them.
+
+There is no SSO, no SAML and no team analytics. Those were advertised once and
+never built, so if anybody asks for them, say they are not available rather than
+describing where to find them.
 
 Limits and rules:
 - One completed render uses one credit. Re-rendering after an edit costs another.
@@ -216,15 +230,24 @@ export function buildSupportSystemPrompt(opts?: {
   freeVideos?: number | null;
   /** The promotion's name, so the assistant can explain why the number is high. */
   promoLabel?: string | null;
+  /** The enforced Pro render cap, so the assistant quotes the real number. */
+  proRenders?: number | null;
 }): string {
   // The free allowance is editable from the admin dashboard, so the prompt is
   // built with the live number rather than a figure typed here that later
   // disagrees with what the app enforces.
   const plans = PLANS_AND_LIMITS.replace(
+    "{{PRO_RENDERS}}",
+    opts?.proRenders ? `${opts.proRenders} renders a month` : "a monthly render allowance"
+  ).replace(
     "{{FREE_VIDEOS}}",
     opts?.freeVideos
-      ? `${opts.freeVideos} videos per period${opts.promoLabel ? ` (${opts.promoLabel})` : ""}`
-      : "a limited number of videos per period"
+      ? opts.promoLabel
+        ? // Spelled out, because "4x free videos" on its own got read as "four extra
+          // videos" and the assistant told a visitor the wrong thing.
+          `${opts.freeVideos} videos a month at the moment. A promotion is running (${opts.promoLabel}), which is why the number is higher than usual. Quote ${opts.freeVideos} and do not try to work out the normal figure.`
+        : `${opts.freeVideos} videos a month`
+      : "a limited number of videos a month"
   );
 
   return [
@@ -239,7 +262,7 @@ export function buildSupportSystemPrompt(opts?: {
     `- If an image is attached, say what you can actually see in it before advising. If it is unreadable, ask for a clearer screenshot.`,
     ``,
     `End your reply with one of these markers, or with none at all:`,
-    `1. Nothing, when you have answered the question. This is the normal case. If your reply contains the answer, add NO marker, even if you are not completely certain and even if you suggest they check something.`,
+    `1. No marker at all, when you have answered the question. This is the normal case: end the reply with your last sentence and nothing else. That holds even if you are not completely certain, and even if you suggest they check something.`,
     `2. ${REPLY_MARKERS.needHuman}, only when you have NOT answered because a person is needed: something specific to their account that you cannot see, a payment or charge, a refund, a plan change, a suspected bug, or they asked for a human. Say in one sentence that a person needs to handle it, then the marker alone on the last line. The app opens a short form that reaches a real person. Do not describe the form, do not ask for their email, and never say anything has been sent.`,
     `3. ${REPLY_MARKERS.offTopic}, only when the question has nothing to do with AIVideo or making tutorial videos: general knowledge, other software, coding help, news, maths, personal advice. Say in one sentence that it is outside what you cover and that you are here for AIVideo, then the marker alone on the last line. The app then shows example questions.`,
     ``,

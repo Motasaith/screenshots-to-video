@@ -216,6 +216,7 @@ export const supportRouter = createRouter({
             // a week.
             freeVideos: freeVideoAllowance(settings),
             promoLabel: promoActive(settings) ? settings.promoLabel : null,
+            proRenders: settings.proRendersPerMonth,
           }),
         },
         ...input.messages.map((m) => {

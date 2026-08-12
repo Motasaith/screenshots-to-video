@@ -57,11 +57,11 @@ const COPY: Record<
   },
   signup: {
     title: "Create your account",
-    subtitle: "Five videos a month, free, no card.",
+    subtitle: "Free videos every month, no card.",
     button: "Sign up with Google",
     panelHeadline: "Screenshots in. Finished tutorial out.",
     bullets: [
-      "Five videos a month on the free plan",
+      "Free videos every month on the free plan",
       "Narration written and spoken for you",
       "A publishable MP4 in about ten minutes",
     ],

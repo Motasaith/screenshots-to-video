@@ -1,7 +1,13 @@
 import { Link } from "react-router";
+import { trpc } from "@/providers/trpc";
 import { ArrowRight } from "lucide-react";
 
 export default function CTASection() {
+  // The free allowance is admin-editable and multiplied during a promotion, so it is
+  // read rather than written into the copy.
+  const { data: config } = trpc.config.useQuery(undefined, { staleTime: 60_000 });
+  const freeVideos = config?.plan?.freeVideos;
+
   return (
     <section className="section-tight">
       <div className="container-site">
@@ -10,8 +16,8 @@ export default function CTASection() {
             You already have the screenshots
           </h2>
           <p className="mx-auto mt-4 max-w-lg text-[16.5px] leading-relaxed text-white/70">
-            Five videos a month, free, no card. If the first one is not usable, you have lost
-            ten minutes.
+            {freeVideos ? `${freeVideos} videos a month` : "Free to start"}, free, no card. If
+            the first one is not usable, you have lost ten minutes.
           </p>
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link

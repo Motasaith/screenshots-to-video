@@ -13,7 +13,7 @@ import { UploadDropzone } from "./hero/UploadDropzone";
  */
 function usePromises(): string[] {
   const { data: config } = trpc.config.useQuery(undefined, { staleTime: 60_000 });
-  const free = config?.promo?.freeVideos;
+  const free = config?.plan?.freeVideos;
   return [
     "No credit card",
     free ? `${free} free videos a month` : "Free to start",

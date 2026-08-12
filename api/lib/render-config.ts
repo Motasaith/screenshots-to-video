@@ -89,11 +89,53 @@ export const MIN_CREDITS_TO_RENDER = 1;
  * Pro: Unlimited
  * Team: Unlimited
  */
-export const VIDEO_LIMITS: Record<"free" | "pro" | "team", { perWeek: number | null; perMonth: number | null }> = {
-  free: { perWeek: 14, perMonth: null },
-  pro: { perWeek: null, perMonth: null },
-  team: { perWeek: null, perMonth: null },
+/**
+ * The highest resolution each plan may render.
+ *
+ * 4K is the Team differentiator, and it is also four times the pixels for the same
+ * credit, so it is not something to leave open by omission. Enforced where the
+ * resolution is set and again at render time, because a project created before a
+ * downgrade would otherwise keep its 4K setting.
+ */
+export const MAX_RESOLUTION: Record<"free" | "pro" | "team", "720p" | "1080p" | "4k"> = {
+  free: "720p",
+  pro: "1080p",
+  team: "4k",
 };
+
+/** Ordered worst to best, so two resolutions can be compared. */
+export const RESOLUTION_ORDER = ["720p", "1080p", "4k"] as const;
+
+/** Whether a plan may use a resolution. */
+export function planAllowsResolution(
+  plan: "free" | "pro" | "team",
+  resolution: string
+): boolean {
+  const wanted = RESOLUTION_ORDER.indexOf(resolution as (typeof RESOLUTION_ORDER)[number]);
+  const ceiling = RESOLUTION_ORDER.indexOf(MAX_RESOLUTION[plan]);
+  // An unrecognised resolution is refused rather than allowed by accident.
+  return wanted >= 0 && wanted <= ceiling;
+}
+
+/** The best resolution a plan can have, for clamping an existing project. */
+export function clampResolution(
+  plan: "free" | "pro" | "team",
+  resolution: string
+): "720p" | "1080p" | "4k" {
+  if (planAllowsResolution(plan, resolution)) {
+    return resolution as "720p" | "1080p" | "4k";
+  }
+
+  // A value this code does not recognise must not become the most expensive option
+  // available. `projects.resolution` is an enum so it should never happen, and if it
+  // does, 1080p is the sane reading of "something went wrong" rather than 4K.
+  const known = RESOLUTION_ORDER.includes(resolution as (typeof RESOLUTION_ORDER)[number]);
+  if (!known) {
+    return planAllowsResolution(plan, "1080p") ? "1080p" : MAX_RESOLUTION[plan];
+  }
+
+  return MAX_RESOLUTION[plan];
+}
 
 /** Default credits given to new free users. */
 export const DEFAULT_CREDITS = 14;
