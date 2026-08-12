@@ -32,6 +32,11 @@ module.exports = {
       name: "narrashot-worker",
       script: "dist/worker-boot.js",
       instances: 1,
+      // Fork, not cluster. pm2 switches to cluster mode when `instances` is set,
+      // but cluster exists to share a listening socket and this process has none,
+      // so the extra layer buys nothing. Changing this needs `pm2 delete
+      // narrashot-worker` before a start: a reload will not switch modes.
+      exec_mode: "fork",
       env: {
         NODE_ENV: "production",
         // In-process, a job was picked up the moment it was enqueued. Across
