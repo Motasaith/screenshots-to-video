@@ -30,6 +30,23 @@ export default defineConfig([
     },
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
+      /*
+       * Catches the one thing TypeScript cannot.
+       *
+       * A `const` read inside a closure that runs before the declaration line
+       * typechecks cleanly, because the compiler cannot prove when the closure
+       * runs. At runtime it throws "Cannot access 'x' before initialization" and
+       * the job dies. That is exactly how every render failed after the brand kit
+       * was hoisted above the scene loop but its alias was left below it.
+       *
+       * `functions: false` because hoisted function declarations are genuinely
+       * safe to call before their definition and the codebase relies on it.
+       */
+      'no-use-before-define': 'off',
+      '@typescript-eslint/no-use-before-define': [
+        'error',
+        { functions: false, classes: true, variables: true, allowNamedExports: true },
+      ],
     },
   },
   // shadcn/ui primitives are generated and routinely co-export variants and

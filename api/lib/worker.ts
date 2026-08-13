@@ -830,7 +830,7 @@ async function processRenderJob(
           // A free plan's stamp replaces the scene's own watermark entirely; a paid
           // plan keeps theirs, falling back to the team's brand kit.
           ...(forcedWatermark ?? {
-            editorWatermarkText: step.editorWatermarkText ?? brandKit?.watermarkText ?? undefined,
+            editorWatermarkText: step.editorWatermarkText ?? projectBrandKit?.watermarkText ?? undefined,
           }),
           editorWatermarkPosition: step.editorWatermarkPosition ?? undefined,
           editorWatermarkSize: step.editorWatermarkSize ?? undefined,
@@ -967,7 +967,7 @@ async function processRenderJob(
           // A free plan's stamp replaces the scene's own watermark entirely; a paid
           // plan keeps theirs, falling back to the team's brand kit.
           ...(forcedWatermark ?? {
-            editorWatermarkText: step.editorWatermarkText ?? brandKit?.watermarkText ?? undefined,
+            editorWatermarkText: step.editorWatermarkText ?? projectBrandKit?.watermarkText ?? undefined,
           }),
           editorWatermarkPosition: step.editorWatermarkPosition ?? undefined,
           editorWatermarkSize: step.editorWatermarkSize ?? undefined,
@@ -1070,7 +1070,7 @@ async function processRenderJob(
           // A free plan's stamp replaces the scene's own watermark entirely; a paid
           // plan keeps theirs, falling back to the team's brand kit.
           ...(forcedWatermark ?? {
-            editorWatermarkText: step.editorWatermarkText ?? brandKit?.watermarkText ?? undefined,
+            editorWatermarkText: step.editorWatermarkText ?? projectBrandKit?.watermarkText ?? undefined,
           }),
           editorWatermarkPosition: step.editorWatermarkPosition ?? undefined,
           editorWatermarkSize: step.editorWatermarkSize ?? undefined,
@@ -1160,8 +1160,6 @@ async function processRenderJob(
      * project meant it, and having the team's wording replace it at render time
      * would be baffling. Personal projects have no team and get nothing here.
      */
-    // Loaded here rather than at the concat, because the scene loop above needs it.
-    const brandKit = projectBrandKit;
 
     if (project.introVideoPath) {
       // Custom intro. Normalised rather than used as-is: an arbitrary upload
@@ -1179,13 +1177,13 @@ async function processRenderJob(
       transitions.unshift("fade");
     } else if (project.introTemplate && project.introTemplate !== "none") {
       const introDuration = project.introDuration || 3.0;
-      const text = project.introText || brandKit?.introText || project.title || "";
+      const text = project.introText || projectBrandKit?.introText || project.title || "";
       const introPath = await renderTextSegment(
         project.introTemplate,
         text,
         outputRes,
         introDuration,
-        { background: brandKit?.primaryColor, text: brandKit?.accentColor }
+        { background: projectBrandKit?.primaryColor, text: projectBrandKit?.accentColor }
       );
       segmentPaths.unshift(introPath);
       segmentDurations.unshift(introDuration);
@@ -1205,13 +1203,13 @@ async function processRenderJob(
       transitions.push("fade");
     } else if (project.outroTemplate && project.outroTemplate !== "none") {
       const outroDuration = project.outroDuration || 3.0;
-      const text = project.outroText || brandKit?.outroText || "Thanks for watching!";
+      const text = project.outroText || projectBrandKit?.outroText || "Thanks for watching!";
       const outroPath = await renderTextSegment(
         project.outroTemplate,
         text,
         outputRes,
         outroDuration,
-        { background: brandKit?.primaryColor, text: brandKit?.accentColor }
+        { background: projectBrandKit?.primaryColor, text: projectBrandKit?.accentColor }
       );
       segmentPaths.push(outroPath);
       segmentDurations.push(outroDuration);
