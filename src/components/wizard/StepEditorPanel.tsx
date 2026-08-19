@@ -1185,67 +1185,46 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
     let currentOrder = (steps.length || (props.parentSteps || []).length) + 1;
 
+    // Upload first, then create the step from the storage key it returns.
+    //
+    // This used to go the other way round for an instant preview: create the
+    // step with `URL.createObjectURL(file)` as its screenshotPath, then patch
+    // in the real key once the upload landed. step.create refuses a `blob:`
+    // URL — isStorableMediaRef only accepts a storage key — so the create threw
+    // on every file, the catch logged and moved on, and the scene never
+    // appeared. All the user saw was "Uploading n..." counting down to nothing.
     for (const file of sortedFiles) {
       const isVideoFile = file.type.startsWith("video/");
-      // Optimistic: create a local object URL so the image shows immediately
-      const localUrl = URL.createObjectURL(file) + (isVideoFile ? "#video" : "");
+      const order = currentOrder++;
 
-      // Create the step immediately with the local URL so it shows on canvas
-      // We'll update it with the real URL after upload completes
-      let createdStepId: number | undefined;
       try {
-        const created = await createStep.mutateAsync({
+        const result = await uploadFile(file, `projects/${projectIdNum}/screenshots`);
+
+        // The storage key, not the signed URL from the response: signed URLs
+        // expire, and project.getById mints a fresh one from the key on read.
+        await createStep.mutateAsync({
           projectId: projectIdNum,
-          order: currentOrder,
+          order,
           description: "",
-          screenshotPath: localUrl, // temporary local URL for instant display
+          screenshotPath: result.key + (isVideoFile ? "#video" : ""),
         });
-        createdStepId = created?.id;
-        // Invalidate both queries so the timeline thumbnail shows immediately
+
         utils.project.getById.invalidate({ id: projectIdNum });
         utils.step.listByProject.invalidate({ projectId: projectIdNum });
       } catch (err) {
-        console.error("Failed to create step:", err);
+        console.error("Failed to add screenshot:", err);
+        toast.error(
+          `Could not add ${file.name}: ${err instanceof Error ? err.message : "upload failed"}`
+        );
+      } finally {
         setUploadingFilesCount(prev => Math.max(0, prev - 1));
-        URL.revokeObjectURL(localUrl);
-        currentOrder++;
-        continue;
       }
 
-      currentOrder++;
-
-      // Upload in the background (non-blocking)
-      (async () => {
-        try {
-          const result = await uploadFile(file, `projects/${projectIdNum}/screenshots`);
-
-          // Update the step with the storage key (not the signed URL, which expires)
-          if (createdStepId) {
-            await updateStep.mutateAsync({
-              id: createdStepId,
-              screenshotPath: result.key + (isVideoFile ? "#video" : ""),
-            });
-          }
-
-          // Update local annotation state if this step is loaded
-          setAnnotations((prev) => {
-            if (!createdStepId) return prev;
-            // No annotation changes needed, just trigger re-render
-            return prev;
-          });
-
-          // Revoke the local URL after the real one is saved
-          URL.revokeObjectURL(localUrl);
-          utils.project.getById.invalidate({ id: projectIdNum });
-          utils.step.listByProject.invalidate({ projectId: projectIdNum });
-        } catch (err) {
-          console.error("Failed to upload screenshot:", err);
-          // The step still exists with the local URL: it will break when the page reloads
-          // but at least the user sees it immediately
-        } finally {
-          setUploadingFilesCount(prev => Math.max(0, prev - 1));
-        }
-      })();
+      // Paced like the homepage importer: both /api/upload and step.create are
+      // rate limited to 60/minute, and a tight loop over a folder trips them.
+      if (file !== sortedFiles[sortedFiles.length - 1]) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
     }
   };
 

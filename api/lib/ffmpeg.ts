@@ -1213,13 +1213,22 @@ export async function renderStepVideo(opts: {
     overlayFilter = `drawtext=fontfile='${fontFile}':text='${escapedOvText}':fontcolor=${ovColor}:fontsize=${ovSize}:x=${ovX}-text_w/2:y=${ovY}-text_h/2:shadowcolor=0x000000:shadowx=2:shadowy=2,`;
   }
 
-  // ── Captions: prefer canvas editor caption if set ──
+  // ── Captions: prefer the canvas editor's own caption if the scene has one ──
+  //
+  // The styling has to follow whichever TEXT won, as one group. Picking each
+  // field independently with `editorX || projectX` looked equivalent but was
+  // not: steps.editorCaptionSize/Style/Position/Color are NOT NULL with
+  // defaults ("medium", "standard", "bottom", "#FFFFFF"), so every step carries
+  // a truthy value whether or not anyone set one. Those defaults shadowed the
+  // project's caption settings on every render, which is why choosing Small or
+  // Large in the captions panel changed nothing in the exported video.
   let captionsFilter = "";
-  const captionText = opts.editorCaptionText || opts.captions?.text || "";
-  const captionStyle = opts.editorCaptionStyle || opts.captions?.style || "standard";
-  const captionSize = opts.editorCaptionSize || opts.captions?.size || "medium";
-  const captionPosition = opts.editorCaptionPosition || opts.captions?.position || "bottom";
-  const captionColor = opts.editorCaptionColor || opts.captions?.color || "#FFFFFF";
+  const usesEditorCaption = Boolean(opts.editorCaptionText);
+  const captionText = usesEditorCaption ? opts.editorCaptionText! : (opts.captions?.text || "");
+  const captionStyle = (usesEditorCaption ? opts.editorCaptionStyle : null) || opts.captions?.style || "standard";
+  const captionSize = (usesEditorCaption ? opts.editorCaptionSize : null) || opts.captions?.size || "medium";
+  const captionPosition = (usesEditorCaption ? opts.editorCaptionPosition : null) || opts.captions?.position || "bottom";
+  const captionColor = (usesEditorCaption ? opts.editorCaptionColor : null) || opts.captions?.color || "#FFFFFF";
 
   if (captionText && opts.captions?.enabled) {
     const caps = await buildCaptionsFilter(
@@ -1256,7 +1265,16 @@ export async function renderStepVideo(opts: {
 
   // Only frame furniture stays here — things that belong to the video rather
   // than to the picture, and so must not move when the camera does.
-  const postZoomParts = [zoomFilter, watermarkFilter, captionsFilter, downscaleFilter]
+  //
+  // The downscale comes BEFORE the furniture, not after. Captions and the
+  // watermark size their text off outH, but the base frame is the supersampled
+  // canvas (ssH, up to 2x outH). With the downscale last, a scene with no zoom
+  // — where zoompan is absent and this scale is the only thing bringing the
+  // frame back to output resolution — had its text drawn at full size on the
+  // 2x canvas and then shrunk with it, so captions came out at half the
+  // requested size. Zoomed scenes were unaffected because zoompan already
+  // emits outW x outH, which is why this only showed on some scenes.
+  const postZoomParts = [zoomFilter, downscaleFilter, watermarkFilter, captionsFilter]
     .map(stripComma)
     .filter((f) => f && f.length > 0);
   const postZoomChain = postZoomParts.join(",");
@@ -1614,13 +1632,22 @@ async function renderStepVideoFallback(
     overlayFilter = `drawtext=fontfile='${fontFile}':text='${escapedOvText}':fontcolor=${ovColor}:fontsize=${ovSize}:x=${ovX}-text_w/2:y=${ovY}-text_h/2:shadowcolor=0x000000:shadowx=2:shadowy=2,`;
   }
 
-  // ── Captions: prefer canvas editor caption if set ──
+  // ── Captions: prefer the canvas editor's own caption if the scene has one ──
+  //
+  // The styling has to follow whichever TEXT won, as one group. Picking each
+  // field independently with `editorX || projectX` looked equivalent but was
+  // not: steps.editorCaptionSize/Style/Position/Color are NOT NULL with
+  // defaults ("medium", "standard", "bottom", "#FFFFFF"), so every step carries
+  // a truthy value whether or not anyone set one. Those defaults shadowed the
+  // project's caption settings on every render, which is why choosing Small or
+  // Large in the captions panel changed nothing in the exported video.
   let captionsFilter = "";
-  const captionText = opts.editorCaptionText || opts.captions?.text || "";
-  const captionStyle = opts.editorCaptionStyle || opts.captions?.style || "standard";
-  const captionSize = opts.editorCaptionSize || opts.captions?.size || "medium";
-  const captionPosition = opts.editorCaptionPosition || opts.captions?.position || "bottom";
-  const captionColor = opts.editorCaptionColor || opts.captions?.color || "#FFFFFF";
+  const usesEditorCaption = Boolean(opts.editorCaptionText);
+  const captionText = usesEditorCaption ? opts.editorCaptionText! : (opts.captions?.text || "");
+  const captionStyle = (usesEditorCaption ? opts.editorCaptionStyle : null) || opts.captions?.style || "standard";
+  const captionSize = (usesEditorCaption ? opts.editorCaptionSize : null) || opts.captions?.size || "medium";
+  const captionPosition = (usesEditorCaption ? opts.editorCaptionPosition : null) || opts.captions?.position || "bottom";
+  const captionColor = (usesEditorCaption ? opts.editorCaptionColor : null) || opts.captions?.color || "#FFFFFF";
 
   if (captionText && opts.captions?.enabled) {
     const caps = await buildCaptionsFilter(
