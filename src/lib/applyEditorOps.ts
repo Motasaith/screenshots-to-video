@@ -63,10 +63,14 @@ export function applyEditorOps<T extends Record<string, unknown>>(
         break;
 
       case "addRedact":
-        next.editorRedactX = op.x;
-        next.editorRedactY = op.y;
-        next.editorRedactW = op.w;
-        next.editorRedactH = op.h;
+        // Appends, like addBlur and addHighlight. This used to write the single
+        // `editorRedactX..H` rectangle, so two addRedact ops in one response
+        // left only the last one: the model would ask to cover a password and a
+        // token and only the token got covered.
+        next.editorRedacts = [
+          ...asArray(next.editorRedacts),
+          { id: makeId(), x: op.x, y: op.y, w: op.w, h: op.h, color: "#000000" },
+        ];
         break;
 
       case "setCrop":

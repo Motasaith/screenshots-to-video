@@ -175,6 +175,14 @@ interface StepAnnotation {
   editorRedactW?: number | null;
   editorRedactH?: number | null;
   editorRedactColor?: string | null;
+  editorRedacts?: Array<{
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    color?: string;
+  }> | null;
   editorWatermarkText?: string | null;
   editorWatermarkPosition?: string | null;
   editorWatermarkSize?: string | null;
@@ -210,6 +218,13 @@ interface StepAnnotation {
   editorBadgeX?: number | null;
   editorBadgeY?: number | null;
   editorBadgeColor?: string | null;
+  editorBadges?: Array<{
+    id: string;
+    number: number;
+    x: number;
+    y: number;
+    color?: string;
+  }> | null;
   editorMagnifyX?: number | null;
   editorMagnifyY?: number | null;
   editorMagnifyW?: number | null;
@@ -243,6 +258,14 @@ type ToolMode = "select" | "highlight" | "zoom" | "overlay" | "crop" | "blur" | 
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Where the letterboxed media actually sits inside the canvas box.
+ *
+ * `naturalW`/`naturalH` come back too: effects whose strength is expressed in
+ * source pixels (blur sigma, pixelate block size) need the ratio between the
+ * displayed size and the real one to preview at the strength they will export
+ * at.
+ */
 function getImageBounds(container: HTMLDivElement, img: HTMLImageElement | HTMLVideoElement) {
   const cw = container.offsetWidth;
   const ch = container.offsetHeight;
@@ -267,8 +290,40 @@ function getImageBounds(container: HTMLDivElement, img: HTMLImageElement | HTMLV
     offsetY = 0;
   }
 
-  return { visibleW, visibleH, offsetX, offsetY, cw, ch };
+  return { visibleW, visibleH, offsetX, offsetY, cw, ch, naturalW: nw, naturalH: nh };
 }
+
+/**
+ * Greedy word wrap at a character budget.
+ *
+ * Deliberately the same algorithm as `splitTextIntoLines` in api/lib/ffmpeg.ts:
+ * the canvas has to break the overlay text at exactly the points the renderer
+ * will, or the preview shows a different number of lines than the video does.
+ */
+function splitIntoLines(text: string, maxChars: number): string[] {
+  const lines: string[] = [];
+  let current = "";
+  for (const word of text.split(/\s+/)) {
+    if (!word) continue;
+    if (current.length + word.length + (current.length > 0 ? 1 : 0) <= maxChars) {
+      current += (current.length > 0 ? " " : "") + word;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+/**
+ * Border width of a drawn region box, in px.
+ *
+ * The blur clip starts inside this border while the region's percentage
+ * position is measured from outside it, so the blurred copy has to be shifted
+ * back by it to stay aligned with the original underneath.
+ */
+const BLUR_CLIP_INSET = 2;
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -279,6 +334,60 @@ function clamp(n: number, min: number, max: number) {
 /* ------------------------------------------------------------------ */
 
 /**
+ * The legacy single redaction bar, as a one-entry list.
+ *
+ * Redaction was one rectangle per step (`editorRedactX..H`) until
+ * `editorRedacts` was added. Steps saved before that still carry the scalars
+ * and nothing else, so they are lifted into the array once, on load. The array
+ * wins when both are present, which matches what the renderer does.
+ */
+function legacyToRedacts(s: {
+  editorRedacts?: Array<{ id: string; x: number; y: number; w: number; h: number; color?: string }> | null;
+  editorRedactX?: number | null;
+  editorRedactY?: number | null;
+  editorRedactW?: number | null;
+  editorRedactH?: number | null;
+  editorRedactColor?: string | null;
+}) {
+  if (s.editorRedacts && s.editorRedacts.length > 0) return s.editorRedacts;
+  if (
+    s.editorRedactX == null || s.editorRedactY == null ||
+    !s.editorRedactW || !s.editorRedactH
+  ) {
+    return [];
+  }
+  return [{
+    id: `redact-legacy-${s.editorRedactX}-${s.editorRedactY}`,
+    x: s.editorRedactX,
+    y: s.editorRedactY,
+    w: s.editorRedactW,
+    h: s.editorRedactH,
+    color: s.editorRedactColor || "#000000",
+  }];
+}
+
+/** The legacy single badge, as a one-entry list. See {@link legacyToRedacts}. */
+function legacyToBadges(s: {
+  editorBadges?: Array<{ id: string; number: number; x: number; y: number; color?: string }> | null;
+  editorBadgeNumber?: number | null;
+  editorBadgeX?: number | null;
+  editorBadgeY?: number | null;
+  editorBadgeColor?: string | null;
+}) {
+  if (s.editorBadges && s.editorBadges.length > 0) return s.editorBadges;
+  if (s.editorBadgeNumber == null || s.editorBadgeX == null || s.editorBadgeY == null) {
+    return [];
+  }
+  return [{
+    id: `badge-legacy-${s.editorBadgeNumber}`,
+    number: s.editorBadgeNumber,
+    x: s.editorBadgeX,
+    y: s.editorBadgeY,
+    color: s.editorBadgeColor || "#FBBF24",
+  }];
+}
+
+/**
  * Applying a censorship strength to a step.
  *
  * Each region stores its own `intensity` / `blockSize`, baked in when it was
@@ -287,46 +396,62 @@ function clamp(n: number, min: number, max: number) {
  *
  *     blur(${region.intensity ?? ann.editorBlurIntensity ?? 20}px)
  *
- * So moving the step-level slider changed a number nothing looked at once a
- * region existed, which is why the slider appeared dead. These write the new
- * value to the step default *and* to every region on that step, so the slider
- * does what it looks like it does. Per-region values stay in the model, ready
- * for a per-region control later.
+ * So a slider that only wrote the step default changed a number nothing looked
+ * at once a region existed, and appeared dead. The fix for that went the other
+ * way and wrote every region at once, which meant raising the block size on one
+ * pixelated area coarsened every other area on the same scene. That is the bug
+ * these now close.
+ *
+ * `targetId` is the region the panel is editing. With one, only that region
+ * moves. Without one - nothing drawn yet - the value becomes the step default,
+ * which is what the next region drawn will be created with.
  */
 function withBlurIntensity(
   ann: StepAnnotation | undefined,
-  intensity: number
+  intensity: number,
+  targetId?: string | null
 ): StepAnnotation {
   const base = ann || {};
-  return {
-    ...base,
-    editorBlurIntensity: intensity,
-    editorBlurs: (base.editorBlurs || []).map((r) => ({ ...r, intensity })),
-  };
+  const regions = base.editorBlurs || [];
+  if (targetId && regions.some((r) => r.id === targetId)) {
+    return {
+      ...base,
+      editorBlurs: regions.map((r) => (r.id === targetId ? { ...r, intensity } : r)),
+    };
+  }
+  return { ...base, editorBlurIntensity: intensity };
 }
 
 function withPixelateBlockSize(
   ann: StepAnnotation | undefined,
-  blockSize: number
+  blockSize: number,
+  targetId?: string | null
 ): StepAnnotation {
   const base = ann || {};
-  return {
-    ...base,
-    editorPixelateBlockSize: blockSize,
-    editorPixelates: (base.editorPixelates || []).map((r) => ({ ...r, blockSize })),
-  };
+  const regions = base.editorPixelates || [];
+  if (targetId && regions.some((r) => r.id === targetId)) {
+    return {
+      ...base,
+      editorPixelates: regions.map((r) => (r.id === targetId ? { ...r, blockSize } : r)),
+    };
+  }
+  return { ...base, editorPixelateBlockSize: blockSize };
 }
 
 function withSpotlightIntensity(
   ann: StepAnnotation | undefined,
-  intensity: number
+  intensity: number,
+  targetId?: string | null
 ): StepAnnotation {
   const base = ann || {};
-  return {
-    ...base,
-    editorSpotlightIntensity: intensity,
-    editorSpotlights: (base.editorSpotlights || []).map((r) => ({ ...r, intensity })),
-  };
+  const regions = base.editorSpotlights || [];
+  if (targetId && regions.some((r) => r.id === targetId)) {
+    return {
+      ...base,
+      editorSpotlights: regions.map((r) => (r.id === targetId ? { ...r, intensity } : r)),
+    };
+  }
+  return { ...base, editorSpotlightIntensity: intensity };
 }
 
 /**
@@ -588,6 +713,21 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   };
 
 
+  /**
+   * Which drawn region the properties panel is editing.
+   *
+   * Blur, pixelate and spotlight each store their strength per region, but the
+   * panel had a single slider and no notion of a target, so it wrote the new
+   * value to every region on the step at once: raising the block size on one
+   * pixelated area coarsened all of them. The slider now edits whatever is
+   * selected here, and a region is selected by drawing it or by clicking it on
+   * the canvas.
+   */
+  const [selectedRegion, setSelectedRegion] = useState<{
+    kind: "blur" | "pixelate" | "spotlight" | "redact" | "badge" | "highlight";
+    id: string;
+  } | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadingFilesCount, setUploadingFilesCount] = useState(0);
   // Drag depth, not a boolean: dragging over child elements fires
@@ -695,7 +835,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   /** Serialized annotation last written to the server, to detect real changes. */
   const lastSavedSnapshot = useRef<string>("");
   const [dragItem, setDragItem] = useState<{
-    type: "overlay" | "badge" | "magnify" | "zoomTarget" | "zoomRect" | "blur" | "redact" | "pixelate" | "spotlight" | "multizoom" | "crop" | "blurArr" | "pixelateArr" | "spotlightArr" | "highlightArr";
+    type: "overlay" | "badge" | "magnify" | "zoomTarget" | "zoomRect" | "blur" | "redact" | "pixelate" | "spotlight" | "multizoom" | "crop" | "blurArr" | "pixelateArr" | "spotlightArr" | "highlightArr" | "redactArr" | "badgeArr";
     id?: string;
     startX: number;
     startY: number;
@@ -709,7 +849,14 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const imageRef = useRef<HTMLImageElement | HTMLVideoElement>(null);
   const handleResizeRef = useRef<string | null>(null);
 
-  const [bounds, setBounds] = useState<{ visibleW: number; visibleH: number; offsetX: number; offsetY: number } | null>(null);
+  const [bounds, setBounds] = useState<{
+    visibleW: number;
+    visibleH: number;
+    offsetX: number;
+    offsetY: number;
+    naturalW: number;
+    naturalH: number;
+  } | null>(null);
 
   const updateBounds = useCallback(() => {
     if (canvasRef.current && imageRef.current) {
@@ -1479,11 +1626,18 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           editorBlurH: s.editorBlurH,
           editorBlurIntensity: s.editorBlurIntensity ?? 20,
           editorBlurs: s.editorBlurs || [],
-          editorRedactX: s.editorRedactX,
-          editorRedactY: s.editorRedactY,
-          editorRedactW: s.editorRedactW,
-          editorRedactH: s.editorRedactH,
+          // Nulled, not copied: `legacyToRedacts` has already lifted whatever
+          // was here into `editorRedacts`, and the renderer falls back to these
+          // scalars whenever the array is empty. Leaving them populated would
+          // mean "clear all redactions" wiped the list and then rendered the
+          // old bar straight back from the fallback. The colour survives as the
+          // default for newly drawn bars.
+          editorRedactX: null,
+          editorRedactY: null,
+          editorRedactW: null,
+          editorRedactH: null,
           editorRedactColor: s.editorRedactColor,
+          editorRedacts: legacyToRedacts(s),
           editorWatermarkText: s.editorWatermarkText,
           editorWatermarkPosition: s.editorWatermarkPosition,
           editorWatermarkSize: s.editorWatermarkSize,
@@ -1501,10 +1655,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           editorSpotlightH: s.editorSpotlightH,
           editorSpotlightIntensity: s.editorSpotlightIntensity ?? 0.6,
           editorSpotlights: s.editorSpotlights || [],
-          editorBadgeNumber: s.editorBadgeNumber,
-          editorBadgeX: s.editorBadgeX,
-          editorBadgeY: s.editorBadgeY,
+          // Same as the redaction scalars above: migrated into `editorBadges`,
+          // then cleared so the fallback cannot bring the old badge back.
+          editorBadgeNumber: null,
+          editorBadgeX: null,
+          editorBadgeY: null,
           editorBadgeColor: s.editorBadgeColor,
+          editorBadges: legacyToBadges(s),
           editorMagnifyX: s.editorMagnifyX,
           editorMagnifyY: s.editorMagnifyY,
           editorMagnifyW: s.editorMagnifyW,
@@ -1634,17 +1791,29 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     }
 
     if (mode === "badge") {
+      // Appends. This used to write the single `editorBadgeX/Y` pair, so the
+      // second badge placed on a scene just moved the first one somewhere else.
+      const existingBadges = annotations[currentStep.id]?.editorBadges || [];
+      const badge = {
+        id: crypto.randomUUID(),
+        // Numbering continues from what is already on the scene rather than
+        // restarting, so three badges read 1, 2, 3.
+        number: existingBadges.length > 0
+          ? Math.max(...existingBadges.map((b) => b.number)) + 1
+          : currentStepIndex + 1,
+        x: coords.x,
+        y: coords.y,
+        color: annotations[currentStep.id]?.editorBadgeColor || "#FBBF24",
+      };
       const nextState = {
         ...annotations,
         [currentStep.id]: {
           ...(annotations[currentStep.id] || {}),
-          editorBadgeNumber: annotations[currentStep.id]?.editorBadgeNumber || currentStepIndex + 1,
-          editorBadgeX: coords.x,
-          editorBadgeY: coords.y,
-          editorBadgeColor: annotations[currentStep.id]?.editorBadgeColor || "#FBBF24",
+          editorBadges: [...existingBadges, badge],
         },
       };
       pushHistory(nextState);
+      setSelectedRegion({ kind: "badge", id: badge.id });
       setActiveTab("badge");
       return;
     }
@@ -1803,6 +1972,33 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
             updated.editorRedactX = clamp(initX + deltaX, 0, 100 - w);
             updated.editorRedactY = clamp(initY + deltaY, 0, 100 - h);
           }
+        } else if (dragItem.type === "redactArr") {
+          const handle = handleResizeRef.current;
+          const initX = dragItem.initialX || 0;
+          const initY = dragItem.initialY || 0;
+          const initW = dragItem.initialW || 0;
+          const initH = dragItem.initialH || 0;
+          let newX = initX, newY = initY, newW = initW, newH = initH;
+          if (handle) {
+            if (handle.includes("w")) { newX = clamp(initX + deltaX, 0, initX + initW - 5); newW = initW - (newX - initX); }
+            if (handle.includes("e")) { newW = clamp(initW + deltaX, 5, 100 - initX); }
+            if (handle.includes("n")) { newY = clamp(initY + deltaY, 0, initY + initH - 5); newH = initH - (newY - initY); }
+            if (handle.includes("s")) { newH = clamp(initH + deltaY, 5, 100 - initY); }
+          } else {
+            newX = clamp(initX + deltaX, 0, 100 - initW);
+            newY = clamp(initY + deltaY, 0, 100 - initH);
+          }
+          const finalW = handle ? newW : initW;
+          const finalH = handle ? newH : initH;
+          updated.editorRedacts = (stepAnn.editorRedacts || []).map((r) =>
+            r.id === dragItem.id ? { ...r, x: newX, y: newY, w: finalW, h: finalH } : r
+          );
+        } else if (dragItem.type === "badgeArr") {
+          const nx = clamp(dragItem.initialX + deltaX, 0, 100);
+          const ny = clamp(dragItem.initialY + deltaY, 0, 100);
+          updated.editorBadges = (stepAnn.editorBadges || []).map((b) =>
+            b.id === dragItem.id ? { ...b, x: nx, y: ny } : b
+          );
         } else if (dragItem.type === "blurArr") {
           const handle = handleResizeRef.current;
           const initX = dragItem.initialX || 0;
@@ -1934,6 +2130,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
     const updatedAnn = { ...(annotations[currentStep.id] || {}) };
     let changed = false;
+    let newSelection: { kind: "blur" | "pixelate" | "spotlight" | "redact"; id: string } | null = null;
 
     if (mode === "highlight") {
       const x = Math.min(dragStart.x, dragCurrent.x);
@@ -1978,11 +2175,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
       if (w > 2 && h > 2) {
         const existing = updatedAnn.editorBlurs || [];
-        updatedAnn.editorBlurs = [...existing, {
+        const region = {
           id: crypto.randomUUID(),
           x, y, w, h,
           intensity: updatedAnn.editorBlurIntensity ?? 20,
-        }];
+        };
+        updatedAnn.editorBlurs = [...existing, region];
+        newSelection = { kind: "blur" as const, id: region.id };
         changed = true;
         setActiveTab("blur");
       }
@@ -1995,10 +2194,17 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       const h = Math.abs(dragCurrent.y - dragStart.y);
 
       if (w > 2 && h > 2) {
-        updatedAnn.editorRedactX = x;
-        updatedAnn.editorRedactY = y;
-        updatedAnn.editorRedactW = w;
-        updatedAnn.editorRedactH = h;
+        // Appends, like blur and pixelate. Writing the single
+        // `editorRedactX..H` rectangle meant a scene could only ever hide one
+        // thing: drawing a second bar dragged the first one on top of it.
+        const existing = updatedAnn.editorRedacts || [];
+        const region = {
+          id: crypto.randomUUID(),
+          x, y, w, h,
+          color: updatedAnn.editorRedactColor || "#000000",
+        };
+        updatedAnn.editorRedacts = [...existing, region];
+        newSelection = { kind: "redact" as const, id: region.id };
         changed = true;
         setActiveTab("redact");
       }
@@ -2012,11 +2218,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
       if (w > 2 && h > 2) {
         const existing = updatedAnn.editorPixelates || [];
-        updatedAnn.editorPixelates = [...existing, {
+        const region = {
           id: crypto.randomUUID(),
           x, y, w, h,
           blockSize: updatedAnn.editorPixelateBlockSize ?? 20,
-        }];
+        };
+        updatedAnn.editorPixelates = [...existing, region];
+        newSelection = { kind: "pixelate" as const, id: region.id };
         changed = true;
         setActiveTab("pixelate");
       }
@@ -2030,11 +2238,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
       if (w > 2 && h > 2) {
         const existing = updatedAnn.editorSpotlights || [];
-        updatedAnn.editorSpotlights = [...existing, {
+        const region = {
           id: crypto.randomUUID(),
           x, y, w, h,
           intensity: updatedAnn.editorSpotlightIntensity ?? 0.6,
-        }];
+        };
+        updatedAnn.editorSpotlights = [...existing, region];
+        newSelection = { kind: "spotlight" as const, id: region.id };
         changed = true;
         setActiveTab("spotlight");
       }
@@ -2045,6 +2255,9 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         ...annotations,
         [currentStep.id]: updatedAnn,
       });
+      // Drawing a region selects it, so the strength slider in the panel that
+      // just opened is already pointed at the thing that was drawn.
+      if (newSelection) setSelectedRegion(newSelection);
     }
 
     setIsDragging(false);
@@ -2137,6 +2350,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     "editorBlurX", "editorBlurY", "editorBlurW", "editorBlurH", "editorBlurIntensity",
     "editorBlurs",
     "editorRedactX", "editorRedactY", "editorRedactW", "editorRedactH", "editorRedactColor",
+    "editorRedacts",
     "editorWatermarkText", "editorWatermarkPosition", "editorWatermarkSize",
     "editorWatermarkColor", "editorWatermarkOpacity",
     "editorPixelateX", "editorPixelateY", "editorPixelateW", "editorPixelateH", "editorPixelateBlockSize",
@@ -2144,6 +2358,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     "editorSpotlightX", "editorSpotlightY", "editorSpotlightW", "editorSpotlightH", "editorSpotlightIntensity",
     "editorSpotlights",
     "editorBadgeNumber", "editorBadgeX", "editorBadgeY", "editorBadgeColor",
+    "editorBadges",
     "editorMagnifyX", "editorMagnifyY", "editorMagnifyW", "editorMagnifyH", "editorMagnifyScale", "editorMagnifyCorner",
     "editorColorFilter", "editorColorFilterStrength",
     "editorZoomScale", "editorDuration",
@@ -2310,6 +2525,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         editorBlurs: [],
         editorPixelates: [],
         editorSpotlights: [],
+        editorRedacts: [],
+        editorBadges: [],
         editorMultiZooms: [],
       };
       pushHistory({ ...annotations, [currentStep.id]: cleared });
@@ -2341,6 +2558,86 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
   /* Derived state */
   const currentAnn = currentStep ? annotations[currentStep.id] : null;
+
+  /**
+   * Which region a strength slider is pointed at, and where it sits in the list.
+   *
+   * Falls back to the most recently drawn region when nothing has been clicked,
+   * so the slider always has a target and never looks dead. Returns index -1
+   * when the scene has no regions of that kind at all, in which case the slider
+   * edits the step default that the next region will inherit.
+   */
+  const sliderTarget = (kind: "blur" | "pixelate" | "spotlight") => {
+    const list =
+      kind === "blur" ? currentAnn?.editorBlurs
+        : kind === "pixelate" ? currentAnn?.editorPixelates
+          : currentAnn?.editorSpotlights;
+    if (!list || list.length === 0) return { id: null as string | null, index: -1, total: 0 };
+    const picked =
+      selectedRegion?.kind === kind && list.some((r) => r.id === selectedRegion.id)
+        ? selectedRegion.id
+        : list[list.length - 1].id;
+    return { id: picked, index: list.findIndex((r) => r.id === picked), total: list.length };
+  };
+
+  const blurTarget = sliderTarget("blur");
+  const blurValue =
+    currentAnn?.editorBlurs?.find((r) => r.id === blurTarget.id)?.intensity
+    ?? currentAnn?.editorBlurIntensity ?? 20;
+
+  const pixelateTarget = sliderTarget("pixelate");
+  const pixelateValue =
+    currentAnn?.editorPixelates?.find((r) => r.id === pixelateTarget.id)?.blockSize
+    ?? currentAnn?.editorPixelateBlockSize ?? 20;
+
+  const spotlightTarget = sliderTarget("spotlight");
+  const spotlightValue =
+    currentAnn?.editorSpotlights?.find((r) => r.id === spotlightTarget.id)?.intensity
+    ?? currentAnn?.editorSpotlightIntensity ?? 0.6;
+
+  // Redaction bars and badges follow the same rule as the strength sliders: the
+  // panel edits whichever one is selected, falling back to the most recent so
+  // the fields are never pointed at nothing while the scene has some.
+  const redactList = currentAnn?.editorRedacts || [];
+  const redactIndex = redactList.length === 0
+    ? -1
+    : (selectedRegion?.kind === "redact" && redactList.some((r) => r.id === selectedRegion.id)
+      ? redactList.findIndex((r) => r.id === selectedRegion.id)
+      : redactList.length - 1);
+  const redactTarget = redactIndex >= 0 ? redactList[redactIndex] : null;
+
+  const badgeList = currentAnn?.editorBadges || [];
+  const badgeIndex = badgeList.length === 0
+    ? -1
+    : (selectedRegion?.kind === "badge" && badgeList.some((b) => b.id === selectedRegion.id)
+      ? badgeList.findIndex((b) => b.id === selectedRegion.id)
+      : badgeList.length - 1);
+  const badgeTarget = badgeIndex >= 0 ? badgeList[badgeIndex] : null;
+
+  const updateRedact = (id: string, patch: Partial<{ x: number; y: number; w: number; h: number; color: string }>) => {
+    setAnnotations((prev) => ({
+      ...prev,
+      [currentStep!.id]: {
+        ...prev[currentStep!.id],
+        editorRedacts: (prev[currentStep!.id]?.editorRedacts || []).map((r) =>
+          r.id === id ? { ...r, ...patch } : r
+        ),
+      },
+    }));
+  };
+
+  const updateBadge = (id: string, patch: Partial<{ number: number; x: number; y: number; color: string }>) => {
+    setAnnotations((prev) => ({
+      ...prev,
+      [currentStep!.id]: {
+        ...prev[currentStep!.id],
+        editorBadges: (prev[currentStep!.id]?.editorBadges || []).map((b) =>
+          b.id === id ? { ...b, ...patch } : b
+        ),
+      },
+    }));
+  };
+
 
   /**
    * Lend the editor's context to the support widget.
@@ -2483,6 +2780,61 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   }, [canvasDim.width, canvasDim.height, getFitScale]);
 
 
+  /**
+   * A blur strength, converted from what the renderer means to what CSS means.
+   *
+   * The stored number is the `gblur` sigma FFmpeg applies to the full-resolution
+   * source. Two things have to be undone to preview it honestly:
+   *
+   *  - the media is drawn at `bounds.visibleW` for a source `naturalW` wide, so
+   *    a sigma in source pixels is that much smaller on screen;
+   *  - CSS `blur(R)` is a Gaussian of sigma R/2, not R.
+   *
+   * Neither was accounted for, so the preview was off by the display scale and
+   * by a factor of two on top of it. Falls back to the raw number until the
+   * media has loaded and its natural size is known.
+   */
+  const previewBlurPx = (intensity: number) => {
+    if (!bounds?.naturalW) return intensity;
+    return (2 * intensity * bounds.visibleW) / bounds.naturalW;
+  };
+
+  /**
+   * How the text overlay will actually be laid out by the renderer.
+   *
+   * `drawtext` cannot wrap, so `buildOverlayTextFilter` breaks the label into
+   * lines with `splitTextIntoLines` and clamps each one inside the frame. Both
+   * calculations are repeated here against the same numbers - source pixels,
+   * the same 0.55em advance estimate - so the preview and the export agree.
+   *
+   * Returns null until the media has loaded, since every figure below is
+   * derived from its natural size.
+   */
+  const overlayPreviewLayout = (text: string, size: string | null | undefined) => {
+    if (!bounds?.naturalW || !bounds.naturalH) return null;
+
+    const factor = size === "small" ? 0.04 : size === "large" ? 0.07 : 0.055;
+    const fontSizeImage = Math.round(bounds.naturalH * factor);
+    const maxChars = Math.max(8, Math.floor((bounds.naturalW * 0.92) / (fontSizeImage * 0.55)));
+    const lines = splitIntoLines(text, maxChars);
+    if (lines.length === 0) return null;
+
+    const displayScale = bounds.visibleW / bounds.naturalW;
+    const longest = Math.max(...lines.map((l) => l.length));
+
+    // Half the block's size as a percentage of the frame, which is how far the
+    // anchor has to stay from each edge for the block to fit.
+    const halfWidthPct = ((longest * fontSizeImage * 0.55) / 2 / bounds.naturalW) * 100;
+    const halfHeightPct = ((lines.length * fontSizeImage * 1.25) / 2 / bounds.naturalH) * 100;
+
+    return {
+      lines,
+      fontSize: fontSizeImage * displayScale,
+      left: clamp(currentAnn?.editorOverlayX ?? 50, halfWidthPct, 100 - halfWidthPct),
+      top: clamp(currentAnn?.editorOverlayY ?? 50, halfHeightPct, 100 - halfHeightPct),
+    };
+  };
+
   const tempRect =
     isDragging && dragStart && dragCurrent
       ? {
@@ -2503,14 +2855,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     : null;
 
 
-  const redactRect = currentAnn
-    ? {
-      x: currentAnn.editorRedactX,
-      y: currentAnn.editorRedactY,
-      w: currentAnn.editorRedactW,
-      h: currentAnn.editorRedactH,
-    }
-    : null;
 
   const overlayPos = currentAnn
     ? { x: currentAnn.editorOverlayX, y: currentAnn.editorOverlayY }
@@ -3027,29 +3371,36 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               </div>
 
               <div>
-                <Label className="text-xs font-mono">Blur Intensity</Label>
+                <Label className="text-xs font-mono">
+                  Blur Intensity
+                  <span className="ml-1 font-normal text-[var(--sketch-fg-muted)]">
+                    {blurTarget.index >= 0
+                      ? `- region ${blurTarget.index + 1} of ${blurTarget.total}`
+                      : "- default for new regions"}
+                  </span>
+                </Label>
                 <div className="flex items-center gap-3 mt-1">
                   <Slider
-                    value={[currentAnn?.editorBlurIntensity ?? 20]}
+                    value={[blurValue]}
                     min={5}
                     max={60}
                     step={1}
                     onValueChange={([v]) =>
                       setAnnotations((prev) => ({
                         ...prev,
-                        [currentStep!.id]: withBlurIntensity(prev[currentStep!.id], v),
+                        [currentStep!.id]: withBlurIntensity(prev[currentStep!.id], v, blurTarget.id),
                       }))
                     }
                     onValueCommit={([v]) => {
                       pushHistory({
                         ...annotations,
-                        [currentStep!.id]: withBlurIntensity(annotations[currentStep!.id], v),
+                        [currentStep!.id]: withBlurIntensity(annotations[currentStep!.id], v, blurTarget.id),
                       });
                     }}
                     className="flex-1"
                   />
                   <span className="text-xs font-mono w-10 text-right">
-                    {currentAnn?.editorBlurIntensity || 20}px
+                    {blurValue}px
                   </span>
                 </div>
               </div>
@@ -3082,133 +3433,79 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           {/* Redact Properties */}
           {activeTab === "redact" && (
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-xs font-mono">X (%)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={currentAnn?.editorRedactX ?? ""}
-                    onChange={(e) =>
-                      setAnnotations((prev) => ({
-                        ...prev,
-                        [currentStep!.id]: {
-                          ...prev[currentStep!.id],
-                          editorRedactX: Number(e.target.value),
-                        },
-                      }))
-                    }
-                    onBlur={() => pushHistory(annotations)}
-                    className="mt-1 text-xs"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs font-mono">Y (%)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={currentAnn?.editorRedactY ?? ""}
-                    onChange={(e) =>
-                      setAnnotations((prev) => ({
-                        ...prev,
-                        [currentStep!.id]: {
-                          ...prev[currentStep!.id],
-                          editorRedactY: Number(e.target.value),
-                        },
-                      }))
-                    }
-                    onBlur={() => pushHistory(annotations)}
-                    className="mt-1 text-xs"
-                  />
-                </div>
-              </div>
+              {redactTarget ? (
+                <>
+                  <div className="text-[10px] text-[var(--sketch-fg-muted)]">
+                    Editing bar {redactIndex + 1} of {(currentAnn?.editorRedacts || []).length}.
+                    Click a bar on the canvas to switch.
+                  </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-xs font-mono">Width (%)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={currentAnn?.editorRedactW ?? ""}
-                    onChange={(e) =>
-                      setAnnotations((prev) => ({
-                        ...prev,
-                        [currentStep!.id]: {
-                          ...prev[currentStep!.id],
-                          editorRedactW: Number(e.target.value),
-                        },
-                      }))
-                    }
-                    onBlur={() => pushHistory(annotations)}
-                    className="mt-1 text-xs"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs font-mono">Height (%)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={currentAnn?.editorRedactH ?? ""}
-                    onChange={(e) =>
-                      setAnnotations((prev) => ({
-                        ...prev,
-                        [currentStep!.id]: {
-                          ...prev[currentStep!.id],
-                          editorRedactH: Number(e.target.value),
-                        },
-                      }))
-                    }
-                    onBlur={() => pushHistory(annotations)}
-                    className="mt-1 text-xs"
-                  />
-                </div>
-              </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      { key: "x", label: "X (%)" },
+                      { key: "y", label: "Y (%)" },
+                      { key: "w", label: "Width (%)" },
+                      { key: "h", label: "Height (%)" },
+                    ] as const).map((field) => (
+                      <div key={field.key}>
+                        <Label className="text-xs font-mono">{field.label}</Label>
+                        <Input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={redactTarget[field.key]}
+                          onChange={(e) => updateRedact(redactTarget.id, { [field.key]: Number(e.target.value) })}
+                          onBlur={() => pushHistory(annotations)}
+                          className="mt-1 text-xs"
+                        />
+                      </div>
+                    ))}
+                  </div>
 
-              <div>
-                <Label className="text-xs font-mono">Redact Color</Label>
-                <div className="flex items-center gap-2 mt-1">
-                  <input
-                    type="color"
-                    value={currentAnn?.editorRedactColor || "#000000"}
-                    onChange={(e) =>
-                      setAnnotations((prev) => ({
-                        ...prev,
-                        [currentStep!.id]: {
-                          ...prev[currentStep!.id],
-                          editorRedactColor: e.target.value,
-                        },
-                      }))
-                    }
-                    onBlur={() => pushHistory(annotations)}
-                    className="w-8 h-8 rounded border border-[var(--sketch-fg-subtle)]/30"
-                  />
-                  <span className="text-xs font-mono text-[var(--sketch-fg-muted)]">
-                    {currentAnn?.editorRedactColor || "#000000"}
-                  </span>
-                </div>
-              </div>
+                  <div>
+                    <Label className="text-xs font-mono">Redact Color</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <input
+                        type="color"
+                        value={redactTarget.color || "#000000"}
+                        onChange={(e) => updateRedact(redactTarget.id, { color: e.target.value })}
+                        onBlur={() => pushHistory(annotations)}
+                        className="w-8 h-8 rounded border border-[var(--sketch-fg-subtle)]/30"
+                      />
+                      <span className="text-xs font-mono text-[var(--sketch-fg-muted)]">
+                        {redactTarget.color || "#000000"}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p className="text-[10px] text-[var(--sketch-fg-muted)]">
+                  No redaction bars on this scene yet.
+                </p>
+              )}
 
               <p className="text-[10px] text-[var(--sketch-fg-muted)]">
-                ≡ Select "Redact" tool and drag on canvas to cover sensitive info completely
+                Select the "Redact" tool and drag on the canvas to cover sensitive
+                info completely. Drag again to add another bar - a scene can have
+                as many as it needs.
               </p>
 
-              {currentAnn?.editorRedactX != null && (
+              {(currentAnn?.editorRedacts || []).length > 0 && (
                 <button
                   onClick={() => {
-                    handleClear("editorRedactX");
-                    handleClear("editorRedactY");
-                    handleClear("editorRedactW");
-                    handleClear("editorRedactH");
-                    handleClear("editorRedactColor");
+                    pushHistory({
+                      ...annotations,
+                      [currentStep.id]: {
+                        ...(annotations[currentStep.id] || {}),
+                        editorRedacts: [],
+                      },
+                    });
+                    setSelectedRegion(null);
                   }}
                   className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
                 >
                   <Trash2 className="w-3 h-3" />
-                  Clear redaction
+                  Clear all redactions ({(currentAnn?.editorRedacts || []).length})
                 </button>
               )}
             </div>
@@ -3454,28 +3751,33 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
               <div>
                 <Label className="text-xs font-mono">Block Size</Label>
+                <div className="text-[10px] text-[var(--sketch-fg-muted)] mt-0.5">
+                  {pixelateTarget.index >= 0
+                    ? `Editing region ${pixelateTarget.index + 1} of ${pixelateTarget.total}. Click a region on the canvas to switch.`
+                    : "Default for new regions."}
+                </div>
                 <div className="flex items-center gap-3 mt-1">
                   <Slider
-                    value={[currentAnn?.editorPixelateBlockSize ?? 20]}
+                    value={[pixelateValue]}
                     min={4}
                     max={60}
                     step={1}
                     onValueChange={([v]) =>
                       setAnnotations((prev) => ({
                         ...prev,
-                        [currentStep!.id]: withPixelateBlockSize(prev[currentStep!.id], v),
+                        [currentStep!.id]: withPixelateBlockSize(prev[currentStep!.id], v, pixelateTarget.id),
                       }))
                     }
                     onValueCommit={([v]) => {
                       pushHistory({
                         ...annotations,
-                        [currentStep!.id]: withPixelateBlockSize(annotations[currentStep!.id], v),
+                        [currentStep!.id]: withPixelateBlockSize(annotations[currentStep!.id], v, pixelateTarget.id),
                       });
                     }}
                     className="flex-1"
                   />
                   <span className="text-xs font-mono w-10 text-right">
-                    {currentAnn?.editorPixelateBlockSize || 20}px
+                    {pixelateValue}px
                   </span>
                 </div>
               </div>
@@ -3596,28 +3898,33 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
               <div>
                 <Label className="text-xs font-mono">Dim Intensity</Label>
+                <div className="text-[10px] text-[var(--sketch-fg-muted)] mt-0.5">
+                  {spotlightTarget.index >= 0
+                    ? `Editing region ${spotlightTarget.index + 1} of ${spotlightTarget.total}. Click a region on the canvas to switch.`
+                    : "Default for new regions."}
+                </div>
                 <div className="flex items-center gap-3 mt-1">
                   <Slider
-                    value={[Math.round((currentAnn?.editorSpotlightIntensity ?? 0.6) * 100)]}
+                    value={[Math.round(spotlightValue * 100)]}
                     min={10}
                     max={90}
                     step={5}
                     onValueChange={([v]) =>
                       setAnnotations((prev) => ({
                         ...prev,
-                        [currentStep!.id]: withSpotlightIntensity(prev[currentStep!.id], v / 100),
+                        [currentStep!.id]: withSpotlightIntensity(prev[currentStep!.id], v / 100, spotlightTarget.id),
                       }))
                     }
                     onValueCommit={([v]) => {
                       pushHistory({
                         ...annotations,
-                        [currentStep!.id]: withSpotlightIntensity(annotations[currentStep!.id], v / 100),
+                        [currentStep!.id]: withSpotlightIntensity(annotations[currentStep!.id], v / 100, spotlightTarget.id),
                       });
                     }}
                     className="flex-1"
                   />
                   <span className="text-xs font-mono w-10 text-right">
-                    {Math.round((currentAnn?.editorSpotlightIntensity ?? 0.6) * 100)}%
+                    {Math.round(spotlightValue * 100)}%
                   </span>
                 </div>
               </div>
@@ -3650,68 +3957,94 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           {/* Badge Properties */}
           {activeTab === "badge" && (
             <div className="space-y-3">
-              <div>
-                <Label className="text-xs font-mono">Badge Number</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={99}
-                  value={currentAnn?.editorBadgeNumber ?? ""}
-                  onChange={(e) =>
-                    setAnnotations((prev) => ({
-                      ...prev,
-                      [currentStep!.id]: {
-                        ...prev[currentStep!.id],
-                        editorBadgeNumber: Number(e.target.value),
+              {badgeTarget ? (
+                <>
+                  <div className="text-[10px] text-[var(--sketch-fg-muted)]">
+                    Editing badge {badgeIndex + 1} of {(currentAnn?.editorBadges || []).length}.
+                    Click a badge on the canvas to switch.
+                  </div>
+                  <div>
+                    <Label className="text-xs font-mono">Badge Number</Label>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={99}
+                      value={badgeTarget.number}
+                      onChange={(e) => updateBadge(badgeTarget.id, { number: Number(e.target.value) })}
+                      onBlur={() => pushHistory(annotations)}
+                      className="mt-1 text-sm"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs font-mono">X (%)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={badgeTarget.x}
+                        onChange={(e) => updateBadge(badgeTarget.id, { x: Number(e.target.value) })}
+                        onBlur={() => pushHistory(annotations)}
+                        className="mt-1 text-xs"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs font-mono">Y (%)</Label>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={100}
+                        value={badgeTarget.y}
+                        onChange={(e) => updateBadge(badgeTarget.id, { y: Number(e.target.value) })}
+                        onBlur={() => pushHistory(annotations)}
+                        className="mt-1 text-xs"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs font-mono">Color</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <input
+                        type="color"
+                        value={badgeTarget.color || "#FBBF24"}
+                        onChange={(e) => updateBadge(badgeTarget.id, { color: e.target.value })}
+                        onBlur={() => pushHistory(annotations)}
+                        className="w-8 h-8 rounded border border-[var(--sketch-fg-subtle)]/30"
+                      />
+                      <span className="text-xs font-mono text-[var(--sketch-fg-muted)]">
+                        {badgeTarget.color || "#FBBF24"}
+                      </span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p className="text-[10px] text-[var(--sketch-fg-muted)]">
+                  No badges on this scene yet.
+                </p>
+              )}
+
+              <p className="text-[10px] text-[var(--sketch-fg-muted)]">
+                Select the "Badge" tool and click the canvas to place one. Click
+                again to place another - numbering continues from the last badge.
+              </p>
+
+              {(currentAnn?.editorBadges || []).length > 0 && (
+                <button
+                  onClick={() => {
+                    pushHistory({
+                      ...annotations,
+                      [currentStep.id]: {
+                        ...(annotations[currentStep.id] || {}),
+                        editorBadges: [],
                       },
-                    }))
-                  }
-                  onBlur={() => pushHistory(annotations)}
-                  className="mt-1 text-sm"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <Label className="text-xs font-mono">X (%)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={currentAnn?.editorBadgeX ?? ""}
-                    onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorBadgeX: Number(e.target.value) } }))}
-                    onBlur={() => pushHistory(annotations)}
-                    className="mt-1 text-xs"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs font-mono">Y (%)</Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={100}
-                    value={currentAnn?.editorBadgeY ?? ""}
-                    onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorBadgeY: Number(e.target.value) } }))}
-                    onBlur={() => pushHistory(annotations)}
-                    className="mt-1 text-xs"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label className="text-xs font-mono">Color</Label>
-                <div className="flex items-center gap-2 mt-1">
-                  <input
-                    type="color"
-                    value={currentAnn?.editorBadgeColor || "#FBBF24"}
-                    onChange={(e) => setAnnotations((prev) => ({ ...prev, [currentStep!.id]: { ...prev[currentStep!.id], editorBadgeColor: e.target.value } }))}
-                    onBlur={() => pushHistory(annotations)}
-                    className="w-8 h-8 rounded border border-[var(--sketch-fg-subtle)]/30"
-                  />
-                  <span className="text-xs font-mono text-[var(--sketch-fg-muted)]">{currentAnn?.editorBadgeColor || "#FBBF24"}</span>
-                </div>
-              </div>
-              <p className="text-[10px] text-[var(--sketch-fg-muted)]">≡ Select "Badge" tool and click on canvas to place</p>
-              {currentAnn?.editorBadgeNumber != null && (
-                <button onClick={() => { handleClear("editorBadgeNumber"); handleClear("editorBadgeX"); handleClear("editorBadgeY"); handleClear("editorBadgeColor"); }} className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"><Trash2 className="w-3 h-3" /> Clear badge</button>
+                    });
+                    setSelectedRegion(null);
+                  }}
+                  className="flex items-center gap-1 text-xs text-red-500 hover:text-red-600"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Clear all badges ({(currentAnn?.editorBadges || []).length})
+                </button>
               )}
             </div>
           )}
@@ -7116,13 +7449,17 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                   height: `${blurRegion.h}%`,
                                   border: "2px solid #FF4081",
                                   pointerEvents: overlayPointer("blur"),
-                                  boxShadow: "0 0 0 1px rgba(255,255,255,0.75)",
+                                  boxShadow:
+                                    selectedRegion?.kind === "blur" && selectedRegion.id === blurRegion.id
+                                      ? "0 0 0 2px rgba(56,189,248,0.9)"
+                                      : "0 0 0 1px rgba(255,255,255,0.75)",
                                 }}
                                 onMouseDown={(e) => {
                                   if ((e.target as HTMLElement).dataset.handle) return;
                                   e.preventDefault();
                                   e.stopPropagation();
                                   setMode("blur");
+                                  setSelectedRegion({ kind: "blur", id: blurRegion.id });
                                   const coords = getCanvasCoords(e);
                                   if (!coords) return;
                                   setDragItem({
@@ -7137,14 +7474,82 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                   });
                                 }}
                               >
+                                {/* The blurred stand-in for this region.
+                                    `backdrop-filter` was the obvious way to do this
+                                    and the wrong one: it samples whatever is painted
+                                    behind the element, and this canvas sits under a
+                                    `transform: scale()` that is 1.0 only when the
+                                    viewport happens to fit the fixed 640x360 box. On
+                                    a bigger screen the scale rises and Chrome sampled
+                                    the backdrop from the wrong place, smearing content
+                                    from elsewhere in the frame into the box.
+
+                                    So this blurs a real copy of the screenshot instead
+                                    and clips it to the region. Geometry is in pixels
+                                    off `bounds`, not percentages: a percentage chain
+                                    has to resolve through the region box, its border
+                                    and box-sizing, and every one of those is a way for
+                                    the copy to land somewhere other than exactly over
+                                    the original.
+
+                                    The wrapper is `absolute inset-0`, which makes it
+                                    both the clip and the containing block. It has to be
+                                    positioned: `overflow` only clips an absolutely
+                                    positioned child when the overflow element is in
+                                    that child's containing-block chain, and while this
+                                    was static the copy escaped and painted over the
+                                    whole canvas.
+
+                                    Video scenes keep backdrop-filter: an <img> cannot
+                                    show a frame of an mp4, and a second decoding
+                                    <video> per region is not worth it for a preview. */}
                                 <div
-                                  className="w-full h-full"
+                                  className="absolute inset-0 overflow-hidden"
                                   style={{
-                                    backdropFilter: `blur(${blurRegion.intensity ?? currentAnn?.editorBlurIntensity ?? 20}px)`,
-                                    WebkitBackdropFilter: `blur(${blurRegion.intensity ?? currentAnn?.editorBlurIntensity ?? 20}px)`,
-                                    backgroundColor: "rgba(255,255,255,0.05)",
+                                    // Fail closed. If the copy cannot be drawn - the
+                                    // media still loading, a request that did not land -
+                                    // the region must not sit there transparent showing
+                                    // the very thing it is meant to hide. The copy is
+                                    // opaque and covers this whenever it does render.
+                                    backgroundColor: "#6B7280",
                                   }}
-                                />
+                                >
+                                  {timelineClips[currentStepIndex]?.isVideo ? (
+                                    <div
+                                      className="w-full h-full"
+                                      style={{
+                                        backdropFilter: `blur(${previewBlurPx(blurRegion.intensity ?? currentAnn?.editorBlurIntensity ?? 20)}px)`,
+                                        WebkitBackdropFilter: `blur(${previewBlurPx(blurRegion.intensity ?? currentAnn?.editorBlurIntensity ?? 20)}px)`,
+                                        backgroundColor: "rgba(255,255,255,0.05)",
+                                      }}
+                                    />
+                                  ) : (
+                                    <img
+                                      src={currentStep.screenshotPath ?? undefined}
+                                      alt=""
+                                      draggable={false}
+                                      className="absolute pointer-events-none select-none"
+                                      style={{
+                                        // The media at its displayed size, shifted so
+                                        // the slice showing through the clip is this
+                                        // region's own content. BLUR_CLIP_INSET backs
+                                        // out the region's border: the wrapper starts
+                                        // inside it, but the region's percentage
+                                        // position is measured from outside it.
+                                        width: `${bounds.visibleW}px`,
+                                        height: `${bounds.visibleH}px`,
+                                        left: `${-(blurRegion.x / 100) * bounds.visibleW - BLUR_CLIP_INSET}px`,
+                                        top: `${-(blurRegion.y / 100) * bounds.visibleH - BLUR_CLIP_INSET}px`,
+                                        // Tailwind's preflight caps images at
+                                        // `max-width: 100%`, which would shrink the
+                                        // copy to the region and destroy the alignment.
+                                        maxWidth: "none",
+                                        maxHeight: "none",
+                                        filter: `blur(${previewBlurPx(blurRegion.intensity ?? currentAnn?.editorBlurIntensity ?? 20)}px)`,
+                                      }}
+                                    />
+                                  )}
+                                </div>
                                 <div className="absolute -top-5 left-0 bg-[#FF4081] text-white text-[10px] px-1.5 rounded font-medium leading-4 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
                                   Blur {idx + 1}
                                 </div>
@@ -7175,6 +7580,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                       e.preventDefault();
                                       e.stopPropagation();
                                       setMode("blur");
+                                      setSelectedRegion({ kind: "blur", id: blurRegion.id });
                                       const coords = getCanvasCoords(e);
                                       if (!coords) return;
                                       setDragItem({
@@ -7194,68 +7600,83 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                               </div>
                             ))}
 
-                            {/* Redact overlay */}
-                            {redactRect && redactRect.x != null && (
-                              <div
-                                className="absolute cursor-move select-none group"
-                                style={{
-                                  left: `${redactRect.x}%`,
-                                  top: `${redactRect.y}%`,
-                                  width: `${redactRect.w}%`,
-                                  height: `${redactRect.h}%`,
-                                  backgroundColor: currentAnn?.editorRedactColor || "#000000",
-                                  pointerEvents: overlayPointer("redact"),
-                                  border: "2px solid #FFFFFF",
-                                  boxShadow: "0 0 0 1px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.4)",
-                                }}
-                                onMouseDown={(e) => {
-                                  if ((e.target as HTMLElement).dataset.handle) return;
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setMode("redact");
-                                  const coords = getCanvasCoords(e);
-                                  if (!coords) return;
-                                  setDragItem({
-                                    type: "redact",
-                                    startX: coords.x,
-                                    startY: coords.y,
-                                    initialX: currentAnn?.editorRedactX ?? 0,
-                                    initialY: currentAnn?.editorRedactY ?? 0,
-                                    initialW: currentAnn?.editorRedactW ?? 0,
-                                    initialH: currentAnn?.editorRedactH ?? 0,
-                                  });
-                                }}
-                              >
-                                <div className="absolute top-1 left-1 bg-gray-900 text-white text-[10px] font-mono px-1 rounded font-bold border border-white/50">
-                                  Redacted
-                                </div>
-                                {RESIZE_HANDLES.map((h) => (
-                                  <div
-                                    key={h.name}
-                                    data-handle={h.name}
-                                    className="absolute w-2.5 h-2.5 bg-white border border-gray-900 rounded-[2px] pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity"
-                                    style={{ ...h.style, zIndex: 10 }}
+                            {/* Redact overlays (multiple regions) */}
+                            {(currentAnn?.editorRedacts || []).map((redactRegion, idx) => {
+                              const isSelected =
+                                selectedRegion?.kind === "redact" && selectedRegion.id === redactRegion.id;
+                              const startDrag = (e: React.MouseEvent, handleName?: string) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                setMode("redact");
+                                setSelectedRegion({ kind: "redact", id: redactRegion.id });
+                                const coords = getCanvasCoords(e);
+                                if (!coords) return;
+                                setDragItem({
+                                  type: "redactArr",
+                                  id: redactRegion.id,
+                                  startX: coords.x,
+                                  startY: coords.y,
+                                  initialX: redactRegion.x,
+                                  initialY: redactRegion.y,
+                                  initialW: redactRegion.w,
+                                  initialH: redactRegion.h,
+                                });
+                                if (handleName) handleResizeRef.current = handleName;
+                              };
+                              return (
+                                <div
+                                  key={redactRegion.id}
+                                  className="absolute cursor-move select-none group"
+                                  style={{
+                                    left: `${redactRegion.x}%`,
+                                    top: `${redactRegion.y}%`,
+                                    width: `${redactRegion.w}%`,
+                                    height: `${redactRegion.h}%`,
+                                    backgroundColor: redactRegion.color || currentAnn?.editorRedactColor || "#000000",
+                                    pointerEvents: overlayPointer("redact"),
+                                    border: isSelected ? "2px solid #38BDF8" : "2px solid #FFFFFF",
+                                    boxShadow: isSelected
+                                      ? "0 0 0 2px rgba(56,189,248,0.5), 0 4px 12px rgba(0,0,0,0.4)"
+                                      : "0 0 0 1px rgba(0,0,0,0.6), 0 4px 12px rgba(0,0,0,0.4)",
+                                  }}
+                                  onMouseDown={(e) => {
+                                    if ((e.target as HTMLElement).dataset.handle) return;
+                                    startDrag(e);
+                                  }}
+                                >
+                                  <div className="absolute top-1 left-1 bg-gray-900 text-white text-[10px] font-mono px-1 rounded font-bold border border-white/50">
+                                    Redacted {idx + 1}
+                                  </div>
+                                  <button
+                                    className="absolute -top-5 right-0 w-4 h-4 bg-red-600/90 text-white text-[10px] leading-none rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
                                     onMouseDown={(e) => {
                                       e.preventDefault();
                                       e.stopPropagation();
-                                      setMode("redact");
-                                      const coords = getCanvasCoords(e);
-                                      if (!coords) return;
-                                      setDragItem({
-                                        type: "redact",
-                                        startX: coords.x,
-                                        startY: coords.y,
-                                        initialX: currentAnn?.editorRedactX ?? 0,
-                                        initialY: currentAnn?.editorRedactY ?? 0,
-                                        initialW: currentAnn?.editorRedactW ?? 0,
-                                        initialH: currentAnn?.editorRedactH ?? 0,
+                                      pushHistory({
+                                        ...annotations,
+                                        [currentStep.id]: {
+                                          ...(annotations[currentStep.id] || {}),
+                                          editorRedacts: (currentAnn?.editorRedacts || []).filter(
+                                            (r) => r.id !== redactRegion.id
+                                          ),
+                                        },
                                       });
-                                      handleResizeRef.current = h.name;
                                     }}
-                                  />
-                                ))}
-                              </div>
-                            )}
+                                  >
+                                    x
+                                  </button>
+                                  {RESIZE_HANDLES.map((h) => (
+                                    <div
+                                      key={h.name}
+                                      data-handle={h.name}
+                                      className="absolute w-2.5 h-2.5 bg-white border border-gray-900 rounded-[2px] pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity"
+                                      style={{ ...h.style, zIndex: 10 }}
+                                      onMouseDown={(e) => startDrag(e, h.name)}
+                                    />
+                                  ))}
+                                </div>
+                              );
+                            })}
 
                             {/* Watermark preview.
                                 Positioned against the canvas container, which is
@@ -7310,13 +7731,17 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                   height: `${pixRegion.h}%`,
                                   border: "2px solid #00BCD4",
                                   pointerEvents: overlayPointer("pixelate"),
-                                  boxShadow: "0 0 0 1px rgba(255,255,255,0.75)",
+                                  boxShadow:
+                                    selectedRegion?.kind === "pixelate" && selectedRegion.id === pixRegion.id
+                                      ? "0 0 0 2px rgba(56,189,248,0.9)"
+                                      : "0 0 0 1px rgba(255,255,255,0.75)",
                                 }}
                                 onMouseDown={(e) => {
                                   if ((e.target as HTMLElement).dataset.handle) return;
                                   e.preventDefault();
                                   e.stopPropagation();
                                   setMode("pixelate");
+                                  setSelectedRegion({ kind: "pixelate", id: pixRegion.id });
                                   const coords = getCanvasCoords(e);
                                   if (!coords) return;
                                   setDragItem({
@@ -7369,6 +7794,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                       e.preventDefault();
                                       e.stopPropagation();
                                       setMode("pixelate");
+                                      setSelectedRegion({ kind: "pixelate", id: pixRegion.id });
                                       const coords = getCanvasCoords(e);
                                       if (!coords) return;
                                       setDragItem({
@@ -7413,7 +7839,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                       top: `${spotRegion.y}%`,
                                       width: `${spotRegion.w}%`,
                                       height: `${spotRegion.h}%`,
-                                      border: "2px solid #FF6D00",
+                                      border:
+                                        selectedRegion?.kind === "spotlight" && selectedRegion.id === spotRegion.id
+                                          ? "2px solid #38BDF8"
+                                          : "2px solid #FF6D00",
                                       pointerEvents: overlayPointer("spotlight"),
                                       borderRadius: "4px",
                                       boxShadow: `0 0 0 9999px rgba(0,0,0,${spotRegion.intensity ?? currentAnn?.editorSpotlightIntensity ?? 0.6}), 0 0 0 1px rgba(255,255,255,0.9)`,
@@ -7423,6 +7852,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                       e.preventDefault();
                                       e.stopPropagation();
                                       setMode("spotlight");
+                                      setSelectedRegion({ kind: "spotlight", id: spotRegion.id });
                                       const coords = getCanvasCoords(e);
                                       if (!coords) return;
                                       setDragItem({
@@ -7467,6 +7897,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                                           e.preventDefault();
                                           e.stopPropagation();
                                           setMode("spotlight");
+                                          setSelectedRegion({ kind: "spotlight", id: spotRegion.id });
                                           const coords = getCanvasCoords(e);
                                           if (!coords) return;
                                           setDragItem({
@@ -7488,39 +7919,69 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                               </>
                             )}
 
-                            {/* Badge overlay */}
-                            {currentAnn?.editorBadgeNumber != null && currentAnn?.editorBadgeX != null && (
-                              <div
-                                className="absolute cursor-move select-none"
-                                style={{
-                                  left: `${currentAnn.editorBadgeX}%`,
-                                  top: `${currentAnn.editorBadgeY}%`,
-                                  transform: "translate(-50%, -50%)",
-                                  pointerEvents: overlayPointer("badge"),
-                                }}
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setMode("badge");
-                                  const coords = getCanvasCoords(e);
-                                  if (!coords) return;
-                                  setDragItem({
-                                    type: "badge",
-                                    startX: coords.x,
-                                    startY: coords.y,
-                                    initialX: currentAnn?.editorBadgeX ?? 50,
-                                    initialY: currentAnn?.editorBadgeY ?? 50,
-                                  });
-                                }}
-                              >
+                            {/* Badge overlays (multiple badges) */}
+                            {(currentAnn?.editorBadges || []).map((badge) => {
+                              const isSelected =
+                                selectedRegion?.kind === "badge" && selectedRegion.id === badge.id;
+                              return (
                                 <div
-                                  className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-lg"
-                                  style={{ backgroundColor: currentAnn.editorBadgeColor || "#FBBF24", color: "#000" }}
+                                  key={badge.id}
+                                  className="absolute cursor-move select-none group"
+                                  style={{
+                                    left: `${badge.x}%`,
+                                    top: `${badge.y}%`,
+                                    transform: "translate(-50%, -50%)",
+                                    pointerEvents: overlayPointer("badge"),
+                                  }}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setMode("badge");
+                                    setSelectedRegion({ kind: "badge", id: badge.id });
+                                    const coords = getCanvasCoords(e);
+                                    if (!coords) return;
+                                    setDragItem({
+                                      type: "badgeArr",
+                                      id: badge.id,
+                                      startX: coords.x,
+                                      startY: coords.y,
+                                      initialX: badge.x,
+                                      initialY: badge.y,
+                                    });
+                                  }}
                                 >
-                                  {currentAnn.editorBadgeNumber}
+                                  <div
+                                    className="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shadow-lg"
+                                    style={{
+                                      backgroundColor: badge.color || currentAnn?.editorBadgeColor || "#FBBF24",
+                                      color: "#000",
+                                      outline: isSelected ? "2px solid #38BDF8" : "none",
+                                      outlineOffset: "2px",
+                                    }}
+                                  >
+                                    {badge.number}
+                                  </div>
+                                  <button
+                                    className="absolute -top-2 -right-2 w-4 h-4 bg-red-600/90 text-white text-[10px] leading-none rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-auto"
+                                    onMouseDown={(e) => {
+                                      e.preventDefault();
+                                      e.stopPropagation();
+                                      pushHistory({
+                                        ...annotations,
+                                        [currentStep.id]: {
+                                          ...(annotations[currentStep.id] || {}),
+                                          editorBadges: (currentAnn?.editorBadges || []).filter(
+                                            (b) => b.id !== badge.id
+                                          ),
+                                        },
+                                      });
+                                    }}
+                                  >
+                                    x
+                                  </button>
                                 </div>
-                              </div>
-                            )}
+                              );
+                            })}
 
                             {/* Magnify overlay */}
                             {currentAnn?.editorMagnifyX != null && currentAnn?.editorMagnifyW != null && (
@@ -7587,48 +8048,58 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                               />
                             )}
 
-                            {/* Text overlay */}
-                            {overlayPos && overlayPos.x != null && currentAnn?.editorOverlayText && (
-                              <div
-                                className="absolute cursor-move select-none"
-                                style={{
-                                  left: `${overlayPos.x}%`,
-                                  top: `${overlayPos.y}%`,
-                                  transform: "translate(-50%, -50%)",
-                                  pointerEvents: overlayPointer("overlay"),
-                                }}
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  setMode("overlay");
-                                  const coords = getCanvasCoords(e);
-                                  if (!coords) return;
-                                  setDragItem({
-                                    type: "overlay",
-                                    startX: coords.x,
-                                    startY: coords.y,
-                                    initialX: currentAnn?.editorOverlayX ?? 50,
-                                    initialY: currentAnn?.editorOverlayY ?? 50,
-                                  });
-                                }}
-                              >
+                            {/* Text overlay.
+                                Wrapped and clamped the same way buildOverlayTextFilter
+                                does it, so what shows here is what gets drawn. The old
+                                preview was one `whitespace-nowrap` line at a fixed
+                                12/16/20px, which neither tracked the canvas size nor
+                                stayed inside the frame: a long label ran off both edges
+                                in the editor and in the export. */}
+                            {overlayPos && overlayPos.x != null && currentAnn?.editorOverlayText && (() => {
+                              const layout = overlayPreviewLayout(
+                                currentAnn.editorOverlayText,
+                                currentAnn.editorOverlaySize
+                              );
+                              if (!layout) return null;
+                              return (
                                 <div
-                                  className="px-3 py-1.5 rounded shadow-lg font-body font-semibold whitespace-nowrap"
+                                  className="absolute cursor-move select-none"
                                   style={{
-                                    backgroundColor: "rgba(0,0,0,0.6)",
-                                    color: currentAnn.editorOverlayColor || "#FFFFFF",
-                                    fontSize:
-                                      currentAnn.editorOverlaySize === "small"
-                                        ? "12px"
-                                        : currentAnn.editorOverlaySize === "large"
-                                          ? "20px"
-                                          : "16px",
+                                    left: `${layout.left}%`,
+                                    top: `${layout.top}%`,
+                                    transform: "translate(-50%, -50%)",
+                                    pointerEvents: overlayPointer("overlay"),
+                                  }}
+                                  onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setMode("overlay");
+                                    const coords = getCanvasCoords(e);
+                                    if (!coords) return;
+                                    setDragItem({
+                                      type: "overlay",
+                                      startX: coords.x,
+                                      startY: coords.y,
+                                      initialX: currentAnn?.editorOverlayX ?? 50,
+                                      initialY: currentAnn?.editorOverlayY ?? 50,
+                                    });
                                   }}
                                 >
-                                  {currentAnn.editorOverlayText}
+                                  <div
+                                    className="px-3 py-1.5 rounded shadow-lg font-body font-semibold text-center"
+                                    style={{
+                                      backgroundColor: "rgba(0,0,0,0.6)",
+                                      color: currentAnn.editorOverlayColor || "#FFFFFF",
+                                      fontSize: `${layout.fontSize}px`,
+                                      lineHeight: 1.25,
+                                      whiteSpace: "pre-line",
+                                    }}
+                                  >
+                                    {layout.lines.join("\n")}
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              );
+                            })()}
 
                             {/* Zoom target point */}
                             {currentAnn?.zoomTargetX != null && currentAnn?.zoomTargetY != null && (

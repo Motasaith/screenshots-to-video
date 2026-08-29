@@ -964,6 +964,7 @@ async function processRenderJob(
           editorRedactW: step.editorRedactW ?? undefined,
           editorRedactH: step.editorRedactH ?? undefined,
           editorRedactColor: step.editorRedactColor ?? undefined,
+          editorRedacts: (step as any).editorRedacts ?? undefined,
           // A free plan's stamp replaces the scene's own watermark entirely; a paid
           // plan keeps theirs, falling back to the team's brand kit.
           ...(forcedWatermark ?? {
@@ -989,6 +990,7 @@ async function processRenderJob(
           editorBadgeX: step.editorBadgeX ?? undefined,
           editorBadgeY: step.editorBadgeY ?? undefined,
           editorBadgeColor: step.editorBadgeColor ?? undefined,
+          editorBadges: (step as any).editorBadges ?? undefined,
           editorMagnifyX: step.editorMagnifyX ?? undefined,
           editorMagnifyY: step.editorMagnifyY ?? undefined,
           editorMagnifyW: step.editorMagnifyW ?? undefined,
@@ -1067,6 +1069,7 @@ async function processRenderJob(
           editorRedactW: step.editorRedactW ?? undefined,
           editorRedactH: step.editorRedactH ?? undefined,
           editorRedactColor: step.editorRedactColor ?? undefined,
+          editorRedacts: (step as any).editorRedacts ?? undefined,
           // A free plan's stamp replaces the scene's own watermark entirely; a paid
           // plan keeps theirs, falling back to the team's brand kit.
           ...(forcedWatermark ?? {
@@ -1092,6 +1095,7 @@ async function processRenderJob(
           editorBadgeX: step.editorBadgeX ?? undefined,
           editorBadgeY: step.editorBadgeY ?? undefined,
           editorBadgeColor: step.editorBadgeColor ?? undefined,
+          editorBadges: (step as any).editorBadges ?? undefined,
           editorMagnifyX: step.editorMagnifyX ?? undefined,
           editorMagnifyY: step.editorMagnifyY ?? undefined,
           editorMagnifyW: step.editorMagnifyW ?? undefined,

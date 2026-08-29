@@ -170,11 +170,27 @@ export const steps = mysqlTable("steps", {
     }>
   >(),
   // ── Redaction ──
+  //
+  // The four scalars below are the original single-region form, kept so steps
+  // saved before `editorRedacts` existed still render. New work writes the
+  // array; the renderer prefers it and only falls back to the scalars when it
+  // is absent or empty.
   editorRedactX: float("editorRedactX"),
   editorRedactY: float("editorRedactY"),
   editorRedactW: float("editorRedactW"),
   editorRedactH: float("editorRedactH"),
   editorRedactColor: varchar("editorRedactColor", { length: 20 }).default("#000000"),
+  // ── Multiple Redaction Regions ──
+  editorRedacts: json("editorRedacts").$type<
+    Array<{
+      id: string;
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      color?: string;
+    }>
+  >(),
   // ── Watermark ──
   editorWatermarkText: text("editorWatermarkText"),
   editorWatermarkPosition: varchar("editorWatermarkPosition", { length: 20 }).default("bottom-right"),
@@ -216,10 +232,23 @@ export const steps = mysqlTable("steps", {
     }>
   >(),
   // ── Step Number Badge ──
+  //
+  // Legacy single-badge form; see the note on `editorRedacts`. `editorBadges`
+  // supersedes it so one scene can call out several points at once.
   editorBadgeNumber: int("editorBadgeNumber"),
   editorBadgeX: float("editorBadgeX"),
   editorBadgeY: float("editorBadgeY"),
   editorBadgeColor: varchar("editorBadgeColor", { length: 20 }).default("#FBBF24"),
+  // ── Multiple Step Number Badges ──
+  editorBadges: json("editorBadges").$type<
+    Array<{
+      id: string;
+      number: number;
+      x: number;
+      y: number;
+      color?: string;
+    }>
+  >(),
   // ── Magnifying Glass Inset ──
   editorMagnifyX: float("editorMagnifyX"),
   editorMagnifyY: float("editorMagnifyY"),

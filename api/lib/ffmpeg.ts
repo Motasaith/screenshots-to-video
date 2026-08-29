@@ -752,6 +752,188 @@ function buildPixelateFilter(opts: EditorOpts, imgWidth: number, imgHeight: numb
   return parts.join(";") + ",";
 }
 
+/**
+ * Solid redaction bars, in image-pixel space.
+ *
+ * `editorRedacts` is the current form: one entry per bar, so a scene can black
+ * out several things at once. The four `editorRedactX..H` scalars are what the
+ * editor used to write when a step could only hold one bar, and are still read
+ * for steps saved before the array existed. The array wins whenever it has
+ * usable entries — never both, or a migrated step would draw its one legacy bar
+ * twice.
+ */
+/**
+ * Characters that fit on one line of `drawtext` at a given size and width.
+ *
+ * `drawtext` has no wrapping and no measuring API, so the only lever is to
+ * decide the break points ourselves. 0.55em is the mean advance of Roboto-Bold
+ * across mixed-case Latin text: near enough that a line lands inside the frame
+ * without leaving an obviously short right margin. The 8-character floor keeps
+ * a very large font on a narrow frame from degenerating into one word per line.
+ */
+export function overlayCharBudget(frameWidth: number, fontSize: number): number {
+  return Math.max(8, Math.floor((frameWidth * 0.92) / (fontSize * 0.55)));
+}
+
+/**
+ * Free-placed text label, in image-pixel space.
+ *
+ * Wrapped and clamped, because `drawtext` will happily draw a string straight
+ * off both edges of the frame: this used to be a single un-wrapped line at
+ * `x=<anchor>-text_w/2`, so "AI Powered Video Background Remover & Changer" on
+ * a 9:16 frame rendered as "...wered Video Background Remov..." with both ends
+ * cut off. Long text now breaks into lines, the block is centred on the anchor,
+ * and every line is clamped inside the frame so none of it can leave.
+ *
+ * The clamp is an ffmpeg expression rather than a number because `text_w` is
+ * only known at draw time. Its commas are protected by the single quotes around
+ * the option value, the same way `buildZoomFilter` writes its expressions -
+ * backslash-escaping them as well reaches the expression evaluator as a literal
+ * backslash and is rejected.
+ */
+function buildOverlayTextFilter(
+  opts: EditorOpts,
+  imgWidth: number,
+  imgHeight: number,
+  sizeBasis: number
+): string {
+  if (
+    !opts.editorOverlayText ||
+    opts.editorOverlayX === undefined ||
+    opts.editorOverlayY === undefined
+  ) {
+    return "";
+  }
+
+  const fontFile = getFontPath();
+  const fontSize =
+    opts.editorOverlaySize === "small" ? Math.round(sizeBasis * 0.04)
+      : opts.editorOverlaySize === "large" ? Math.round(sizeBasis * 0.07)
+        : Math.round(sizeBasis * 0.055);
+  const color = (opts.editorOverlayColor || "#FFFFFF").replace("#", "0x");
+  const anchorX = Math.round((opts.editorOverlayX / 100) * imgWidth);
+  const anchorY = Math.round((opts.editorOverlayY / 100) * imgHeight);
+
+  const lines = splitTextIntoLines(
+    opts.editorOverlayText,
+    overlayCharBudget(imgWidth, fontSize)
+  );
+  if (lines.length === 0) return "";
+
+  const lineHeight = Math.round(fontSize * 1.25);
+
+  return lines
+    .map((line, i) => {
+      const escaped = line.replace(/'/g, "\u2019").replace(/:/g, "\\:").replace(/%/g, "\\%");
+      // Lines stack around the anchor, so a two-line label straddles the point
+      // that was clicked rather than hanging below it.
+      const lineY = Math.round(anchorY + (i - (lines.length - 1) / 2) * lineHeight);
+      const x = `max(0,min(${anchorX}-text_w/2,w-text_w))`;
+      const y = `max(0,min(${lineY}-text_h/2,h-text_h))`;
+      return `drawtext=fontfile='${fontFile}':text='${escaped}':fontcolor=${color}:` +
+        `fontsize=${fontSize}:x='${x}':y='${y}':shadowcolor=0x000000:shadowx=2:shadowy=2`;
+    })
+    .join(",") + ",";
+}
+
+function buildRedactFilter(opts: EditorOpts, imgWidth: number, imgHeight: number): string {
+  const regions: Array<{ x: number; y: number; w: number; h: number; color: string }> = [];
+  const toColor = (c: string | undefined) => (c || "#000000").replace("#", "0x");
+
+  if (opts.editorRedacts && opts.editorRedacts.length > 0) {
+    for (const r of opts.editorRedacts) {
+      if (!(r.w > 0 && r.h > 0)) continue;
+      const c = clampRegion(
+        Math.round((r.x / 100) * imgWidth),
+        Math.round((r.y / 100) * imgHeight),
+        Math.round((r.w / 100) * imgWidth),
+        Math.round((r.h / 100) * imgHeight),
+        imgWidth, imgHeight
+      );
+      regions.push({ ...c, color: toColor(r.color) });
+    }
+  }
+
+  if (
+    regions.length === 0 &&
+    opts.editorRedactX !== undefined &&
+    opts.editorRedactY !== undefined &&
+    opts.editorRedactW !== undefined &&
+    opts.editorRedactH !== undefined &&
+    opts.editorRedactW > 0 &&
+    opts.editorRedactH > 0
+  ) {
+    const c = clampRegion(
+      Math.round((opts.editorRedactX / 100) * imgWidth),
+      Math.round((opts.editorRedactY / 100) * imgHeight),
+      Math.round((opts.editorRedactW / 100) * imgWidth),
+      Math.round((opts.editorRedactH / 100) * imgHeight),
+      imgWidth, imgHeight
+    );
+    regions.push({ ...c, color: toColor(opts.editorRedactColor) });
+  }
+
+  if (regions.length === 0) return "";
+  return regions
+    .map((r) => `drawbox=x=${r.x}:y=${r.y}:w=${r.w}:h=${r.h}:color=${r.color}:t=fill`)
+    .join(",") + ",";
+}
+
+/**
+ * Numbered step badges, in image-pixel space.
+ *
+ * `badgeBasis` is the short side of the region that will actually fill the
+ * frame (the crop, when there is one), not of the whole screenshot: a badge is
+ * furniture and should read at ~4% of frame height however much of the source
+ * survives the crop.
+ *
+ * Same legacy handling as {@link buildRedactFilter}: `editorBadges` wins, the
+ * `editorBadgeNumber`/`X`/`Y` scalars are the fallback for older steps.
+ */
+function buildBadgeFilter(
+  opts: EditorOpts,
+  imgWidth: number,
+  imgHeight: number,
+  badgeBasis: number
+): string {
+  const badges: Array<{ number: number; x: number; y: number; color: string }> = [];
+  const toColor = (c: string | undefined) => (c || "#FBBF24").replace("#", "0x");
+
+  if (opts.editorBadges && opts.editorBadges.length > 0) {
+    for (const b of opts.editorBadges) {
+      badges.push({
+        number: b.number,
+        x: Math.round((b.x / 100) * imgWidth),
+        y: Math.round((b.y / 100) * imgHeight),
+        color: toColor(b.color),
+      });
+    }
+  } else if (
+    opts.editorBadgeNumber !== undefined &&
+    opts.editorBadgeX !== undefined &&
+    opts.editorBadgeY !== undefined
+  ) {
+    badges.push({
+      number: opts.editorBadgeNumber,
+      x: Math.round((opts.editorBadgeX / 100) * imgWidth),
+      y: Math.round((opts.editorBadgeY / 100) * imgHeight),
+      color: toColor(opts.editorBadgeColor),
+    });
+  }
+
+  if (badges.length === 0) return "";
+
+  const fontFile = getFontPath();
+  const size = Math.round(badgeBasis * 0.04);
+  return badges
+    .map((b) =>
+      `drawbox=x=${b.x - size / 2}:y=${b.y - size / 2}:w=${size}:h=${size}:color=${b.color}:t=fill,` +
+      `drawtext=fontfile='${fontFile}':text='${Math.round(b.number)}':fontcolor=0x000000:` +
+      `fontsize=${Math.round(size * 0.6)}:x=${b.x}-text_w/2:y=${b.y}-text_h/2`
+    )
+    .join(",") + ",";
+}
+
 function buildSpotlightFilter(opts: EditorOpts, imgWidth: number, imgHeight: number): string {
   const regions: Array<{ x: number; y: number; w: number; h: number; intensity: number }> = [];
   if (opts.editorSpotlights && opts.editorSpotlights.length > 0) {
@@ -863,11 +1045,21 @@ export async function renderStepVideo(opts: {
   editorCaptionColor?: string;
   editorCaptionSize?: string;
   // ── Redaction ──
+  // The scalars are the legacy single-region form; `editorRedacts` supersedes
+  // them and wins whenever it is non-empty.
   editorRedactX?: number;
   editorRedactY?: number;
   editorRedactW?: number;
   editorRedactH?: number;
   editorRedactColor?: string;
+  editorRedacts?: Array<{
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    color?: string;
+  }>;
   // ── Watermark ──
   editorWatermarkText?: string;
   editorWatermarkPosition?: string;
@@ -889,10 +1081,18 @@ export async function renderStepVideo(opts: {
     intensity?: number;
   }>;
   // ── Badge ──
+  // As with redaction, the scalars are the legacy single-badge form.
   editorBadgeNumber?: number;
   editorBadgeX?: number;
   editorBadgeY?: number;
   editorBadgeColor?: string;
+  editorBadges?: Array<{
+    id: string;
+    number: number;
+    x: number;
+    y: number;
+    color?: string;
+  }>;
   // ── Magnify ──
   editorMagnifyX?: number;
   editorMagnifyY?: number;
@@ -1028,23 +1228,8 @@ export async function renderStepVideo(opts: {
   // ── Canvas editor: blur (supports multiple regions) ──
   const blurFilter = buildBlurFilter(opts, imgWidth, imgHeight);
 
-  // ── Canvas editor: redaction ──
-  let redactFilter = "";
-  if (
-    opts.editorRedactX !== undefined &&
-    opts.editorRedactY !== undefined &&
-    opts.editorRedactW !== undefined &&
-    opts.editorRedactH !== undefined &&
-    opts.editorRedactW > 0 &&
-    opts.editorRedactH > 0
-  ) {
-    const rx = Math.round((opts.editorRedactX / 100) * imgWidth);
-    const ry = Math.round((opts.editorRedactY / 100) * imgHeight);
-    const rw = Math.round((opts.editorRedactW / 100) * imgWidth);
-    const rh = Math.round((opts.editorRedactH / 100) * imgHeight);
-    const rColor = (opts.editorRedactColor || "#000000").replace("#", "0x");
-    redactFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=${rColor}:t=fill,`;
-  }
+  // ── Canvas editor: redaction (supports multiple regions) ──
+  const redactFilter = buildRedactFilter(opts, imgWidth, imgHeight);
 
   // ── Canvas editor: watermark ──
   let watermarkFilter = "";
@@ -1087,21 +1272,9 @@ export async function renderStepVideo(opts: {
   // always measured in. Applied post-zoom, `imgWidth` was the wrong basis for a
   // frame that is `outW` wide — a badge dropped at 50% of a 2560px screenshot
   // landed at 66% of a 1920px frame, at 5.4% of frame height instead of 4%.
-  let badgeFilter = "";
-  if (
-    opts.editorBadgeNumber !== undefined &&
-    opts.editorBadgeX !== undefined &&
-    opts.editorBadgeY !== undefined
-  ) {
-    const bx = Math.round((opts.editorBadgeX / 100) * imgWidth);
-    const by = Math.round((opts.editorBadgeY / 100) * imgHeight);
-    const bColor = (opts.editorBadgeColor || "#FBBF24").replace("#", "0x");
-    const fontFile = getFontPath();
-    // Sized against the region that will fill the frame, so a cropped render
-    // still shows the badge at ~4% of frame height.
-    const badgeSize = Math.round(Math.min(effW, effH) * 0.04);
-    badgeFilter = `drawbox=x=${bx - badgeSize/2}:y=${by - badgeSize/2}:w=${badgeSize}:h=${badgeSize}:color=${bColor}:t=fill,drawtext=fontfile='${fontFile}':text='${opts.editorBadgeNumber}':fontcolor=0x000000:fontsize=${Math.round(badgeSize * 0.6)}:x=${bx}-text_w/2:y=${by}-text_h/2,`;
-  }
+  // Sized against the region that will fill the frame, so a cropped render
+  // still shows each badge at ~4% of frame height.
+  const badgeFilter = buildBadgeFilter(opts, imgWidth, imgHeight, Math.min(effW, effH));
 
   // ── Canvas editor: magnify ──
   //
@@ -1198,20 +1371,9 @@ export async function renderStepVideo(opts: {
   // camera scales it. Zooming in makes the text grow, which is right for a
   // label pinned to a UI element and wrong if you wanted fixed-size furniture —
   // that is what the watermark and captions are for.
-  let overlayFilter = "";
-  if (opts.editorOverlayText && opts.editorOverlayX !== undefined && opts.editorOverlayY !== undefined) {
-    const fontFile = getFontPath();
-    // Sized against the post-crop region so it still reads as the same
-    // proportion of the finished frame.
-    const ovSize = opts.editorOverlaySize === "small" ? Math.round(effH * 0.04)
-      : opts.editorOverlaySize === "large" ? Math.round(effH * 0.07)
-      : Math.round(effH * 0.055);
-    const ovColor = (opts.editorOverlayColor || "#FFFFFF").replace("#", "0x");
-    const ovX = Math.round((opts.editorOverlayX / 100) * imgWidth);
-    const ovY = Math.round((opts.editorOverlayY / 100) * imgHeight);
-    const escapedOvText = opts.editorOverlayText.replace(/'/g, "’").replace(/:/g, "\\:").replace(/%/g, "\\%");
-    overlayFilter = `drawtext=fontfile='${fontFile}':text='${escapedOvText}':fontcolor=${ovColor}:fontsize=${ovSize}:x=${ovX}-text_w/2:y=${ovY}-text_h/2:shadowcolor=0x000000:shadowx=2:shadowy=2,`;
-  }
+  // Sized against the post-crop region so it still reads as the same
+  // proportion of the finished frame.
+  const overlayFilter = buildOverlayTextFilter(opts, imgWidth, imgHeight, effH);
 
   // ── Captions: prefer the canvas editor's own caption if the scene has one ──
   //
@@ -1488,23 +1650,8 @@ async function renderStepVideoFallback(
   // ── Canvas editor: blur (fallback, supports multiple regions) ──
   const blurFilter = buildBlurFilter(opts, imgWidth, imgHeight);
 
-  // ── Canvas editor: redaction (fallback) ──
-  let redactFilter = "";
-  if (
-    opts.editorRedactX !== undefined &&
-    opts.editorRedactY !== undefined &&
-    opts.editorRedactW !== undefined &&
-    opts.editorRedactH !== undefined &&
-    opts.editorRedactW > 0 &&
-    opts.editorRedactH > 0
-  ) {
-    const rx = Math.round((opts.editorRedactX / 100) * imgWidth);
-    const ry = Math.round((opts.editorRedactY / 100) * imgHeight);
-    const rw = Math.round((opts.editorRedactW / 100) * imgWidth);
-    const rh = Math.round((opts.editorRedactH / 100) * imgHeight);
-    const rColor = (opts.editorRedactColor || "#000000").replace("#", "0x");
-    redactFilter = `drawbox=x=${rx}:y=${ry}:w=${rw}:h=${rh}:color=${rColor}:t=fill,`;
-  }
+  // ── Canvas editor: redaction (fallback, supports multiple regions) ──
+  const redactFilter = buildRedactFilter(opts, imgWidth, imgHeight);
 
   // ── Canvas editor: watermark (fallback) ──
   let watermarkFilter = "";
@@ -1535,20 +1682,8 @@ async function renderStepVideoFallback(
   // ── Canvas editor: spotlight (fallback, supports multiple regions) ──
   const spotlightFilter = buildSpotlightFilter(opts, imgWidth, imgHeight);
 
-  // ── Canvas editor: badge (fallback) ──
-  let badgeFilter = "";
-  if (
-    opts.editorBadgeNumber !== undefined &&
-    opts.editorBadgeX !== undefined &&
-    opts.editorBadgeY !== undefined
-  ) {
-    const bx = Math.round((opts.editorBadgeX / 100) * imgWidth);
-    const by = Math.round((opts.editorBadgeY / 100) * imgHeight);
-    const bColor = (opts.editorBadgeColor || "#FBBF24").replace("#", "0x");
-    const fontFile = getFontPath();
-    const badgeSize = Math.round(Math.min(cropW, cropH) * 0.04);
-    badgeFilter = `drawbox=x=${bx - badgeSize/2}:y=${by - badgeSize/2}:w=${badgeSize}:h=${badgeSize}:color=${bColor}:t=fill,drawtext=fontfile='${fontFile}':text='${opts.editorBadgeNumber}':fontcolor=0x000000:fontsize=${Math.round(badgeSize * 0.6)}:x=${bx}-text_w/2:y=${by}-text_h/2,`;
-  }
+  // ── Canvas editor: badge (fallback, supports multiple badges) ──
+  const badgeFilter = buildBadgeFilter(opts, imgWidth, imgHeight, Math.min(cropW, cropH));
 
   // ── Canvas editor: magnify (fallback) ──
   let magnifyFilter = "";
@@ -1617,20 +1752,9 @@ async function renderStepVideoFallback(
   const delayMs = Math.round(AUDIO_LEAD_IN * 1000);
 
   // ── Canvas editor: text overlay ──
-  let overlayFilter = "";
-  if (opts.editorOverlayText && opts.editorOverlayX !== undefined && opts.editorOverlayY !== undefined) {
-    const fontFile = getFontPath();
-    // Image space, matching the primary renderer, so the label stays on what it
-    // labels rather than floating over the frame.
-    const ovSize = opts.editorOverlaySize === "small" ? Math.round(cropH * 0.04)
-      : opts.editorOverlaySize === "large" ? Math.round(cropH * 0.07)
-      : Math.round(cropH * 0.055);
-    const ovColor = (opts.editorOverlayColor || "#FFFFFF").replace("#", "0x");
-    const ovX = Math.round((opts.editorOverlayX / 100) * imgWidth);
-    const ovY = Math.round((opts.editorOverlayY / 100) * imgHeight);
-    const escapedOvText = opts.editorOverlayText.replace(/'/g, "’").replace(/:/g, "\\:").replace(/%/g, "\\%");
-    overlayFilter = `drawtext=fontfile='${fontFile}':text='${escapedOvText}':fontcolor=${ovColor}:fontsize=${ovSize}:x=${ovX}-text_w/2:y=${ovY}-text_h/2:shadowcolor=0x000000:shadowx=2:shadowy=2,`;
-  }
+  // Image space, matching the primary renderer, so the label stays on what it
+  // labels rather than floating over the frame.
+  const overlayFilter = buildOverlayTextFilter(opts, imgWidth, imgHeight, cropH);
 
   // ── Captions: prefer the canvas editor's own caption if the scene has one ──
   //
@@ -2667,6 +2791,7 @@ export async function renderMultiZoomSegments(opts: {
   editorRedactW?: number;
   editorRedactH?: number;
   editorRedactColor?: string;
+  editorRedacts?: Array<{ id: string; x: number; y: number; w: number; h: number; color?: string }>;
   editorWatermarkText?: string;
   editorWatermarkPosition?: string;
   editorWatermarkSize?: string;
@@ -2688,6 +2813,7 @@ export async function renderMultiZoomSegments(opts: {
   editorBadgeX?: number;
   editorBadgeY?: number;
   editorBadgeColor?: string;
+  editorBadges?: Array<{ id: string; number: number; x: number; y: number; color?: string }>;
   editorMagnifyX?: number;
   editorMagnifyY?: number;
   editorMagnifyW?: number;
@@ -2908,6 +3034,7 @@ export async function renderMultiZoomSegments(opts: {
     editorRedactW: opts.editorRedactW,
     editorRedactH: opts.editorRedactH,
     editorRedactColor: opts.editorRedactColor,
+    editorRedacts: opts.editorRedacts,
     editorWatermarkText: opts.editorWatermarkText,
     editorWatermarkPosition: opts.editorWatermarkPosition,
     editorWatermarkSize: opts.editorWatermarkSize,
@@ -2929,6 +3056,7 @@ export async function renderMultiZoomSegments(opts: {
     editorBadgeX: opts.editorBadgeX,
     editorBadgeY: opts.editorBadgeY,
     editorBadgeColor: opts.editorBadgeColor,
+    editorBadges: opts.editorBadges,
     editorMagnifyX: opts.editorMagnifyX,
     editorMagnifyY: opts.editorMagnifyY,
     editorMagnifyW: opts.editorMagnifyW,

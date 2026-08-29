@@ -277,14 +277,22 @@ export function buildCursorOverlayExpr(
   // eased = 3*t*t - 2*t*t*t
   // pos = start + delta * eased
 
-  const tExpr = `min(n/${travelFrames}\\\\,1)`;
+  // Commas are left bare, not escaped. `overlay` receives this inside
+  // `x='...'`, and ffmpeg's level-1 parser strips one backslash before the
+  // expression evaluator ever sees it: the `\\,` this used to emit reached the
+  // evaluator as `\,` and was rejected with "Missing ')' or too many args", so
+  // every render carrying an animated cursor failed the primary pipeline and
+  // silently dropped to the no-supersampling fallback (which draws no cursor at
+  // all). Quoting alone is what protects the comma from the filtergraph split,
+  // which is the same form `buildZoomFilter` has always used.
+  const tExpr = `min(n/${travelFrames},1)`;
   const easedExpr = `(3*(${tExpr})*(${tExpr})-2*(${tExpr})*(${tExpr})*(${tExpr}))`;
 
   const xExpr = `${startXPx.toFixed(1)}+${dx.toFixed(1)}*${easedExpr}`;
   const yExpr = `${startYPx.toFixed(1)}+${dy.toFixed(1)}*${easedExpr}`;
 
   // Cursor is visible for the entire scene
-  const enableExpr = `between(n\\\\,0\\\\,${totalFrames})`;
+  const enableExpr = `between(n,0,${totalFrames})`;
 
   return { x: xExpr, y: yExpr, enable: enableExpr };
 }

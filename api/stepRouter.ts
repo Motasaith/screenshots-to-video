@@ -159,6 +159,18 @@ export const stepRouter = createRouter({
         editorRedactW: z.number().nullish(),
         editorRedactH: z.number().nullish(),
         editorRedactColor: z.string().nullish(),
+        editorRedacts: z
+          .array(
+            z.object({
+              id: z.string(),
+              x: z.number(),
+              y: z.number(),
+              w: z.number(),
+              h: z.number(),
+              color: z.string().optional(),
+            })
+          )
+          .nullish(),
         editorWatermarkText: z.string().nullish(),
         editorWatermarkPosition: z.string().nullish(),
         editorWatermarkSize: z.string().nullish(),
@@ -202,6 +214,17 @@ export const stepRouter = createRouter({
         editorBadgeX: z.number().nullish(),
         editorBadgeY: z.number().nullish(),
         editorBadgeColor: z.string().nullish(),
+        editorBadges: z
+          .array(
+            z.object({
+              id: z.string(),
+              number: z.number(),
+              x: z.number(),
+              y: z.number(),
+              color: z.string().optional(),
+            })
+          )
+          .nullish(),
         editorMagnifyX: z.number().nullish(),
         editorMagnifyY: z.number().nullish(),
         editorMagnifyW: z.number().nullish(),
@@ -311,6 +334,7 @@ export const stepRouter = createRouter({
         data.editorRedactW !== undefined ||
         data.editorRedactH !== undefined ||
         data.editorRedactColor !== undefined ||
+        data.editorRedacts !== undefined ||
         data.editorWatermarkText !== undefined ||
         data.editorWatermarkPosition !== undefined ||
         data.editorWatermarkSize !== undefined ||
@@ -332,6 +356,7 @@ export const stepRouter = createRouter({
         data.editorBadgeX !== undefined ||
         data.editorBadgeY !== undefined ||
         data.editorBadgeColor !== undefined ||
+        data.editorBadges !== undefined ||
         data.editorMagnifyX !== undefined ||
         data.editorMagnifyY !== undefined ||
         data.editorMagnifyW !== undefined ||
