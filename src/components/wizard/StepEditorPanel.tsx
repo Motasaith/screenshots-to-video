@@ -388,6 +388,40 @@ function legacyToBadges(s: {
 }
 
 /**
+ * Replacing a step's zoom points.
+ *
+ * Placing a point writes three things, not one: the point itself, the legacy
+ * `zoomTargetX`/`Y` that the single-zoom render path reads, and
+ * `editorZoomScale`, which is what arms zoom at all. Removing points only ever
+ * emptied the array, so the other two survived - and with an empty array the
+ * worker skips the multi-zoom path and falls through to exactly that
+ * single-zoom fallback. The scene kept zooming after every point had been
+ * deleted, which is the "zoom persists after clearing" report.
+ *
+ * Emptying the list therefore has to disarm the fallback too. That is what the
+ * toolbar's own "Clear Zoom" has always done; this is the same reset, shared so
+ * the three places that remove points cannot disagree again.
+ */
+function withZoomPoints(
+  ann: StepAnnotation | undefined,
+  points: NonNullable<StepAnnotation["editorMultiZooms"]>
+): StepAnnotation {
+  const base = ann || {};
+  if (points.length > 0) return { ...base, editorMultiZooms: points };
+  return {
+    ...base,
+    editorMultiZooms: [],
+    zoomTargetX: null,
+    zoomTargetY: null,
+    zoomRectX: null,
+    zoomRectY: null,
+    zoomRectWidth: null,
+    zoomRectHeight: null,
+    editorZoomScale: null,
+  };
+}
+
+/**
  * Applying a censorship strength to a step.
  *
  * Each region stores its own `intensity` / `blockSize`, baked in when it was
@@ -871,6 +905,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const updateStep = trpc.step.update.useMutation();
   const createStep = trpc.step.create.useMutation();
   const deleteStep = trpc.step.delete.useMutation();
+  const reorderSteps = trpc.step.reorder.useMutation();
   const checkSafety = trpc.step.checkSafety.useMutation();
   const generateScript = trpc.ai.generateScript.useMutation();
   const importPexelsMedia = trpc.ai.importMedia.useMutation();
@@ -1324,11 +1359,25 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     };
   }, []);
 
-  const handleUploadFiles = async (files: FileList) => {
+  /**
+   * Add scenes from a file selection.
+   *
+   * `insertAtIndex` puts them at a position in the timeline instead of the end.
+   * The scenes are still created at the end first and then moved, because the
+   * order is a column on every row: inserting in the middle means renumbering
+   * everything after it either way, and `step.reorder` already does that in one
+   * call rather than one per scene.
+   */
+  const handleUploadFiles = async (files: FileList, insertAtIndex?: number | null) => {
     if (files.length === 0) return;
     setUploadingFilesCount(prev => prev + files.length);
 
     const sortedFiles = Array.from(files).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+
+    // Captured before anything is created: the ids the new scenes are being
+    // slotted between.
+    const existingIds = steps.map((s) => s.id);
+    const createdIds: number[] = [];
 
     let currentOrder = (steps.length || (props.parentSteps || []).length) + 1;
 
@@ -1349,12 +1398,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
         // The storage key, not the signed URL from the response: signed URLs
         // expire, and project.getById mints a fresh one from the key on read.
-        await createStep.mutateAsync({
+        const created = await createStep.mutateAsync({
           projectId: projectIdNum,
           order,
           description: "",
           screenshotPath: result.key + (isVideoFile ? "#video" : ""),
         });
+        if (created?.id) createdIds.push(created.id);
 
         utils.project.getById.invalidate({ id: projectIdNum });
         utils.step.listByProject.invalidate({ projectId: projectIdNum });
@@ -1373,23 +1423,74 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         await new Promise((r) => setTimeout(r, 200));
       }
     }
+
+    // Slot them in, if a position was asked for. Anything that failed to upload
+    // is simply absent from createdIds, so a partial batch still lands in one
+    // block where the user pointed rather than scattering.
+    if (insertAtIndex != null && createdIds.length > 0) {
+      const next = [...existingIds];
+      next.splice(Math.max(0, Math.min(insertAtIndex, existingIds.length)), 0, ...createdIds);
+      try {
+        await reorderSteps.mutateAsync({ projectId: projectIdNum, stepIds: next });
+        setCurrentStepIndex(Math.max(0, Math.min(insertAtIndex, next.length - 1)));
+      } catch (err) {
+        // The scenes exist; only their position is wrong, so say that rather
+        // than implying the upload failed.
+        console.error("Failed to position the new scenes:", err);
+        toast.error("Added the scenes, but could not move them into position.");
+      }
+      utils.project.getById.invalidate({ id: projectIdNum });
+      utils.step.listByProject.invalidate({ projectId: projectIdNum });
+    }
   };
 
   // ── NLE Timeline handlers ──
 
 
 
-  // Reorder via new timeline (same logic as handleSceneDrop but with indices)
+  /**
+   * Move a scene to a new position in the timeline.
+   *
+   * Two things used to make this crawl. It awaited one `step.update` per scene,
+   * serially, for every scene rather than the handful that actually moved; and
+   * the timeline strip has no ordering state of its own, so nothing on screen
+   * budged until all of those landed and two queries refetched. On a 112-scene
+   * project that was ~13s of dead time, and it exceeded `step.update`'s
+   * 30-per-minute limit part way through, leaving the order half-written.
+   *
+   * Now the cache moves first so the strip follows the cursor, and the whole
+   * list goes to `step.reorder` in one call. On failure the snapshot goes back,
+   * so a rejected reorder cannot leave the editor showing an order the server
+   * never accepted.
+   */
   const handleTimelineReorder = async (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+
     const stepList = [...steps];
-    const draggedItem = stepList[fromIndex];
-    stepList.splice(fromIndex, 1);
+    const [draggedItem] = stepList.splice(fromIndex, 1);
+    if (!draggedItem) return;
     stepList.splice(toIndex, 0, draggedItem);
-    for (let i = 0; i < stepList.length; i++) {
-      await updateStep.mutateAsync({ id: stepList[i].id, order: i + 1 });
+
+    const previous = utils.project.getById.getData({ id: projectIdNum });
+    utils.project.getById.setData({ id: projectIdNum }, (old) =>
+      old ? { ...old, steps: stepList.map((s, i) => ({ ...s, order: i + 1 })) } : old
+    );
+    // The scene being edited moves with the drag rather than staying on
+    // whatever now occupies its old index.
+    setCurrentStepIndex((idx) => (idx === fromIndex ? toIndex : idx));
+
+    try {
+      await reorderSteps.mutateAsync({
+        projectId: projectIdNum,
+        stepIds: stepList.map((s) => s.id),
+      });
+      utils.step.listByProject.invalidate({ projectId: projectIdNum });
+      utils.project.getById.invalidate({ id: projectIdNum });
+    } catch (err) {
+      utils.project.getById.setData({ id: projectIdNum }, previous);
+      setCurrentStepIndex((idx) => (idx === toIndex ? fromIndex : idx));
+      toast.error(err instanceof Error ? err.message : "Could not reorder the scenes.");
     }
-    utils.step.listByProject.invalidate({ projectId: projectIdNum });
-    utils.project.getById.invalidate({ id: projectIdNum });
   };
 
   // Trim clip (change duration)
@@ -1406,7 +1507,16 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   };
 
   // Add clip via timeline
-  const handleTimelineAdd = () => {
+  /**
+   * Where a pending file selection should be inserted.
+   *
+   * A ref, not state: it is set immediately before opening the file dialog and
+   * read when it closes, and nothing renders from it.
+   */
+  const insertAtIndexRef = useRef<number | null>(null);
+
+  const handleTimelineAdd = (atIndex?: number) => {
+    insertAtIndexRef.current = atIndex ?? null;
     fileInputRef.current?.click();
   };
 
@@ -2892,8 +3002,40 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   placeholder="Enter caption for this step..."
                   className="mt-1 text-sm min-h-[80px]"
                 />
+                <p className="text-[10px] text-[var(--sketch-fg-muted)] mt-1">
+                  Optional. Leave it empty and this scene subtitles its narration
+                  using the project's caption settings instead.
+                </p>
               </div>
 
+              {/* Scoped to the caption text above, and inert without it.
+                  These four write editorCaptionStyle/Size/Position/Color, which
+                  the renderer only reads when the scene has its own caption
+                  text - otherwise the scene is showing the project's narration
+                  caption and it is the project's settings that describe it.
+                  Left enabled, they were four controls that silently did
+                  nothing, which is what "caption size does not work" turned out
+                  to mean. */}
+              {!currentAnn?.editorCaptionText && (
+                <div className="rounded-md border border-[var(--sketch-border-color)]/30 bg-[var(--sketch-fg-subtle)]/5 p-2">
+                  <p className="text-[10px] leading-relaxed text-[var(--sketch-fg-muted)]">
+                    Styling below applies to this scene's own caption. To change
+                    how the narration subtitles look, use{" "}
+                    <button
+                      onClick={() => toggleRightTab("captions")}
+                      className="underline underline-offset-2 hover:text-[var(--sketch-fg)]"
+                    >
+                      Captions settings
+                    </button>
+                    , which apply to every scene.
+                  </p>
+                </div>
+              )}
+
+              <div
+                className={`space-y-3 ${currentAnn?.editorCaptionText ? "" : "opacity-40 pointer-events-none select-none"}`}
+                aria-disabled={!currentAnn?.editorCaptionText}
+              >
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <Label className="text-xs font-mono">Position</Label>
@@ -2993,6 +3135,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
               </div>
 
               {currentAnn?.editorCaptionText && (
@@ -4197,14 +4340,10 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 </Label>
                 <button
                   onClick={() => {
-                    const nextState = {
+                    pushHistory({
                       ...annotations,
-                      [currentStep!.id]: {
-                        ...(annotations[currentStep!.id] || {}),
-                        editorMultiZooms: [],
-                      },
-                    };
-                    pushHistory(nextState);
+                      [currentStep!.id]: withZoomPoints(annotations[currentStep!.id], []),
+                    });
                   }}
                   className="text-[10px] text-red-500 hover:text-red-600"
                 >
@@ -4319,10 +4458,12 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                         onClick={() => {
                           setAnnotations((prev) => {
                             const stepAnn = prev[currentStep.id] || {};
-                            const updated = {
-                              ...stepAnn,
-                              editorMultiZooms: stepAnn.editorMultiZooms?.filter((z) => z.id !== mz.id) || [],
-                            };
+                            // Removing the last point disarms the single-zoom
+                            // fallback as well, same as "Clear all".
+                            const updated = withZoomPoints(
+                              stepAnn,
+                              stepAnn.editorMultiZooms?.filter((z) => z.id !== mz.id) || []
+                            );
                             const nextStateFull = { ...prev, [currentStep.id]: updated };
                             pushHistory(nextStateFull);
                             return nextStateFull;
@@ -6668,7 +6809,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               <DropdownMenuItem onClick={() => {
                 if (!currentStep) return;
                 const ann = annotations[currentStep.id] || {};
-                const next = { ...annotations, [currentStep.id]: { ...ann, zoomTargetX: null, zoomTargetY: null, editorMultiZooms: [], editorZoomScale: null } };
+                const next = { ...annotations, [currentStep.id]: withZoomPoints(ann, []) };
                 pushHistory(next);
               }}>
                 <Trash2 className="w-3.5 h-3.5 mr-2" /> Clear Zoom
@@ -8438,7 +8579,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         multiple
         accept="image/*,video/*"
         className="hidden"
-        onChange={(e) => { if (e.target.files) handleUploadFiles(e.target.files); }}
+        onChange={(e) => {
+          const at = insertAtIndexRef.current;
+          insertAtIndexRef.current = null;
+          if (e.target.files) handleUploadFiles(e.target.files, at);
+          // Cleared so picking the same file twice in a row still fires change.
+          e.target.value = "";
+        }}
       />
 
       <RenderPreflightDialog

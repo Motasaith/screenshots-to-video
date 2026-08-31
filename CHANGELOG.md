@@ -31,6 +31,12 @@ nullable column is a silent, non-destructive change for push.
 
 ### Added
 
+- **Insert a scene at any position.** A hover-revealed insert point sits between
+  every pair of scenes in the timeline; the "Add Scene" button at the end still
+  appends. Previously new scenes could only land at the end, so putting one in
+  the middle meant adding it and dragging it back up - straight into the reorder
+  bug below.
+
 - **Multiple badges per scene.** `steps.editorBadges` holds the list. Placing a
   badge appends to it, numbering continues from the highest badge already on the
   scene, and each one can be dragged, recoloured and deleted independently.
@@ -43,6 +49,59 @@ nullable column is a silent, non-destructive change for push.
 
 ### Fixed
 
+- **Reordering scenes was slow, and broke outright on large projects.** The
+  editor spliced the list client-side and then awaited one `step.update` per
+  scene, serially, for *every* scene rather than the few that moved - and the
+  timeline strip has no ordering state of its own, so nothing moved on screen
+  until all of them landed and two queries refetched. Measured against live
+  data: ~2s of dead time on a 16-scene project, ~13s on a 112-scene one. Worse,
+  `step.update` is capped at 30/minute, so the two largest projects here (112
+  and 94 scenes) could not complete a single drag: the loop died part way and
+  left the ordering half-written. Project 54 is still carrying that damage - 112
+  scenes sharing 14 distinct order values, which makes its render sequence
+  unstable. There is now a `step.reorder` mutation that takes the whole ordered
+  list, writes only the positions that changed, does it in one transaction, and
+  costs one rate-limit unit; the cache updates optimistically so the strip
+  follows the cursor, and rolls back if the server refuses. The first reorder of
+  a damaged project renumbers it back to 1..N.
+- **Zoom survived clearing every zoom point.** Placing a point writes three
+  things: the point, the legacy `zoomTargetX`/`Y` the single-zoom render path
+  reads, and `editorZoomScale`, which is what arms zoom at all. The panel's
+  "Clear all" and a point's "Remove" emptied only the array - and with an empty
+  array the worker skips the multi-zoom path and falls through to exactly that
+  single-zoom fallback, so the scene kept zooming after every point was deleted.
+  Emptying the list now disarms the fallback too, which is what the toolbar's own
+  "Clear Zoom" had always done; all three routes share one helper so they cannot
+  disagree again. An audit found 253 existing steps in this state, including
+  three in the project the bug was reported against.
+- **The per-scene caption styling controls did nothing.** Position, Style,
+  Colour and Size in the scene's caption panel write
+  `editorCaptionStyle`/`Size`/`Position`/`Color`, which the renderer reads only
+  when the scene has its own caption text - otherwise the scene is subtitling
+  narration and the project's settings describe it. Left enabled, they were four
+  controls that silently changed nothing, which is what the "caption size does
+  not work" report turned out to be. They are now scoped to the caption text
+  they belong to, disabled without it, and point at the project Captions panel
+  instead. Project-level caption sizing is covered by tests: small/medium/large
+  resolve to font sizes 54/76/97 at 1080p.
+- **Intro and outro could not be switched off.** The render worker read
+  `introVideoPath` before `introTemplate`, so the stored upload outranked the
+  dropdown that selects it. Once a project had ever had a custom intro it kept
+  rendering one however the dropdown was set: choosing "None" removed nothing,
+  and choosing a text template silently played the old clip instead. The
+  template is now the choice and the path only the file it points at, which is
+  the rule `Timeline.tsx` had always drawn its preview under - hence the editor
+  showing no intro while the render still added one. Auditing the live database
+  found 3 such decisions across 207 projects: one project set to "None" still
+  emitting a clip, and one that had picked `dark-minimal`/`warm-title` and was
+  getting its old uploads instead of either. The uploaded file is deliberately
+  kept when the template moves away from "custom-video", so switching back
+  restores it. Extracted as `api/lib/bumper.ts` with tests, so intro and outro
+  cannot drift apart again.
+- **"Custom video" with nothing uploaded rendered a stray blue title card.**
+  `renderTextSegment` falls back to a default blue card for any template it does
+  not recognise, and `custom-video` fell through to it whenever no file had been
+  picked yet. No file now means no segment.
 - **A badge could only be placed once per scene.** The editor wrote a single
   `editorBadgeNumber`/`editorBadgeX`/`editorBadgeY` triple, so the second badge
   placed on a scene moved the first one instead of joining it. Badges are now a

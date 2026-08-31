@@ -43,6 +43,7 @@ export {
   MW_ZOOM_OUT_DUR,
   MW_MIN_HOLD,
 } from "@contracts/sceneTiming";
+import { resolveCaption } from "./captionStyle";
 
 /**
  * Supersampling: zoompan rounds pan offsets to whole input pixels, which causes
@@ -1375,30 +1376,18 @@ export async function renderStepVideo(opts: {
   // proportion of the finished frame.
   const overlayFilter = buildOverlayTextFilter(opts, imgWidth, imgHeight, effH);
 
-  // ── Captions: prefer the canvas editor's own caption if the scene has one ──
-  //
-  // The styling has to follow whichever TEXT won, as one group. Picking each
-  // field independently with `editorX || projectX` looked equivalent but was
-  // not: steps.editorCaptionSize/Style/Position/Color are NOT NULL with
-  // defaults ("medium", "standard", "bottom", "#FFFFFF"), so every step carries
-  // a truthy value whether or not anyone set one. Those defaults shadowed the
-  // project's caption settings on every render, which is why choosing Small or
-  // Large in the captions panel changed nothing in the exported video.
+  // ── Captions: the scene's own caption, else the project's narration one ──
+  // See resolveCaption for why the styling has to follow the text as a group.
   let captionsFilter = "";
-  const usesEditorCaption = Boolean(opts.editorCaptionText);
-  const captionText = usesEditorCaption ? opts.editorCaptionText! : (opts.captions?.text || "");
-  const captionStyle = (usesEditorCaption ? opts.editorCaptionStyle : null) || opts.captions?.style || "standard";
-  const captionSize = (usesEditorCaption ? opts.editorCaptionSize : null) || opts.captions?.size || "medium";
-  const captionPosition = (usesEditorCaption ? opts.editorCaptionPosition : null) || opts.captions?.position || "bottom";
-  const captionColor = (usesEditorCaption ? opts.editorCaptionColor : null) || opts.captions?.color || "#FFFFFF";
+  const caption = resolveCaption(opts, opts.captions);
 
-  if (captionText && opts.captions?.enabled) {
+  if (caption.text && opts.captions?.enabled) {
     const caps = await buildCaptionsFilter(
-      captionText,
-      captionStyle,
-      captionSize,
-      captionPosition,
-      captionColor,
+      caption.text,
+      caption.style,
+      caption.size,
+      caption.position,
+      caption.color,
       outW,
       outH,
       opts.audioDuration
@@ -1756,30 +1745,18 @@ async function renderStepVideoFallback(
   // labels rather than floating over the frame.
   const overlayFilter = buildOverlayTextFilter(opts, imgWidth, imgHeight, cropH);
 
-  // ── Captions: prefer the canvas editor's own caption if the scene has one ──
-  //
-  // The styling has to follow whichever TEXT won, as one group. Picking each
-  // field independently with `editorX || projectX` looked equivalent but was
-  // not: steps.editorCaptionSize/Style/Position/Color are NOT NULL with
-  // defaults ("medium", "standard", "bottom", "#FFFFFF"), so every step carries
-  // a truthy value whether or not anyone set one. Those defaults shadowed the
-  // project's caption settings on every render, which is why choosing Small or
-  // Large in the captions panel changed nothing in the exported video.
+  // ── Captions: the scene's own caption, else the project's narration one ──
+  // See resolveCaption for why the styling has to follow the text as a group.
   let captionsFilter = "";
-  const usesEditorCaption = Boolean(opts.editorCaptionText);
-  const captionText = usesEditorCaption ? opts.editorCaptionText! : (opts.captions?.text || "");
-  const captionStyle = (usesEditorCaption ? opts.editorCaptionStyle : null) || opts.captions?.style || "standard";
-  const captionSize = (usesEditorCaption ? opts.editorCaptionSize : null) || opts.captions?.size || "medium";
-  const captionPosition = (usesEditorCaption ? opts.editorCaptionPosition : null) || opts.captions?.position || "bottom";
-  const captionColor = (usesEditorCaption ? opts.editorCaptionColor : null) || opts.captions?.color || "#FFFFFF";
+  const caption = resolveCaption(opts, opts.captions);
 
-  if (captionText && opts.captions?.enabled) {
+  if (caption.text && opts.captions?.enabled) {
     const caps = await buildCaptionsFilter(
-      captionText,
-      captionStyle,
-      captionSize,
-      captionPosition,
-      captionColor,
+      caption.text,
+      caption.style,
+      caption.size,
+      caption.position,
+      caption.color,
       outW,
       outH,
       opts.audioDuration

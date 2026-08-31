@@ -392,6 +392,79 @@ export const stepRouter = createRouter({
       return updated;
     }),
 
+  /**
+   * Set the order of every scene in a project in one call.
+   *
+   * The editor used to do this from the client: splice the array, then
+   * `await step.update` once per scene in a loop. That is one round trip per
+   * scene, serially, for every scene rather than only the ones that moved, with
+   * nothing on screen until all of them land. On the two largest projects here
+   * (112 and 94 scenes) it also walked straight through `step.update`'s
+   * 30-per-minute limit and died half way, leaving the ordering part-written.
+   *
+   * One call, one rate-limit unit, and the writes go in a transaction so a
+   * failure cannot leave scenes half-renumbered.
+   */
+  reorder: authedQuery
+    .use(rateLimitByUser(60_000, 30))
+    .input(
+      z.object({
+        projectId: z.number(),
+        /** Every scene id in the project, in the order they should render. */
+        stepIds: z.array(z.number()).min(1).max(500),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [project] = await getDb()
+        .select()
+        .from(projects)
+        .where(
+          and(eq(projects.id, input.projectId), projectAccessWhere(ctx.user!))
+        )
+        .limit(1);
+
+      if (!project) throw userError("Project not found", "NOT_FOUND");
+
+      const existing = await getDb()
+        .select({ id: steps.id, order: steps.order })
+        .from(steps)
+        .where(eq(steps.projectId, input.projectId));
+
+      // The list has to be exactly this project's scenes: no ids from someone
+      // else's project, and none of this project's left out, or the result is a
+      // renumbering that silently drops scenes out of the video.
+      const owned = new Set(existing.map((s) => s.id));
+      const requested = new Set(input.stepIds);
+      if (
+        requested.size !== input.stepIds.length ||
+        requested.size !== owned.size ||
+        input.stepIds.some((id) => !owned.has(id))
+      ) {
+        throw userError("That scene list does not match this project.");
+      }
+
+      // Only what actually moved. Dragging one scene a few places along leaves
+      // most of the list where it was, and rewriting all of it is how a 112
+      // scene project turned one drag into 112 writes.
+      const currentOrder = new Map(existing.map((s) => [s.id, s.order]));
+      const changed = input.stepIds
+        .map((id, index) => ({ id, order: index + 1 }))
+        .filter((s) => currentOrder.get(s.id) !== s.order);
+
+      if (changed.length === 0) return { success: true, updated: 0 };
+
+      await getDb().transaction(async (tx) => {
+        for (const s of changed) {
+          await tx
+            .update(steps)
+            .set({ order: s.order })
+            .where(eq(steps.id, s.id));
+        }
+      });
+
+      return { success: true, updated: changed.length };
+    }),
+
   delete: authedQuery
     .use(rateLimitByUser(60_000, 20))
     .input(z.object({ id: z.number() }))

@@ -5,10 +5,19 @@
 | Version | 3.0.0 |
 | Package | `aivideo` (see `package.json`) |
 
-## Rollback point
+## Rollback points
 
-The last known-good commit before the current round of editor fixes.
-If anything in the working tree goes wrong, return to it.
+Two, newest first. Prefer the newer one unless the fault is in the work it
+carries.
+
+| Field | Value |
+| --- | --- |
+| Commit | `ad7f1e6` |
+| Subject | feat: support multiple badges and redaction regions per scene |
+| Carries | multi-badge/redact, blur preview rework, caption sizing, overlay wrapping |
+| Note | Needs `editorRedacts`/`editorBadges` on `steps`; already applied to the Aiven database |
+
+The older commit below predates all of the current round of editor fixes.
 
 | Field | Value |
 | --- | --- |

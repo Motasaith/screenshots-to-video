@@ -6,7 +6,7 @@
  * No playhead, no split, no zoom: just a clean strip like the original.
  */
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { Fragment, useState, useEffect, useMemo, useRef } from "react";
 import { isVideoPath } from "@/lib/mediaPath";
 import {
   Trash2,
@@ -37,7 +37,12 @@ export interface TimelineProps {
   onClipReorder: (fromIndex: number, toIndex: number) => void;
   onClipDelete: (index: number) => void;
   onClipTrim: (index: number, newDuration: number) => void;
-  onAddClip: () => void;
+  /**
+   * Add scenes. With an index, the new scenes are inserted at that position
+   * rather than appended, so a scene can be put where it belongs instead of
+   * being added at the end and dragged back up.
+   */
+  onAddClip: (atIndex?: number) => void;
   /** Capture a photo from the webcam as a new scene. */
   onCapture?: (mode: "camera") => void;
   onDropFiles?: (files: FileList) => void;
@@ -242,7 +247,7 @@ export default function Timeline({
       >
         {clips.length === 0 ? (
           <div
-            onClick={onAddClip}
+            onClick={() => onAddClip()}
             className="w-full py-3 border-2 border-dashed border-[var(--sketch-border-color)]/20 rounded-lg flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:border-[var(--sketch-border-color)]/40 transition-colors"
           >
             <Upload className="w-5 h-5 text-[var(--sketch-fg-subtle)] animate-bounce" />
@@ -288,8 +293,23 @@ export default function Timeline({
               const isDragOverTarget = idx === dragOverIndex;
 
               return (
+                <Fragment key={clip.id}>
+                {/* Insert point. A hairline at rest so the strip stays calm,
+                    widening to a real target on hover: scenes used to be
+                    appendable only at the end, which meant adding one in the
+                    middle was "add at the end, then drag it back up". */}
+                <button
+                  onClick={() => onAddClip?.(idx)}
+                  className="group/insert flex-shrink-0 self-center w-3 h-14 flex items-center justify-center cursor-pointer"
+                  title={`Insert a scene before scene ${idx + 1}`}
+                  aria-label={`Insert a scene before scene ${idx + 1}`}
+                >
+                  <span className="w-px h-8 bg-[var(--sketch-border-color)]/30 group-hover/insert:hidden" />
+                  <span className="hidden group-hover/insert:grid place-items-center w-5 h-5 rounded-full bg-[var(--sketch-accent)] text-white shadow">
+                    <Plus className="w-3 h-3" />
+                  </span>
+                </button>
                 <div
-                  key={clip.id}
                   className="flex-shrink-0 flex items-center gap-1.5 group/scene"
                   draggable
                   onDragStart={(e) => handleDragStart(e, idx)}
@@ -385,12 +405,13 @@ export default function Timeline({
                     );
                   })()}
                 </div>
+                </Fragment>
               );
             })}
 
             {/* Add Scene button at the end */}
             <button
-              onClick={onAddClip}
+              onClick={() => onAddClip?.()}
               className="flex-shrink-0 w-24 aspect-video rounded-md bg-[var(--sketch-fg-subtle)]/5 hover:bg-[var(--sketch-fg-subtle)]/10 border-2 border-dashed border-[var(--sketch-border-color)]/30 hover:border-[var(--sketch-accent)]/50 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all"
               title="Add Scene"
               aria-label="Add a scene"

@@ -16,6 +16,7 @@ import {
   probeMediaDuration
 } from "./ffmpeg";
 import { cleanupExpiredProjects } from "./cleanup";
+import { planBumper } from "./bumper";
 import { getUserElevenLabsKey } from "../queries/users";
 import { localFilePath, saveLocalFile } from "./localStore";
 import { logger } from "./logger";
@@ -1165,12 +1166,18 @@ async function processRenderJob(
      * would be baffling. Personal projects have no team and get nothing here.
      */
 
-    if (project.introVideoPath) {
+    // The dropdown decides, not a leftover upload: see `planBumper`. This is the
+    // same rule `Timeline.tsx` has always drawn its preview under, which is why
+    // the editor showed no intro while the render still added one.
+    const introPlan = planBumper(project.introTemplate, project.introVideoPath);
+    const outroPlan = planBumper(project.outroTemplate, project.outroVideoPath);
+
+    if (introPlan.kind === "clip") {
       // Custom intro. Normalised rather than used as-is: an arbitrary upload
       // shares none of the codec parameters the concat assumes, and may have no
       // audio track at all.
       const intro = await prepareBumper(
-        project.introVideoPath,
+        project.introVideoPath!,
         outputRes,
         project.introDuration,
         project.transitionDuration || 0.5
@@ -1179,11 +1186,11 @@ async function processRenderJob(
       segmentPaths.unshift(intro.path);
       segmentDurations.unshift(intro.duration);
       transitions.unshift("fade");
-    } else if (project.introTemplate && project.introTemplate !== "none") {
+    } else if (introPlan.kind === "text") {
       const introDuration = project.introDuration || 3.0;
       const text = project.introText || projectBrandKit?.introText || project.title || "";
       const introPath = await renderTextSegment(
-        project.introTemplate,
+        introPlan.template,
         text,
         outputRes,
         introDuration,
@@ -1194,9 +1201,9 @@ async function processRenderJob(
       transitions.unshift("fade");
       tempFiles.push(introPath);
     }
-    if (project.outroVideoPath) {
+    if (outroPlan.kind === "clip") {
       const outro = await prepareBumper(
-        project.outroVideoPath,
+        project.outroVideoPath!,
         outputRes,
         project.outroDuration,
         project.transitionDuration || 0.5
@@ -1205,11 +1212,11 @@ async function processRenderJob(
       segmentPaths.push(outro.path);
       segmentDurations.push(outro.duration);
       transitions.push("fade");
-    } else if (project.outroTemplate && project.outroTemplate !== "none") {
+    } else if (outroPlan.kind === "text") {
       const outroDuration = project.outroDuration || 3.0;
       const text = project.outroText || projectBrandKit?.outroText || "Thanks for watching!";
       const outroPath = await renderTextSegment(
-        project.outroTemplate,
+        outroPlan.template,
         text,
         outputRes,
         outroDuration,
