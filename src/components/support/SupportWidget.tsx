@@ -268,9 +268,10 @@ export function SupportWidget() {
 
   /** Start watching a ticket this browser just raised anonymously. */
   const rememberTicket = useCallback((ticket: TrackedTicket) => {
-    // The write happens outside the updater. A state updater has to be pure -
-    // StrictMode runs it twice on purpose - and touching localStorage from
-    // inside one is a side effect in a function that promises not to have any.
+    // Writing to localStorage from inside the updater is a side effect in a
+    // function that should be pure, and StrictMode runs it twice. Writing the
+    // same value twice is harmless, which is why it is left alone rather than
+    // restructured - but it is the reason this is not a pattern to copy.
     setTracked((prev) => {
       const next = [ticket, ...prev.filter((t) => t.ticketId !== ticket.ticketId)].slice(0, 3);
       try {
@@ -720,10 +721,15 @@ ${res.reply}`
   const inEditor = !!editor;
 
   /**
-   * Moving the widget is offered in the editor only. That is the one place with
-   * something underneath worth uncovering.
+   * Moving the widget is offered everywhere.
+   *
+   * It began as an editor-only affordance, on the reasoning that the editor is
+   * the one screen with a crowded bottom-right corner. That turned out to be the
+   * wrong test: whether the widget is in the way is the reader's judgement, not
+   * ours, and someone who has moved it once in the editor reasonably expects to
+   * be able to move it on any other page too.
    */
-  const drag = useWidgetDrag(inEditor, isOpen);
+  const drag = useWidgetDrag(true, isOpen);
   const isBusy = chat.isPending || editScene.isPending;
   const canSend = (draft.trim().length > 0 || attachments.length > 0) && !isBusy;
 
@@ -756,8 +762,8 @@ ${res.reply}`
         void addImages(Array.from(e.dataTransfer.files));
       }}
     >
-      {/* The grab bar exists only in the editor, and it says what it is: a grip
-          icon alone is a convention plenty of people have never had to learn. */}
+      {/* The grab bar says what it is: a grip icon on its own is a convention
+          plenty of people have never had to learn. */}
       {drag.enabled ? (
         <div
           onPointerDown={drag.onPointerDown}
@@ -1220,7 +1226,12 @@ function SupportLauncher({
               </span>
             </span>
           ) : (
-            <span className="text-[13.5px]">Ask me anything</span>
+            <span className="leading-tight">
+              <span className="block text-[13.5px]">Ask me anything</span>
+              <span className="block text-[11px] text-ink-muted">
+                In the way? Drag the grip to move me.
+              </span>
+            </span>
           )}
           <button
             onClick={() => setDismissedLabel(true)}

@@ -9,12 +9,11 @@ import App from './App.tsx'
 import { ScrollToTop } from "@/components/ScrollToTop"
 import { Toaster } from "@/components/ui/sonner"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
-import { initTheme } from "@/hooks/useTheme"
 
-// The theme is resolved before the first paint rather than in an effect. An
-// effect runs after React has already painted, so somebody on dark mode would
-// see a white flash on every load - which reads as a bug, not as a delay.
-initTheme()
+// No theme is applied here. Dark mode belongs to the editor and is switched on
+// by the editor while it is mounted (see useEditorTheme); setting it globally at
+// start-up turned the marketing pages and the dashboard dark too, which they
+// have no styling for.
 
 // Opts the page into entrance animations. Everything with a `reveal` class is
 // hidden only while this class is present, so if this script never runs the

@@ -3,11 +3,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 /**
  * Lets the support widget be moved out of the way.
  *
- * Only used in the editor. Everywhere else the bottom-right corner is empty, but
- * the editor has a vertical tool strip against the right edge and a toolbar
- * along the bottom, and no fixed position is clear of both on every screen size.
- * Shifting the default inset helped and did not solve it, so the person using it
- * gets to decide.
+ * Enabled on every page. It started as an editor-only affordance, because the
+ * editor has a vertical tool strip against the right edge and a toolbar along
+ * the bottom and no fixed position is clear of both at every screen size. But
+ * whether the widget is covering something that matters is the reader's call
+ * rather than ours, and having it move on one screen and refuse on the next is
+ * the sort of inconsistency that reads as a fault.
  *
  * The position is an offset from the normal corner rather than absolute
  * coordinates. That way the widget still anchors itself correctly when the window

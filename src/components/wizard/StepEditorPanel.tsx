@@ -59,7 +59,7 @@ import {
   Sliders,
 } from "lucide-react";
 import { stepThumbUrl } from "@/lib/thumbUrl";
-import { useTheme } from "@/hooks/useTheme";
+import { useEditorTheme } from "@/hooks/useTheme";
 import { ScenePreview } from "./ScenePreview";
 import OwnVoiceRecorder from "./OwnVoiceRecorder";
 import { CaptureDialog } from "./CaptureDialog";
@@ -765,7 +765,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const [activeTransitionClipId, setActiveTransitionClipId] = useState<number | null>(null);
   const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
   const [projectTitle, setProjectTitle] = useState("Untitled video");
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme } = useEditorTheme();
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);

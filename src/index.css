@@ -125,10 +125,17 @@
  * That is the reason to do it here rather than with `dark:` variants sprinkled
  * through nine thousand lines of JSX.
  *
- * Applied by `data-theme="dark"` on <html>, set from the toggle and restored on
- * load. Not `prefers-color-scheme` alone: the marketing pages are designed
- * light, and flipping them because of an OS setting is a bigger change than was
- * asked for. The attribute is opt-in and explicit.
+ * Applied by `data-theme="dark"` on <html>, which the editor sets while it is
+ * mounted and removes when it leaves - so this is the editor's theme, not the
+ * site's. The marketing pages and the dashboard are designed light and stay
+ * light.
+ *
+ * On <html> rather than on the editor's own element because dialogs, dropdowns
+ * and tooltips portal into <body>, outside the editor's subtree; scoping it
+ * there would strand every one of them in light mode over a dark page.
+ *
+ * Never from `prefers-color-scheme`. Dark is a choice somebody makes in the
+ * editor, not something that happens to them because of an OS setting.
  *
  * Surfaces step up as they come forward - page, then mat, then surface - so
  * panels separate from the canvas without needing heavier borders. The accent

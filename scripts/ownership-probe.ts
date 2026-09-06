@@ -216,7 +216,33 @@ async function main() {
     console.log(`ok    ${proc.path.padEnd(28)} ${status} ${verb}`);
   }
 
-  console.log(`\n${surface.length} probed, ${leaks.length} leaking, ${suspicious.length} inconclusive`);
+  /**
+   * The same call as the person it belongs to.
+   *
+   * Without this a server refusing everything reads as a perfect score. That is
+   * not hypothetical: run against a port serving a different application, or
+   * behind something that blocks the whole surface, every line above turns into
+   * a confident `ok` and the summary says zero leaking. The refusals only mean
+   * "not yours" if the identical request succeeds for the owner.
+   */
+  const controlRes = await fetch(`${BASE}/api/trpc/project.getById?input=${encodeURIComponent(
+    JSON.stringify({ json: { id: victimProject.id } })
+  )}`, {
+    headers: { Cookie: `kimi_sid=${await signSessionToken({ unionId: victim.unionId!, clientId: "web" })}` },
+  });
+  const controlBody = await controlRes.text();
+  // A 200 whose payload is an empty result would mean the owner cannot see their
+  // own project either, which is the same failure wearing a success code.
+  const controlOk = controlRes.status === 200 && controlBody.includes(`"id":${victimProject.id}`);
+
+  console.log(
+    `\ncontrol: the owner reading their own project -> ${controlRes.status} ` +
+    (controlOk
+      ? "(returns it, as it should)"
+      : "(INCONCLUSIVE - every refusal above may be the whole surface being blocked, not the ownership checks)")
+  );
+
+  console.log(`\n${surface.length} probed, ${leaks.length} leaking, ${suspicious.length} inconclusive${controlOk ? "" : ", control failed"}`);
   for (const s of suspicious) console.log(`  inconclusive: ${s}`);
   for (const l of leaks) console.log(`  LEAK: ${l}`);
 
@@ -225,7 +251,7 @@ async function main() {
     for (const [path, why] of Object.entries(EXEMPT)) console.log(`  ${path}: ${why}`);
   }
 
-  process.exit(leaks.length > 0 ? 1 : 0);
+  process.exit(leaks.length > 0 || !controlOk ? 1 : 0);
 }
 
 void main();

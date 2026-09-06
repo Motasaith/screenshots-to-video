@@ -31,7 +31,8 @@ nullable column is a silent, non-destructive change for push.
 
 ### Added
 
-- **Dark mode, with a labelled toggle in the editor header.** The editor already
+- **Dark mode, with a labelled toggle in the editor header.** Scoped to the
+  editor, and light by default. The editor already
   read every colour through the `--sketch-*` custom properties, so the theme is
   one block of redefined tokens under `:root[data-theme="dark"]` rather than a
   `dark:` variant on each of several thousand elements - which is also why it
@@ -43,9 +44,15 @@ nullable column is a silent, non-destructive change for push.
   before the first paint rather than from an effect - an effect runs after React
   has painted, so a dark-mode user would get a white flash on every load.
 
-  The system preference is the starting point for somebody who has never chosen,
-  and their choice outranks it from then on: the OS switching itself to night
-  mode at sunset should not override a deliberate decision.
+  The attribute goes on `<html>` - dialogs and dropdowns portal into `<body>`,
+  outside the editor's subtree, so scoping it to the editor element would strand
+  all of them in light mode over a dark page - but it is set when the editor
+  mounts and removed when it leaves. The marketing pages and the dashboard are
+  designed light and stay light.
+
+  The default is light, never the operating system's preference. Somebody
+  opening the editor for the first time should see what everyone else sees; dark
+  is a choice they make, and it is remembered once they make it.
 
   Four places had colours that would not have followed: two panel controls on
   fixed slate, the zoom dropdown's options forced to `bg-white`, and the export
@@ -104,6 +111,17 @@ nullable column is a silent, non-destructive change for push.
   the canvas.
 
 ### Changed
+
+- **The support widget can be dragged on every page, not just in the editor.**
+  It was gated on `inEditor`, on the reasoning that the editor is the one screen
+  with a crowded bottom-right corner. Wrong test: whether the widget is covering
+  something that matters is the reader's judgement, not ours, and a widget that
+  moves on one screen and refuses on the next reads as a fault rather than a
+  decision. The grips were already driven by the hook's own `enabled` flag, so
+  they appear everywhere now, and the launcher label off the editor says the grip
+  is there. The saved position is shared, and is an offset from whichever corner
+  the widget is anchored to rather than absolute coordinates, so it survives the
+  editor's different inset and a change of screen size.
 
 - **Keyboard shortcuts are removed for now.** They were unreliable, and one of
   them was actively corrupting the undo history. Rather than keep hints on every
