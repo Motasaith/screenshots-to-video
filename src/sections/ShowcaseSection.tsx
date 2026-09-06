@@ -79,7 +79,7 @@ export default function ShowcaseSection() {
               key={panel.id}
               src={panel.image}
               alt={panel.title}
-              ratio={16 / 10}
+              ratio={panel.ratio ?? 16 / 10}
               bare
               placeholder={panel.tab}
               sizes="(max-width: 1024px) 100vw, 700px"

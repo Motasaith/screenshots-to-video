@@ -6,19 +6,22 @@ const steps = [
     n: "1",
     title: "Upload your screenshots",
     body: "Drop a folder or a ZIP. They are sorted by filename, and that order becomes the order of the video. Pick an aspect ratio and you have a project.",
-    image: "/images/steps/step1.png",
+    image: "/images/steps/new-project.webp",
+    ratio: 957 / 708,
   },
   {
     n: "2",
     title: "Mark up what matters",
-    body: "Box the button someone should click. Blur what should not be public. Set a zoom target. Write or accept the narration for each step.",
-    image: "/images/steps/step3.png",
+    body: "Box the button someone should click and the camera zooms to it. Blur what should not be public. The narration is drafted from your screenshots, and you change any line you disagree with.",
+    image: "/images/steps/editor.webp",
+    ratio: 1600 / 795,
   },
   {
     n: "3",
     title: "Render and download",
     body: "We stitch the screenshots, narration, zooms and music into one MP4 on our machines. Close the tab; it will be waiting in your library.",
-    image: "/images/steps/step8.png",
+    image: "/images/steps/export.webp",
+    ratio: 1600 / 795,
   },
 ];
 
@@ -41,7 +44,7 @@ export default function HowItWorksSection() {
                 <Shot
                   src={step.image}
                   alt={step.title}
-                  ratio={16 / 10}
+                  ratio={step.ratio}
                   bare
                   placeholder={`Step ${step.n}`}
                   sizes="(max-width: 768px) 100vw, 360px"

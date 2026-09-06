@@ -112,6 +112,18 @@ nullable column is a silent, non-destructive change for push.
 
 ### Changed
 
+- **The homepage shows real screenshots of the product.** The step images had
+  been deleted, so every `image` path in `HowItWorksSection` and `showcase.ts`
+  pointed at a file that no longer existed. Four captures replace them - the new
+  project dialog, the editor, the script and voiceover panels, and the export
+  screen - converted from PNG and JPEG to WebP and capped at 1600px wide:
+  **2.25 MB to 0.18 MB, 92% smaller**, for images that sit above the fold.
+
+  Each one now declares its own aspect ratio rather than sharing a single 16/10.
+  The frame reserves its box before the image loads, so a wrong ratio is not just
+  letterboxing - it is a reserved box of the wrong shape, and these range from
+  1.35 to 2.41.
+
 - **The support widget can be dragged on every page, not just in the editor.**
   It was gated on `inEditor`, on the reasoning that the editor is the one screen
   with a crowded bottom-right corner. Wrong test: whether the widget is covering
