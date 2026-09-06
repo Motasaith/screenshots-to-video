@@ -29,3 +29,27 @@ export const ProjectDescription = {
   min: 120,
   max: 1000,
 } as const;
+
+/**
+ * Starting text for a new project.
+ *
+ * Both places that create a project prefill with this. The 120 character floor
+ * above is right, but meeting it from an empty box reads as a wall - the create
+ * dialog opens on "120 more characters needed" in red before anything has been
+ * typed. Starting from a real sentence that already clears the minimum turns
+ * the job from "write an essay" into "change this to describe your video",
+ * which is a much smaller ask and produces better text than a reluctant 120
+ * characters would.
+ *
+ * Deliberately generic and slightly awkward: it should be obviously a
+ * placeholder worth replacing, not something anyone would happily ship. The
+ * narration is written from it, so a description left untouched should read as
+ * unfinished rather than as a decision.
+ */
+export const ProjectDefaults = {
+  title: "Untitled tutorial",
+  description:
+    "A step-by-step walkthrough of this process, shown one screen at a time. " +
+    "Replace this with what the video covers, who it is for, and what they " +
+    "should be able to do by the end.",
+} as const;

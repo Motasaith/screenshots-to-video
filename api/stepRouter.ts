@@ -465,6 +465,155 @@ export const stepRouter = createRouter({
       return { success: true, updated: changed.length };
     }),
 
+  /**
+   * Apply the boxes drawn in the guided setup.
+   *
+   * A screenshot can carry any number of highlights, and each one independently
+   * decides whether the camera goes there. Both lists exist in the editor's own
+   * model already: `editorHighlights` and `editorMultiZooms`. An earlier version
+   * took one box per step and quietly used it as the zoom as well, so there was
+   * no way to mark a second thing and no way to say "highlight this but do not
+   * move the camera".
+   *
+   * Writes exactly what the vision path writes, so a project framed by hand and
+   * one framed automatically are indistinguishable afterwards and edit in the
+   * same places. A step absent from `frames` is left completely alone: that is
+   * what "nothing to point at here" and "do this in the editor" mean - no
+   * highlight and no zoom, rather than empty ones.
+   */
+  applyFocus: authedQuery
+    .use(rateLimitByUser(60_000, 20))
+    .input(
+      z.object({
+        projectId: z.number(),
+        frames: z
+          .array(
+            z.object({
+              stepId: z.number(),
+              highlights: z
+                .array(
+                  z.object({
+                    x: z.number().min(0).max(100),
+                    y: z.number().min(0).max(100),
+                    w: z.number().min(0.5).max(100),
+                    h: z.number().min(0.5).max(100),
+                    /** Whether the camera moves to this box. */
+                    zoom: z.boolean(),
+                  })
+                )
+                .min(1)
+                .max(20),
+            })
+          )
+          .max(500),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [project] = await getDb()
+        .select()
+        .from(projects)
+        .where(
+          and(eq(projects.id, input.projectId), projectAccessWhere(ctx.user!))
+        )
+        .limit(1);
+
+      if (!project) throw userError("Project not found", "NOT_FOUND");
+
+      const owned = new Set(
+        (
+          await getDb()
+            .select({ id: steps.id })
+            .from(steps)
+            .where(eq(steps.projectId, input.projectId))
+        ).map((s) => s.id)
+      );
+
+      for (const frame of input.frames) {
+        // Silently ignoring a foreign id would let one project's framing be
+        // written into another's.
+        if (!owned.has(frame.stepId)) {
+          throw userError("That scene is not part of this project.");
+        }
+      }
+
+      // Breathing room around the box, so the element is not jammed against the
+      // edge of the frame once the camera arrives.
+      const PAD = 6;
+
+      /** A box, padded, in the shape the camera fields want. */
+      const cameraRect = (b: { x: number; y: number; w: number; h: number }) => {
+        const rectX = Math.max(0, b.x - PAD);
+        const rectY = Math.max(0, b.y - PAD);
+        return {
+          targetX: b.x + b.w / 2,
+          targetY: b.y + b.h / 2,
+          rectX,
+          rectY,
+          rectW: Math.min(100 - rectX, b.w + PAD * 2),
+          rectH: Math.min(100 - rectY, b.h + PAD * 2),
+        };
+      };
+
+      let zoomCount = 0;
+
+      for (const frame of input.frames) {
+        const highlights = frame.highlights.map((b, i) => ({
+          id: `focus-${frame.stepId}-${i}`,
+          x: b.x,
+          y: b.y,
+          w: b.w,
+          h: b.h,
+          color: "#FF0099",
+        }));
+
+        // Any number of boxes can be zoomed into: `editorMultiZooms` is a list
+        // and the worker renders a segment per waypoint. The single-zoom columns
+        // are set from the first of them, because they are what the fallback
+        // render path reads when the multi-zoom one is not taken.
+        const zooms = frame.highlights
+          .map((b, i) => ({ b, i }))
+          .filter(({ b }) => b.zoom)
+          .map(({ b, i }) => ({ ...cameraRect(b), id: `focus-${frame.stepId}-${i}` }));
+
+        zoomCount += zooms.length;
+        const first = zooms[0];
+
+        // Null, not absent: a scene that had a zoom and should now have none
+        // must have the old one cleared, and `editorZoomScale` is what arms it
+        // at all.
+        await getDb()
+          .update(steps)
+          .set({
+            editorHighlights: highlights,
+            zoomTargetX: first?.targetX ?? null,
+            zoomTargetY: first?.targetY ?? null,
+            zoomRectX: first?.rectX ?? null,
+            zoomRectY: first?.rectY ?? null,
+            zoomRectWidth: first?.rectW ?? null,
+            zoomRectHeight: first?.rectH ?? null,
+            editorZoomScale: first ? 2 : null,
+            editorMultiZooms: zooms.map((z) => ({
+              id: z.id,
+              targetX: z.targetX,
+              targetY: z.targetY,
+              rectX: z.rectX,
+              rectY: z.rectY,
+              rectW: z.rectW,
+              rectH: z.rectH,
+              zoomScale: 2,
+              duration: 3,
+            })),
+          })
+          .where(eq(steps.id, frame.stepId));
+      }
+
+      return {
+        framed: input.frames.length,
+        highlights: input.frames.reduce((n, f) => n + f.highlights.length, 0),
+        zooms: zoomCount,
+      };
+    }),
+
   delete: authedQuery
     .use(rateLimitByUser(60_000, 20))
     .input(z.object({ id: z.number() }))

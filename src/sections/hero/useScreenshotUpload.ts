@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { trpc } from "@/providers/trpc";
+import { ProjectDefaults } from "@contracts/constants";
 import { compressImages } from "@/lib/imageCompress";
 import {
   clearPendingFiles,
@@ -65,13 +66,13 @@ export function useScreenshotUpload() {
 
       const project = await createProject.mutateAsync({
         title: "Imported video",
-        // The homepage flow collects no text, so this default is all the
-        // script generator gets to start from. It has to clear the 120
-        // character minimum on project.create and still describe something
-        // real, rather than being a stub that produces a stub script.
-        description:
-          "A step-by-step walkthrough built from screenshots uploaded on the AIVideo homepage. " +
-          "Each scene shows one action in the interface, in the order the files were named.",
+        // The homepage flow collects no text, so this default is all the script
+        // generator gets to start from. Shared with the dashboard's create
+        // dialog so the two cannot drift, and it has to clear the 120 character
+        // minimum on project.create while still describing something real
+        // rather than being a stub that produces a stub script. The import
+        // dialog on the next screen prefills with it and invites a replacement.
+        description: ProjectDefaults.description,
         platform: "youtube",
         aspectRatio: "16:9",
       });

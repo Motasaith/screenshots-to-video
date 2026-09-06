@@ -7,6 +7,8 @@ import {
   type EditorExportOptions,
 } from "./StepEditorPanel";
 import OnboardingTour from "./OnboardingTour";
+import GuidedFraming, { type FramingResult } from "./GuidedFraming";
+import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -54,6 +56,77 @@ export default function StepPreview() {
 
   const updateProject = trpc.project.update.useMutation();
   const updateStep = trpc.step.update.useMutation();
+  const generateScript = trpc.ai.generateScript.useMutation();
+  const applyFocus = trpc.step.applyFocus.useMutation();
+
+  /**
+   * Writing the narration for a freshly imported project, before the editor
+   * opens.
+   *
+   * The homepage promises "drop in the screenshots you already have, AIVideo
+   * writes the narration". It then dropped people into a fifteen-tool editor
+   * with empty scripts and left them to find the button, which is the "I gave
+   * it my screenshots, why is there no video?" moment. The generation runs on
+   * its own now, and the editor opens with the scripts already in it.
+   *
+   * `null` means not running. A failure is not fatal: the scenes and their
+   * screenshots are already saved, so the editor still opens and the script
+   * button is still there.
+   */
+  const [draftState, setDraftState] = useState<"writing" | "failed" | null>(null);
+
+  /**
+   * Whether the guided "point at the thing" pass is on screen.
+   *
+   * It runs between the import dialog and the editor, so the first thing a new
+   * person does is one drag on one screenshot rather than meeting fifteen tools
+   * at once.
+   */
+  const [showFraming, setShowFraming] = useState(false);
+
+  /**
+   * Offer the guided pass once per project, when its screenshots first arrive.
+   *
+   * It used to be launched only from the import dialog, which only opens on
+   * `?imported=true` - so it existed solely for the homepage uploader. A project
+   * created from the dashboard starts with no scenes at all, lands straight in
+   * the editor, and never saw the setup no matter how many screenshots were
+   * added afterwards.
+   *
+   * The trigger is the transition from no scenes to some, so it fires after the
+   * first upload rather than on an empty project where there would be nothing to
+   * frame. It stays quiet for a project that has been framed before, and the
+   * button in the timeline reopens it on demand.
+   */
+  const framingOfferedRef = useRef(false);
+  const hadStepsRef = useRef<boolean | null>(null);
+
+  /** Reopen the guided pass from the timeline, for any project at any time. */
+  const openFraming = () => {
+    framingOfferedRef.current = true;
+    setShowFraming(true);
+  };
+
+  /**
+   * Draft the narration from the screenshots, after the guided pass.
+   *
+   * Runs whether or not anything was framed: the scripts are written from the
+   * pictures, not from the boxes. A failure is not fatal - the scenes and their
+   * screenshots are saved, and the Script panel can generate them on demand.
+   */
+  const writeNarration = async () => {
+    setDraftState("writing");
+    try {
+      await generateScript.mutateAsync({ projectId: projectIdNum });
+      setDraftState(null);
+    } catch (err) {
+      console.error("Auto script generation failed:", err);
+      setDraftState("failed");
+    } finally {
+      await trpcUtils.project.getById.invalidate({ id: projectIdNum });
+      await trpcUtils.step.listByProject.invalidate({ projectId: projectIdNum });
+    }
+  };
   const trpcUtils = trpc.useUtils();
 
   const { data: project } = trpc.project.getById.useQuery(
@@ -61,6 +134,32 @@ export default function StepPreview() {
     { enabled: projectIdNum > 0 }
   );
   const { data: steps } = trpc.step.listByProject.useQuery({ projectId: projectIdNum });
+
+  useEffect(() => {
+    const list = project?.steps;
+    if (!list) return;
+
+    const hasSteps = list.length > 0;
+    const firstLook = hadStepsRef.current === null;
+    const wasEmpty = hadStepsRef.current === false;
+    hadStepsRef.current = hasSteps;
+
+    // The first look only records the starting point. Opening an existing
+    // project that happens to have no highlights is not a reason to launch the
+    // setup over it - that would fire on every page load until it was done.
+    // Only a project that gains its first scenes while open has just been
+    // started, and that is the moment worth interrupting.
+    if (firstLook || !wasEmpty || !hasSteps) return;
+    if (framingOfferedRef.current || showFraming || showImportModal) return;
+
+    // Anything already framed means this is not a first run.
+    const alreadyFramed = list.some(
+      (s) => Array.isArray(s.editorHighlights) && s.editorHighlights.length > 0
+    );
+    framingOfferedRef.current = true;
+    if (!alreadyFramed) setShowFraming(true);
+  }, [project?.steps, showFraming, showImportModal]);
+
 
   // Seed caption and transition settings from the project ONCE.
   //
@@ -201,6 +300,12 @@ export default function StepPreview() {
       setSearchParams(newParams);
 
       setShowImportModal(false);
+
+      // Hand over to the guided pass rather than the editor. The person says
+      // what matters on each screenshot themselves - one screenshot, one drag -
+      // and the narration is written from those screenshots afterwards.
+      framingOfferedRef.current = true;
+      setShowFraming(true);
     } catch (err: any) {
       console.error(err);
       setValidationError(err.message || "Failed to update project settings.");
@@ -256,9 +361,16 @@ export default function StepPreview() {
 
   return (
     <div className="w-full h-full flex flex-col">
-      {/* Full immersive editor: sidebar + canvas + timeline */}
+      {/* Full immersive editor: sidebar + canvas + timeline.
+          Held back until the guided pass is done. The editor seeds its
+          annotation state once and only re-reads the server when the SET of
+          step ids changes - adding highlights to existing scenes does not change
+          any id, so an editor mounted underneath the framing overlay would keep
+          the empty annotations it started with and the boxes just drawn would
+          never appear. Mounting it after the write means it reads them on its
+          first pass. */}
       <div id="preview-editor" className="flex-1 min-h-0">
-        <StepEditorPanel
+        {!showFraming && <StepEditorPanel
           stepTransitions={stepTransitions}
           onStepTransitionChange={handleStepTransitionChange}
           globalTransition={globalTransition}
@@ -286,10 +398,98 @@ export default function StepPreview() {
           isSaving={updateProject.isPending || updateStep.isPending}
           focusPanel={focusPanel}
           focusScriptMode={focusScriptMode}
-        />
+          onOpenFraming={openFraming}
+        />}
       </div>
 
       {/* First-time user onboarding tour */}
+      {/* Fed from `project.steps`, not the `step.listByProject` query beside it.
+          Only project.getById runs signStepUrls; listByProject returns the raw
+          storage keys, so `<img src="local:users/2/...">` renders nothing. */}
+      {showFraming && project?.steps && project.steps.length > 0 && (
+        <GuidedFraming
+          steps={project.steps.map((s) => ({
+            id: s.id,
+            order: s.order,
+            screenshotPath: s.screenshotPath,
+          }))}
+          onSkipAll={() => {
+            setShowFraming(false);
+            void writeNarration();
+          }}
+          onDone={async (result: Record<number, FramingResult>) => {
+            const frames = Object.entries(result).map(([stepId, r]) => ({
+              stepId: Number(stepId),
+              highlights: r.highlights,
+            }));
+            if (frames.length > 0) {
+              try {
+                await applyFocus.mutateAsync({ projectId: projectIdNum, frames });
+                // Before the editor mounts, so it seeds its annotations from
+                // data that already has the highlights in it.
+                await trpcUtils.project.getById.invalidate({ id: projectIdNum });
+                await trpcUtils.step.listByProject.invalidate({ projectId: projectIdNum });
+              } catch (err) {
+                // The boxes are lost but nothing else is; the editor can still
+                // place them, so this must not block the narration pass.
+                console.error("Could not save the framing:", err);
+                toast.error("Could not save your highlights. You can add them in the editor.");
+              }
+            }
+            setShowFraming(false);
+            void writeNarration();
+          }}
+        />
+      )}
+
+      {/* Shown between "start editing" and the editor appearing, so the wait
+          reads as the product working rather than as nothing happening. */}
+      {draftState && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm rounded-xl border border-[var(--sketch-border-color)] bg-[var(--sketch-surface)] p-6 text-center shadow-2xl">
+            {draftState !== "failed" ? (
+              <>
+                <Loader2 className="mx-auto h-8 w-8 animate-spin text-[var(--sketch-accent)]" />
+                <h2 className="mt-4 text-base font-semibold text-[var(--sketch-fg)]">
+                  Writing your narration
+                </h2>
+                <p className="mt-1.5 text-sm text-[var(--sketch-fg-muted)]">
+                  Reading your {steps?.length ?? 0} screenshots and drafting what
+                  to say for each scene. You can edit every line afterwards in
+                  the <span className="font-medium text-[var(--sketch-fg)]">Script</span> panel.
+                </p>
+                {/* Dismissable on purpose. The generation keeps running and the
+                    scripts appear when it lands, so a slow model never traps
+                    anyone behind a modal they cannot close. */}
+                <button
+                  onClick={() => setDraftState(null)}
+                  className="mt-4 text-xs text-[var(--sketch-fg-muted)] underline underline-offset-2 hover:text-[var(--sketch-fg)]"
+                >
+                  Skip and start editing
+                </button>
+              </>
+            ) : (
+              <>
+                <h2 className="text-base font-semibold text-[var(--sketch-fg)]">
+                  Could not write the narration
+                </h2>
+                <p className="mt-1.5 text-sm text-[var(--sketch-fg-muted)]">
+                  Your screenshots are saved and the project is ready. You can
+                  write the script yourself, or try generating it again from the
+                  Script panel.
+                </p>
+                <button
+                  onClick={() => setDraftState(null)}
+                  className="btn btn-primary mt-4 w-full"
+                >
+                  Open the editor
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       <OnboardingTour deferUntilReady={showImportModal} />
 
       {/* Mandatory Project Details Popup */}

@@ -331,6 +331,139 @@ Write ONLY the narration text (1-3 sentences). No JSON, no quotes, no labels. Ju
  * @param steps - Array of steps with optional screenshots and descriptions
  * @returns Array of narration scripts, one per step
  */
+/**
+ * Where the eye should go on each screenshot.
+ *
+ * This is the product's actual promise - highlight the thing that matters and
+ * push the camera towards it - and it had no implementation. `ai.suggestZooms`
+ * was this, in full:
+ *
+ *     const targetX = 30 + Math.random() * 40;
+ *     const targetY = 25 + Math.random() * 30;
+ *
+ * Random numbers in the middle of the frame, and nothing in the UI called it
+ * anyway. This asks the vision model instead, in one request for the whole
+ * project so the choices are consistent across scenes rather than each being
+ * decided in isolation.
+ *
+ * Boxes come back as percentages of the image, which is the unit every editor
+ * annotation and every FFmpeg filter already uses. A scene the model has
+ * nothing useful to say about comes back null rather than being given a
+ * fabricated box - a highlight around the wrong thing is worse than no
+ * highlight.
+ */
+export interface ScreenshotFocus {
+  order: number;
+  /** Region of interest, in percent of image width/height. */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** What the model thinks is there, for the scene description. */
+  label: string;
+}
+
+export async function suggestScreenshotFocus(
+  projectTitle: string,
+  steps: Array<{ order: number; description?: string | null; screenshotPath?: string | null }>
+): Promise<Array<ScreenshotFocus | null>> {
+  const usable = steps.filter((s) => s.screenshotPath && !s.screenshotPath.startsWith("blob:"));
+  if (usable.length === 0) return steps.map(() => null);
+
+  const contentParts: any[] = [];
+
+  contentParts.push({
+    type: "text",
+    text: `You are helping build a screen-recording style tutorial from static screenshots.
+
+Video topic: ${projectTitle}
+
+For EACH screenshot, find the single most important thing on screen - the control
+the viewer is meant to look at for that step. A button, a menu item, a field, a
+result that just appeared.
+
+Return a tight box around that element, as percentages of the image:
+- x, y: the box's top-left corner, 0-100
+- w, h: the box's width and height, 0-100
+- label: 2-5 words naming what is in the box
+
+Rules:
+- Box the element, not the whole window. A box wider than 60% is almost always wrong.
+- If a screenshot has no obvious single focus, return null for it. Do not guess.
+- Return exactly ${usable.length} entries, in the order the screenshots are given.
+
+Return ONLY valid JSON:
+{"focus": [{"x": 12.5, "y": 40, "w": 18, "h": 6, "label": "Save button"}, null]}`,
+  });
+
+  for (let i = 0; i < usable.length; i++) {
+    const step = usable[i];
+    contentParts.push({
+      type: "text",
+      text: `\n--- SCREENSHOT ${i + 1} ---${step.description ? `\nWhat this step does: ${step.description}` : ""}`,
+    });
+    const imageData = await loadImageAsDataUrl(step.screenshotPath!);
+    if (imageData) {
+      contentParts.push({ type: "image_url", image_url: { url: imageData.dataUrl } });
+    } else {
+      contentParts.push({ type: "text", text: "(screenshot could not be loaded - return null for this one)" });
+    }
+  }
+
+  const response = await chatCompletion([{ role: "user", content: contentParts }], {
+    model: env.visionLlmModel,
+    // Low: this is a measurement, not a piece of writing.
+    temperature: 0.2,
+    maxTokens: 1500,
+    jsonMode: true,
+  });
+
+  const parsed = JSON.parse(response.trim().replace(/^```json\s*|\s*```$/g, ""));
+  const raw: unknown[] = Array.isArray(parsed?.focus) ? parsed.focus : [];
+
+  // Map back onto the original step list: entries were only sent for steps with
+  // a usable screenshot, so the indexes do not line up with `steps`.
+  const byOrder = new Map<number, ScreenshotFocus>();
+  usable.forEach((step, i) => {
+    const box = raw[i] as Record<string, unknown> | null | undefined;
+    if (!box || typeof box !== "object") return;
+    const focus = normaliseFocus(step.order, box);
+    if (focus) byOrder.set(step.order, focus);
+  });
+
+  return steps.map((s) => byOrder.get(s.order) ?? null);
+}
+
+/**
+ * Keep a model's box only if it is actually usable.
+ *
+ * A box off the edge of the frame, inverted, vanishingly small, or covering
+ * most of the screenshot is worse than nothing: it draws a highlight around
+ * the wrong thing and zooms the camera at it. Rejected boxes become null and
+ * that scene simply gets no highlight.
+ */
+function normaliseFocus(order: number, box: Record<string, unknown>): ScreenshotFocus | null {
+  const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : NaN);
+  const x = num(box.x);
+  const y = num(box.y);
+  const w = num(box.w);
+  const h = num(box.h);
+  if ([x, y, w, h].some(Number.isNaN)) return null;
+
+  // Too small to see, or so big it is not pointing at anything.
+  if (w < 1 || h < 1 || w > 80 || h > 80) return null;
+  if (x < 0 || y < 0 || x + w > 100.5 || y + h > 100.5) return null;
+
+  return {
+    order,
+    x,
+    y,
+    w: Math.min(w, 100 - x),
+    h: Math.min(h, 100 - y),
+    label: typeof box.label === "string" && box.label.trim() ? box.label.trim().slice(0, 60) : "",
+  };
+}
+
 export async function generateHybridScripts(
   projectTitle: string,
   projectDescription: string | null,

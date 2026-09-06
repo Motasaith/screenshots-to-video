@@ -252,6 +252,26 @@ interface StepAnnotation {
   }> | null;
 }
 
+/** What each tool is called in the interface, as opposed to in the code. */
+const TOOL_LABELS: Record<string, string> = {
+  select: "Select",
+  pan: "Pan",
+  crop: "Crop",
+  highlight: "Highlight",
+  zoom: "Zoom",
+  multizoom: "Zoom",
+  overlay: "Text",
+  blur: "Blur",
+  redact: "Redact",
+  watermark: "Watermark",
+  pixelate: "Pixelate",
+  spotlight: "Spotlight",
+  badge: "Badge",
+  magnify: "Magnify",
+  filter: "Filter",
+  caption: "Caption",
+};
+
 type ToolMode = "select" | "highlight" | "zoom" | "overlay" | "crop" | "blur" | "redact" | "watermark" | "pixelate" | "spotlight" | "badge" | "magnify" | "filter" | "caption" | "pan";
 
 /* ------------------------------------------------------------------ */
@@ -598,6 +618,13 @@ export interface StepEditorPanelProps {
   onCaptionColorChange?: (color: string) => void;
   /** Steps data from parent (StepPreview) so the timeline can show screenshots */
   parentSteps?: Array<{ id: number; screenshotPath?: string | null; description?: string | null; transition?: string | null }>;
+  /**
+   * Reopen the guided "what should we point at?" pass.
+   *
+   * Offered from the timeline so it is reachable for any project at any time,
+   * not only in the moments after an import.
+   */
+  onOpenFraming?: () => void;
   /** Navigation handlers and states */
   onBack?: () => void;
   onContinue?: (options?: EditorExportOptions) => void;
@@ -1526,25 +1553,48 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const [scriptViewMode] = useState<"current" | "all">("all");
   const [allSceneTexts, setAllSceneTexts] = useState<Record<number, { desc: string; script: string }>>({});
 
+  /**
+   * Scenes whose text the user has typed into, and which the server must not
+   * overwrite.
+   *
+   * A ref, not state: it gates an effect and nothing renders from it.
+   */
+  const editedScenesRef = useRef<Set<number>>(new Set());
+
+  /**
+   * Keep the script panel in step with the server.
+   *
+   * This used to write a scene's text only `if (!next[s.id])` - that is, only
+   * when the panel had never heard of the scene. The intent was to protect
+   * half-typed edits from a refetch, but the guard was on presence rather than
+   * on editing, so an entry created as `{ desc: "", script: "" }` on mount was
+   * frozen empty forever.
+   *
+   * That is why generated narration never appeared: the editor mounts with
+   * blank scripts, generation finishes and invalidates, the refetch arrives
+   * with the scripts in it, and this effect skipped every scene because each
+   * one already had an entry. Now only scenes the user has actually typed into
+   * are protected.
+   */
   useEffect(() => {
-    if (project?.steps) {
-      const texts: Record<number, { desc: string; script: string }> = {};
-      project.steps.forEach((s) => {
-        texts[s.id] = {
+    if (!project?.steps) return;
+    setAllSceneTexts((prev) => {
+      const next = { ...prev };
+      let changed = false;
+      for (const s of project.steps) {
+        if (editedScenesRef.current.has(s.id)) continue;
+        const incoming = {
           desc: s.description || "",
           script: s.userEditedScript ?? s.aiScript ?? "",
         };
-      });
-      setAllSceneTexts((prev) => {
-        const next = { ...prev };
-        project.steps.forEach((s) => {
-          if (!next[s.id]) {
-            next[s.id] = texts[s.id];
-          }
-        });
-        return next;
-      });
-    }
+        const current = next[s.id];
+        if (!current || current.desc !== incoming.desc || current.script !== incoming.script) {
+          next[s.id] = incoming;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
   }, [project?.steps]);
 
   useEffect(() => {
@@ -2975,13 +3025,19 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
   const renderPropertiesContent = () => {
     if (!currentStep) return null;
+    // The properties panel is its own surface with a titled header, rather
+    // than another run of controls separated from the ones above by a hairline
+    // and a 10px muted label. "I cannot tell the sections apart" was about this:
+    // everything in the sidebar was the same weight on the same background, so
+    // nothing announced where one thing ended and the next began.
     return (
-      <div className="space-y-4 mt-3 border-t border-[var(--sketch-fg-subtle)]/20 pt-3">
-        <h3 className="font-mono text-[10px] text-[var(--sketch-fg-muted)] uppercase tracking-wider mb-2 flex items-center gap-1">
-          <Settings2 className="w-3 h-3" />
-          Properties: {mode}
+      <div className="mt-3 rounded-lg border border-[var(--sketch-border-color)]/50 bg-[var(--sketch-panel-bg)] overflow-hidden">
+        <h3 className="flex items-center gap-1.5 border-b border-[var(--sketch-border-color)]/50 bg-[var(--sketch-fg-subtle)]/[0.07] px-3 py-2 text-[11px] font-semibold tracking-wide text-[var(--sketch-fg)]">
+          <Settings2 className="w-3.5 h-3.5 text-[var(--sketch-accent)]" />
+          <span className="capitalize">{TOOL_LABELS[mode] ?? mode}</span>
+          <span className="text-[var(--sketch-fg-muted)] font-normal">settings</span>
         </h3>
-        <div className="space-y-4">
+        <div className="space-y-4 p-3">
           {/* Caption Properties */}
           {activeTab === "caption" && (
             <div className="space-y-3">
@@ -4754,6 +4810,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         utils.step.listByProject.invalidate({ projectId: projectIdNum }),
         utils.project.getById.invalidate({ id: projectIdNum }),
       ]);
+      editedScenesRef.current.clear();
       setAllSceneTexts({});
       toast.success("Scripts generated successfully!");
     } catch (err: any) {
@@ -4796,6 +4853,15 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     if (!currentStep) return null;
     return (
       <div className="flex-1 flex flex-col h-full min-h-0 space-y-3 relative">
+        {/* Says out loud that the drafted narration is editable. It arrives
+            written, which reads as finished unless something says otherwise -
+            people were not editing it because nothing told them they could. */}
+        <p className="flex-shrink-0 rounded-md border border-[var(--sketch-border-color)]/40 bg-[var(--sketch-fg-subtle)]/[0.06] px-2.5 py-2 text-[11px] leading-relaxed text-[var(--sketch-fg-muted)]">
+          Every line below is editable. Click into any scene's script and change
+          it, or rewrite the lot with AI Generate. Your edits are what gets
+          spoken in the video.
+        </p>
+
         {/* Mode Toggle: AI vs Manual */}
         <div className="flex items-center gap-1 p-0.5 bg-[var(--sketch-bg)] rounded-lg border border-[var(--sketch-border-color)]/20 flex-shrink-0">
           <button
@@ -4864,6 +4930,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                             value={textState.desc}
                             onChange={(e) => {
                               const val = e.target.value;
+                              editedScenesRef.current.add(s.id);
                               setAllSceneTexts(prev => ({ ...prev, [s.id]: { ...prev[s.id], desc: val } }));
                             }}
                             onBlur={async () => {
@@ -4902,6 +4969,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                             value={textState.script}
                             onChange={(e) => {
                               const val = e.target.value;
+                              editedScenesRef.current.add(s.id);
                               setAllSceneTexts(prev => ({ ...prev, [s.id]: { ...prev[s.id], script: val } }));
                             }}
                             onBlur={async () => {
@@ -4976,6 +5044,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                         await generateScript.mutateAsync({ projectId: projectIdNum });
                         utils.step.listByProject.invalidate({ projectId: projectIdNum });
                         utils.project.getById.invalidate({ id: projectIdNum });
+                        editedScenesRef.current.clear();
                         setAllSceneTexts({});
                         toast.success("Scripts generated successfully!");
                       } catch (err: any) {
@@ -5217,6 +5286,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
                           utils.project.getById.invalidate({ id: projectIdNum });
                           utils.step.listByProject.invalidate({ projectId: projectIdNum });
+                          editedScenesRef.current.clear();
                           setAllSceneTexts({}); // force reload
                           toast.success(`Applied ${Math.min(scenes.length, steps.length)} scripts!`);
                           setManualScriptText("");
@@ -5273,6 +5343,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                             value={textState.script}
                             onChange={(e) => {
                               const val = e.target.value;
+                              editedScenesRef.current.add(s.id);
                               setAllSceneTexts(prev => ({ ...prev, [s.id]: { ...prev[s.id], script: val } }));
                             }}
                             onBlur={async () => {
@@ -6114,7 +6185,16 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     );
   };
   const [pexelsQuery, setPexelsQuery] = useState("");
-  const [pexelsMediaType, setPexelsMediaType] = useState<"both" | "image" | "video">("both");
+  /**
+   * Stock search is photos only.
+   *
+   * The endpoint still accepts "video" and "both", and the importer still
+   * handles a video result - none of that is removed, so turning this back on
+   * is a one-line change. But a default of "both" meant a search for "coding"
+   * returned clips unasked, and importing one produced a scene that most of the
+   * editor cannot annotate.
+   */
+  const pexelsMediaType = "image" as const;
   const [importingPexelsId, setImportingPexelsId] = useState<number | null>(null);
   const pexelsSearch = trpc.ai.searchMedia.useQuery(
     { query: pexelsQuery, mediaType: pexelsMediaType, perPage: 12 },
@@ -6173,23 +6253,9 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               onKeyDown={(e) => { if (e.key === "Enter" && pexelsQuery.length > 2) pexelsSearch.refetch(); }}
             />
           </div>
-          {/* Media type toggle */}
-          <div className="flex items-center gap-1">
-            {(["both", "image", "video"] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => setPexelsMediaType(t)}
-                className={`px-2.5 py-1 rounded-md text-[10px] font-semibold capitalize border transition-all ${pexelsMediaType === t
-                    ? "bg-[var(--sketch-accent)]/15 border-[var(--sketch-accent)]/40 text-[var(--sketch-fg)]"
-                    : "bg-transparent border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg-subtle)] hover:bg-[var(--sketch-border-color)]/10"
-                  }`}
-              >
-                {t === "both" ? "All" : t === "image" ? "Photos" : "Videos"}
-              </button>
-            ))}
-          </div>
           <p className="text-[9px] text-[var(--sketch-fg-subtle)] leading-tight">
-            Click any media to import it into your timeline. You can also drag it onto the timeline.
+            Click any photo to import it into your timeline. You can also drag it
+            onto the timeline.
           </p>
         </div>
 
@@ -7222,15 +7288,28 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               const files = e.dataTransfer.files;
               if (!files?.length) return;
 
-              const media = Array.from(files).filter(
-                (f) => f.type.startsWith("image/") || f.type.startsWith("video/")
-              );
+              const dropped = Array.from(files);
+              const media = dropped.filter((f) => f.type.startsWith("image/"));
+              const videos = dropped.filter((f) => f.type.startsWith("video/"));
+
               if (media.length === 0) {
-                toast.error("Drop images or videos.");
+                toast.error(
+                  videos.length > 0
+                    ? "Scenes are screenshots. Add a video as an intro or outro instead."
+                    : "Drop screenshots or images."
+                );
                 return;
               }
-              if (media.length !== files.length) {
-                toast.info(`Skipped ${files.length - media.length} file(s) that were not images or videos.`);
+              // Named separately from other rejects, because a dropped video is
+              // a reasonable thing to try and has somewhere else to go.
+              if (videos.length > 0) {
+                toast.info(
+                  `Skipped ${videos.length} video${videos.length === 1 ? "" : "s"}. Videos can be an intro or outro, not a scene.`
+                );
+              }
+              const otherSkipped = dropped.length - media.length - videos.length;
+              if (otherSkipped > 0) {
+                toast.info(`Skipped ${otherSkipped} file(s) that were not images.`);
               }
 
               const list = new DataTransfer();
@@ -8435,6 +8514,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
             onClipDelete={handleTimelineDelete}
             onClipTrim={handleTimelineTrim}
             onAddClip={handleTimelineAdd}
+            onOpenFraming={props.onOpenFraming}
             onDropFiles={handleUploadFiles}
             onDropPexels={handleImportPexelsMedia}
             uploadingCount={uploadingFilesCount}
@@ -8573,11 +8653,15 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
       )}
 
       {/* Hidden file input for timeline uploads */}
+      {/* Scenes are screenshots. The renderer's video support is untouched and
+          still used by the intro and outro, and by anything added later - this
+          only stops a video arriving as a SCENE, where eleven of the fifteen
+          tools silently do nothing to it. */}
       <input
         ref={fileInputRef}
         type="file"
         multiple
-        accept="image/*,video/*"
+        accept="image/png,image/jpeg,image/webp,image/gif"
         className="hidden"
         onChange={(e) => {
           const at = insertAtIndexRef.current;
@@ -9029,7 +9113,15 @@ function ToolbarToolButton({
       onClick={onClick}
       title={shortcut ? `${label} (${shortcut})` : label}
       data-tour={dataTour}
-      className={`px-2 py-1 hover:bg-[var(--sketch-fg-subtle)]/20 rounded text-[var(--sketch-fg)] transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap text-[11px] font-medium ${active ? "bg-[var(--sketch-accent)]/15 text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-muted)]"
+      aria-pressed={active}
+      // The selected state used to be a 15% tint of the accent and nothing
+      // else, which on a mid-tone toolbar is close to invisible - "I cannot
+      // tell which tool is selected" was a fair description of it. It is now a
+      // filled chip: solid accent, white icon, and a ring, so it reads as
+      // pressed at a glance rather than on inspection.
+      className={`px-2 py-1 rounded transition-all flex items-center gap-1 cursor-pointer whitespace-nowrap text-[11px] font-medium ${active
+          ? "bg-[var(--sketch-accent)] text-white shadow-sm ring-1 ring-[var(--sketch-accent)] ring-offset-1 ring-offset-[var(--sketch-panel-bg)]"
+          : "text-[var(--sketch-fg-muted)] hover:bg-[var(--sketch-fg-subtle)]/20 hover:text-[var(--sketch-fg)]"
         }`}
     >
       {icon}

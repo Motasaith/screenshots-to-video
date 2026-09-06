@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { detectGibberish } from "@/lib/gibberish";
 import { toast } from "sonner";
-import { ProjectDescription } from "@contracts/constants";
+import { ProjectDefaults, ProjectDescription } from "@contracts/constants";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -94,8 +94,21 @@ export default function Dashboard() {
   const createProject = trpc.project.create.useMutation();
   const [selectedRatio, setSelectedRatio] = useState<"16:9" | "9:16" | "1:1" | "4:5">("16:9");
   const [creatingProject, setCreatingProject] = useState(false);
-  const [newProjectTitle, setNewProjectTitle] = useState("");
-  const [newProjectDesc, setNewProjectDesc] = useState("");
+  // Prefilled rather than empty. The description has a 120 character floor, and
+  // an empty box opens on "120 more characters needed" in red before anything
+  // has been typed - which reads as a wall rather than a prompt. Starting from a
+  // real sentence makes the job "change this" instead of "write an essay".
+  const [newProjectTitle, setNewProjectTitle] = useState<string>(ProjectDefaults.title);
+  const [newProjectDesc, setNewProjectDesc] = useState<string>(ProjectDefaults.description);
+
+  /**
+   * Whether each field still holds the untouched default.
+   *
+   * Used to select the text on first focus, so replacing it is one keystroke
+   * rather than a select-all-and-delete. Once edited, focusing behaves normally.
+   */
+  const titleUntouched = newProjectTitle === ProjectDefaults.title;
+  const descUntouched = newProjectDesc === ProjectDefaults.description;
   
   const deleteProjectMutation = trpc.project.delete.useMutation({
     onSuccess: () => {
@@ -172,8 +185,8 @@ export default function Dashboard() {
         platform,
         aspectRatio: selectedRatio,
       });
-      setNewProjectTitle("");
-      setNewProjectDesc("");
+      setNewProjectTitle(ProjectDefaults.title);
+      setNewProjectDesc(ProjectDefaults.description);
       setShowNewProjectDialog(false);
       navigate(`/create/${result.id}/preview`);
     } catch (err) {
@@ -185,8 +198,8 @@ export default function Dashboard() {
 
   const resetMegaMenu = () => {
     setSelectedRatio("16:9");
-    setNewProjectTitle("");
-    setNewProjectDesc("");
+    setNewProjectTitle(ProjectDefaults.title);
+    setNewProjectDesc(ProjectDefaults.description);
   };
 
   const openMegaMenu = () => {
@@ -589,6 +602,7 @@ export default function Dashboard() {
                     type="text"
                     value={newProjectTitle}
                     onChange={(e) => setNewProjectTitle(e.target.value)}
+                    onFocus={(e) => { if (titleUntouched) e.target.select(); }}
                     placeholder="e.g. How to clean Windows temp files"
                     className="w-full text-sm bg-slate-100/40  border border-[var(--space-border)] focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/30 rounded-xl px-4 py-2.5 text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)] focus:outline-none transition-all"
                   />
@@ -629,6 +643,7 @@ export default function Dashboard() {
                   <textarea
                     value={newProjectDesc}
                     onChange={(e) => setNewProjectDesc(e.target.value)}
+                    onFocus={(e) => { if (descUntouched) e.target.select(); }}
                     placeholder={`Describe what this video covers, who it is for, and what they should be able to do after watching. At least ${ProjectDescription.min} characters, because this is what the narration is written from.`}
                     className="w-full text-sm bg-slate-100/40  border border-[var(--space-border)] focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/30 rounded-xl px-4 py-3 text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)] focus:outline-none resize-none transition-all"
                     rows={5}

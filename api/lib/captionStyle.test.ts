@@ -1,6 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
 import { resolveCaption } from "./captionStyle";
 import { buildCaptionsFilter } from "./ffmpeg";
+
+// buildCaptionsFilter writes each caption line to a file in the render work
+// directory, which the render pipeline creates via ensureWorkDir() before it
+// ever calls this. A unit test calls it directly, so it has to create the
+// directory itself - otherwise these pass or fail depending on whether a render
+// happened to run on this machine first.
+beforeAll(async () => {
+  await fs.mkdir(path.join(os.tmpdir(), "aivideo-render"), { recursive: true });
+});
 
 /**
  * Every step row carries these, NOT NULL with defaults, whether or not anyone

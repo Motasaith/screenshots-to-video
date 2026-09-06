@@ -9,6 +9,7 @@
 import { Fragment, useState, useEffect, useMemo, useRef } from "react";
 import { isVideoPath } from "@/lib/mediaPath";
 import {
+  MousePointerClick,
   Trash2,
   Plus,
   Film,
@@ -43,6 +44,8 @@ export interface TimelineProps {
    * being added at the end and dragged back up.
    */
   onAddClip: (atIndex?: number) => void;
+  /** Reopen the guided highlight/zoom pass. Hidden when unavailable. */
+  onOpenFraming?: () => void;
   /** Capture a photo from the webcam as a new scene. */
   onCapture?: (mode: "camera") => void;
   onDropFiles?: (files: FileList) => void;
@@ -74,6 +77,7 @@ export default function Timeline({
   onClipDelete,
   onClipTrim,
   onAddClip,
+  onOpenFraming,
   onCapture,
   onDropFiles,
   onDropPexels,
@@ -129,6 +133,8 @@ export default function Timeline({
   // a 20-second clip, so these chips stay silent about length instead.
   const introIsClip = introTemplate === "custom-video" && isVideoPath(introVideoPath);
   const outroIsClip = outroTemplate === "custom-video" && isVideoPath(outroVideoPath);
+  const hasIntro = Boolean(introTemplate && introTemplate !== "none");
+  const hasOutro = Boolean(outroTemplate && outroTemplate !== "none");
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -235,12 +241,26 @@ export default function Timeline({
             </span>
           )}
         </div>
+
+        {/* The guided pass, reachable again. It used to run only in the moments
+            after a homepage import, so a project made from the dashboard never
+            met it and nobody who skipped it could get it back. */}
+        {onOpenFraming && clips.length > 0 && (
+          <button
+            onClick={onOpenFraming}
+            className="flex flex-none items-center gap-1.5 rounded-md border border-[var(--sketch-border-color)] px-2.5 py-1 text-[10px] font-semibold text-[var(--sketch-fg-muted)] transition-colors hover:border-[var(--sketch-accent)]/60 hover:text-[var(--sketch-fg)]"
+            title="Step through the screenshots and mark what to highlight and zoom into"
+          >
+            <MousePointerClick className="h-3 w-3" />
+            Set up highlights
+          </button>
+        )}
       </div>
 
       {/* Scene strip */}
       <div
         ref={stripRef}
-        className="flex items-center gap-2 overflow-x-auto p-2 min-h-[80px]"
+        className="flex items-center gap-2 overflow-x-auto p-3 min-h-[112px]"
         onDragOver={handleTrackDragOver}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleTrackDrop}
@@ -257,25 +277,32 @@ export default function Timeline({
           </div>
         ) : (
           <>
-            {/* Intro button */}
+            {/* Intro button.
+                Was a 20px tile with a 7px label, which read as decoration
+                between the tools and the scenes rather than as the control for
+                the opening of the video. Same size as a scene now, with the
+                word INTRO always visible and its state spelled out underneath
+                rather than in a tooltip. */}
             <button
               onClick={() => onIntroClick?.()}
-              className={`flex-shrink-0 w-20 aspect-video rounded-md border-2 flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
-                introTemplate && introTemplate !== "none"
+              className={`flex-shrink-0 w-24 aspect-video rounded-md border-2 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all ${
+                hasIntro
                   ? "border-[var(--sketch-accent)] bg-[var(--sketch-accent)]/10"
-                  : "border-dashed border-[var(--sketch-border-color)]/30 bg-[var(--sketch-fg-subtle)]/5 hover:border-[var(--sketch-accent)]/50"
+                  : "border-dashed border-[var(--sketch-border-color)]/40 bg-[var(--sketch-fg-subtle)]/5 hover:border-[var(--sketch-accent)]/60 hover:bg-[var(--sketch-accent)]/5"
               }`}
-              title={introTemplate && introTemplate !== "none" ? `Intro: ${introTemplate}` : "Add Intro"}
+              title={hasIntro ? "Edit the intro" : "Add an intro before the first scene"}
             >
-              <Clapperboard className={`w-4 h-4 ${introTemplate && introTemplate !== "none" ? "text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-subtle)]"}`} />
-              <span className={`text-[7px] font-bold ${introTemplate && introTemplate !== "none" ? "text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-subtle)]"}`}>
-                {introTemplate && introTemplate !== "none" ? "INTRO" : "+ Intro"}
+              <Clapperboard className={`w-4 h-4 ${hasIntro ? "text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-muted)]"}`} />
+              <span className={`text-[10px] font-bold leading-none ${hasIntro ? "text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-muted)]"}`}>
+                INTRO
               </span>
-              {introTemplate && introTemplate !== "none" && (introIsClip || introDuration) && (
-                <span className="text-[6px] font-mono text-[var(--sketch-fg-subtle)]">
-                  {introIsClip ? "clip" : `${introDuration!.toFixed(1)}s`}
-                </span>
-              )}
+              <span className="text-[9px] leading-none text-[var(--sketch-fg-subtle)]">
+                {hasIntro
+                  ? introIsClip
+                    ? "clip"
+                    : `${(introDuration ?? 3).toFixed(1)}s`
+                  : "None - add"}
+              </span>
             </button>
 
             {/* Transition between intro and first scene */}
@@ -324,14 +351,14 @@ export default function Timeline({
                     )}
                     <button
                       onClick={() => onClipSelect(idx)}
-                      className={`relative w-24 aspect-video rounded-md overflow-hidden border-2 transition-all ${
+                      className={`relative w-36 aspect-video rounded-md overflow-hidden border-2 transition-all ${
                         isActive
                           ? "border-brand shadow-[0_0_10px_rgb(var(--brand-rgb)/0.3)]"
                           : "border-[var(--sketch-border-color)]/30 hover:border-[var(--sketch-accent)]/50"
                       } ${isDragged ? "opacity-40" : ""} ${isDragOverTarget ? "ring-2 ring-brand/40" : ""}`}
                     >
-                      <span className={`absolute top-0.5 left-0.5 text-[8px] font-bold px-1 rounded z-10 ${
-                        isActive ? "bg-brand text-white" : "bg-black/60 text-white"
+                      <span className={`absolute top-1 left-1 text-[10px] font-bold px-1.5 rounded z-10 ${
+                        isActive ? "bg-brand text-white" : "bg-black/70 text-white"
                       }`}>
                         {idx + 1}
                       </span>
@@ -364,7 +391,7 @@ export default function Timeline({
 
                     {/* Duration + delete */}
                     <div className="flex items-center justify-between mt-0.5 px-0.5">
-                      <span className="text-[8px] font-mono text-[var(--sketch-fg-subtle)]">
+                      <span className="text-[10px] font-mono text-[var(--sketch-fg-muted)]">
                         {clip.duration.toFixed(1)}s
                       </span>
                       {/* A bare 10px icon with no hit area or background was
@@ -412,12 +439,12 @@ export default function Timeline({
             {/* Add Scene button at the end */}
             <button
               onClick={() => onAddClip?.()}
-              className="flex-shrink-0 w-24 aspect-video rounded-md bg-[var(--sketch-fg-subtle)]/5 hover:bg-[var(--sketch-fg-subtle)]/10 border-2 border-dashed border-[var(--sketch-border-color)]/30 hover:border-[var(--sketch-accent)]/50 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all"
+              className="flex-shrink-0 w-36 aspect-video rounded-md bg-[var(--sketch-fg-subtle)]/5 hover:bg-[var(--sketch-fg-subtle)]/10 border-2 border-dashed border-[var(--sketch-border-color)]/30 hover:border-[var(--sketch-accent)]/50 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all"
               title="Add Scene"
               aria-label="Add a scene"
             >
               <Plus className="w-4 h-4 text-[var(--sketch-fg-muted)]" />
-              <span className="text-[8px] font-semibold text-[var(--sketch-fg-subtle)]">Add Scene</span>
+              <span className="text-[10px] font-semibold text-[var(--sketch-fg-muted)]">Add Scene</span>
             </button>
 
             {/* Capture straight into the timeline, rather than making the user
@@ -444,25 +471,27 @@ export default function Timeline({
               </button>
             )}
 
-            {/* Outro button */}
+            {/* Outro button. See the intro above. */}
             <button
               onClick={() => onOutroClick?.()}
-              className={`flex-shrink-0 w-20 aspect-video rounded-md border-2 flex flex-col items-center justify-center gap-0.5 cursor-pointer transition-all ${
-                outroTemplate && outroTemplate !== "none"
+              className={`flex-shrink-0 w-24 aspect-video rounded-md border-2 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all ${
+                hasOutro
                   ? "border-[var(--sketch-accent)] bg-[var(--sketch-accent)]/10"
-                  : "border-dashed border-[var(--sketch-border-color)]/30 bg-[var(--sketch-fg-subtle)]/5 hover:border-[var(--sketch-accent)]/50"
+                  : "border-dashed border-[var(--sketch-border-color)]/40 bg-[var(--sketch-fg-subtle)]/5 hover:border-[var(--sketch-accent)]/60 hover:bg-[var(--sketch-accent)]/5"
               }`}
-              title={outroTemplate && outroTemplate !== "none" ? `Outro: ${outroTemplate}` : "Add Outro"}
+              title={hasOutro ? "Edit the outro" : "Add an outro after the last scene"}
             >
-              <Flag className={`w-4 h-4 ${outroTemplate && outroTemplate !== "none" ? "text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-subtle)]"}`} />
-              <span className={`text-[7px] font-bold ${outroTemplate && outroTemplate !== "none" ? "text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-subtle)]"}`}>
-                {outroTemplate && outroTemplate !== "none" ? "OUTRO" : "+ Outro"}
+              <Flag className={`w-4 h-4 ${hasOutro ? "text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-muted)]"}`} />
+              <span className={`text-[10px] font-bold leading-none ${hasOutro ? "text-[var(--sketch-accent)]" : "text-[var(--sketch-fg-muted)]"}`}>
+                OUTRO
               </span>
-              {outroTemplate && outroTemplate !== "none" && (outroIsClip || outroDuration) && (
-                <span className="text-[6px] font-mono text-[var(--sketch-fg-subtle)]">
-                  {outroIsClip ? "clip" : `${outroDuration!.toFixed(1)}s`}
-                </span>
-              )}
+              <span className="text-[9px] leading-none text-[var(--sketch-fg-subtle)]">
+                {hasOutro
+                  ? outroIsClip
+                    ? "clip"
+                    : `${(outroDuration ?? 3).toFixed(1)}s`
+                  : "None - add"}
+              </span>
             </button>
           </>
         )}

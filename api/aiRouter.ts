@@ -9,6 +9,8 @@ import { eq, and } from "drizzle-orm";
 import {
   isLLMConfigured,
   generateTutorialScript,
+  generateHybridScripts,
+  suggestScreenshotFocus,
   validateProjectSetup,
   getGuideMessage,
   getChatMessageResponse,
@@ -19,6 +21,7 @@ import { generateTTSAudio, speedToRate, getElevenLabsCredits } from "./lib/tts";
 import { getUserElevenLabsKey } from "./queries/users";
 import { saveLocalFile } from "./lib/localStore";
 import { detectGibberish } from "./lib/gibberish";
+import { scriptStrategy, stepsWithNothingToDescribe } from "./lib/scriptSource";
 import { createLogger } from "./lib/logger";
 import { env } from "./lib/env";
 import fs from "fs/promises";
@@ -190,33 +193,52 @@ export const aiRouter = createRouter({
         );
       }
 
-      // Reject empty or default-pattern descriptions.
-      const emptyOrPlaceholderSteps = projectSteps.filter(
-        (s) => !s.description || !s.description.trim() || /^scene\s+\d+$/i.test(s.description.trim())
-      );
-      if (emptyOrPlaceholderSteps.length > 0) {
+      // A scene needs to describe itself somehow: a screenshot the model can
+      // look at, or a description it can read. Only scenes offering neither are
+      // rejected. Demanding a description even when a screenshot was present is
+      // what made the homepage's own "drop in your screenshots and we write the
+      // narration" flow fail on its first click - imported scenes are created
+      // with an empty description by design.
+      const undescribed = stepsWithNothingToDescribe(projectSteps);
+      if (undescribed.length > 0) {
         throw new Error(
-          `Step ${emptyOrPlaceholderSteps[0].order} has no description. Please write a description for this step first.`
+          `Scene ${undescribed[0]} has no screenshot and no description. ` +
+          `Add one of the two so there is something to write about.`
         );
       }
 
       let scripts: string[];
 
       if (isLLMConfigured()) {
+        const strategy = scriptStrategy(projectSteps);
         try {
-          log.info("Using text-only script generation with title and description");
-          scripts = await generateTutorialScript(
-            project.title,
-            project.description || null,
-            project.platform,
-            projectSteps.map((s) => ({
-              order: s.order,
-              description: s.description,
-              screenshotPath: s.screenshotPath || undefined,
-            }))
-          );
+          const stepInput = projectSteps.map((s) => ({
+            order: s.order,
+            description: s.description,
+            screenshotPath: s.screenshotPath || undefined,
+          }));
+
+          if (strategy === "vision") {
+            // Reads the screenshots themselves, so it works with no
+            // descriptions at all.
+            log.info("Generating scripts from screenshots", { steps: projectSteps.length });
+            scripts = await generateHybridScripts(
+              project.title,
+              project.description || null,
+              project.platform,
+              stepInput
+            );
+          } else {
+            log.info("Using text-only script generation with title and description");
+            scripts = await generateTutorialScript(
+              project.title,
+              project.description || null,
+              project.platform,
+              stepInput
+            );
+          }
         } catch (err) {
-          log.warn("LLM script generation failed, using fallback", { error: err instanceof Error ? err.message : String(err) });
+          log.warn("LLM script generation failed, using fallback", { error: err instanceof Error ? err.message : String(err), strategy });
           const fallback =
             PLATFORM_FALLBACK_SCRIPTS[project.platform] ||
             PLATFORM_FALLBACK_SCRIPTS.youtube;
@@ -363,41 +385,90 @@ export const aiRouter = createRouter({
       const projectSteps = await getDb()
         .select()
         .from(steps)
-        .where(eq(steps.projectId, input.projectId));
+        .where(eq(steps.projectId, input.projectId))
+        .orderBy(steps.order);
 
-      // For V1: use center-weighted random suggestions
-      // A vision model could improve this in V2
+      // Ask the vision model where to look. This used to be
+      // `30 + Math.random() * 40` - a random point near the middle of every
+      // frame, which is to say the feature did not exist.
+      let focus: Array<Awaited<ReturnType<typeof suggestScreenshotFocus>>[number]>;
+      try {
+        focus = await suggestScreenshotFocus(
+          project.title,
+          projectSteps.map((s) => ({
+            order: s.order,
+            description: s.description,
+            screenshotPath: s.screenshotPath,
+          }))
+        );
+      } catch (err) {
+        log.warn("Focus detection failed", { error: err instanceof Error ? err.message : String(err) });
+        throw userError(
+          "Could not work out what to highlight in these screenshots. Try again, or place the highlights yourself."
+        );
+      }
+
       const suggestions = [];
-      for (const step of projectSteps) {
-        const targetX = 30 + Math.random() * 40; // 30-70% range
-        const targetY = 25 + Math.random() * 30; // 25-55% range
+      for (let i = 0; i < projectSteps.length; i++) {
+        const step = projectSteps[i];
+        const box = focus[i];
+        // No box means the model had nothing confident to say about this
+        // screenshot. Leave the scene alone rather than inventing a target.
+        if (!box) continue;
+
+        const centreX = box.x + box.w / 2;
+        const centreY = box.y + box.h / 2;
+
+        // The zoom rectangle is the focus box with breathing room around it, so
+        // the element is not jammed against the edge of the frame.
+        const pad = 6;
+        const rectX = Math.max(0, box.x - pad);
+        const rectY = Math.max(0, box.y - pad);
+        const rectW = Math.min(100 - rectX, box.w + pad * 2);
+        const rectH = Math.min(100 - rectY, box.h + pad * 2);
 
         await getDb()
           .update(steps)
           .set({
-            zoomTargetX: targetX,
-            zoomTargetY: targetY,
-            zoomRectX: Math.max(0, targetX - 15),
-            zoomRectY: Math.max(0, targetY - 10),
-            zoomRectWidth: 30,
-            zoomRectHeight: 25,
+            editorHighlights: [
+              { id: `focus-${step.id}`, x: box.x, y: box.y, w: box.w, h: box.h, color: "#FF0099" },
+            ],
+            zoomTargetX: centreX,
+            zoomTargetY: centreY,
+            zoomRectX: rectX,
+            zoomRectY: rectY,
+            zoomRectWidth: rectW,
+            zoomRectHeight: rectH,
+            // Arms the zoom. Without this the renderer ignores the target
+            // entirely: see the single-zoom gate in the worker.
+            editorZoomScale: 2,
+            editorMultiZooms: [
+              {
+                id: `focus-${step.id}`,
+                targetX: centreX,
+                targetY: centreY,
+                rectX,
+                rectY,
+                rectW,
+                rectH,
+                zoomScale: 2,
+                duration: 3,
+              },
+            ],
           })
           .where(eq(steps.id, step.id));
 
         suggestions.push({
           stepId: step.id,
-          x: targetX,
-          y: targetY,
-          rect: {
-            x: Math.max(0, targetX - 15),
-            y: Math.max(0, targetY - 10),
-            width: 30,
-            height: 25,
-          },
+          order: step.order,
+          label: box.label,
+          x: centreX,
+          y: centreY,
+          rect: { x: rectX, y: rectY, width: rectW, height: rectH },
         });
       }
 
-      return { suggestions };
+      return { suggestions, scenes: projectSteps.length };
     }),
 
   checkMediaSafety: authedQuery
