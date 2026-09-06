@@ -516,7 +516,7 @@ export default function StepPreview() {
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
                 placeholder="e.g. Clean partition tutorial"
-                className="bg-slate-100/80  border-[var(--space-border)] focus:border-teal-500/50 rounded-xl text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)]"
+                className="bg-[var(--sketch-input-bg)]  border-[var(--space-border)] focus:border-teal-500/50 rounded-xl text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)]"
                 required
                 disabled={isSavingSettings}
               />
@@ -532,7 +532,7 @@ export default function StepPreview() {
                 onChange={(e) => setProjectDesc(e.target.value)}
                 placeholder={`Describe what this video covers, who it is for, and what they should be able to do afterwards. At least ${ProjectDescription.min} characters, because the narration is written from this.`}
                 maxLength={ProjectDescription.max}
-                className="bg-slate-100/80  border-[var(--space-border)] focus:border-teal-500/50 rounded-xl min-h-[90px] resize-none text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)]"
+                className="bg-[var(--sketch-input-bg)]  border-[var(--space-border)] focus:border-teal-500/50 rounded-xl min-h-[90px] resize-none text-[var(--space-text)] placeholder:text-[var(--space-text-subtle)]"
                 required
                 disabled={isSavingSettings}
               />
@@ -582,7 +582,7 @@ export default function StepPreview() {
                       className={`py-2 px-1 rounded-xl border text-[10px] font-semibold flex flex-col items-center justify-center transition-all cursor-pointer ${
                         aspectRatio === ratio
                           ? "bg-teal-500/15 border-teal-500 text-teal-700  shadow-sm font-bold"
-                          : "bg-slate-100/80  border-[var(--space-border)] text-[var(--space-text-subtle)] hover:border-teal-500/30 hover:text-[var(--space-text)]"
+                          : "bg-[var(--sketch-input-bg)]  border-[var(--space-border)] text-[var(--space-text-subtle)] hover:border-teal-500/30 hover:text-[var(--space-text)]"
                       }`}
                     >
                       <span className="text-sm font-bold">{ratio}</span>

@@ -33,6 +33,12 @@ const EXTRA_INPUT: Record<string, Record<string, unknown>> = {
   "project.update": { title: "probe" },
   "step.create": { order: 99, description: "probe scene description for the ownership probe" },
   "step.update": { description: "probe" },
+  // Without these the schema rejects the call before the ownership check runs,
+  // and the probe reports "inconclusive" rather than testing anything.
+  "step.reorder": { stepIds: [1] },
+  "step.applyFocus": {
+    frames: [{ stepId: 1, highlights: [{ x: 10, y: 10, w: 10, h: 10, zoom: false }] }],
+  },
   "team.setRole": { role: "member" },
   "team.setProjectShared": { shared: true },
   "support.replyToTicket": { message: "probe" },

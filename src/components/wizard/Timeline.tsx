@@ -260,7 +260,7 @@ export default function Timeline({
       {/* Scene strip */}
       <div
         ref={stripRef}
-        className="flex items-center gap-2 overflow-x-auto p-3 min-h-[112px]"
+        className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto p-2 sm:p-3 min-h-[92px] sm:min-h-[112px]"
         onDragOver={handleTrackDragOver}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleTrackDrop}
@@ -285,7 +285,7 @@ export default function Timeline({
                 rather than in a tooltip. */}
             <button
               onClick={() => onIntroClick?.()}
-              className={`flex-shrink-0 w-24 aspect-video rounded-md border-2 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all ${
+              className={`flex-shrink-0 w-20 sm:w-24 aspect-video rounded-md border-2 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all ${
                 hasIntro
                   ? "border-[var(--sketch-accent)] bg-[var(--sketch-accent)]/10"
                   : "border-dashed border-[var(--sketch-border-color)]/40 bg-[var(--sketch-fg-subtle)]/5 hover:border-[var(--sketch-accent)]/60 hover:bg-[var(--sketch-accent)]/5"
@@ -351,7 +351,7 @@ export default function Timeline({
                     )}
                     <button
                       onClick={() => onClipSelect(idx)}
-                      className={`relative w-36 aspect-video rounded-md overflow-hidden border-2 transition-all ${
+                      className={`relative w-28 sm:w-36 aspect-video rounded-md overflow-hidden border-2 transition-all ${
                         isActive
                           ? "border-brand shadow-[0_0_10px_rgb(var(--brand-rgb)/0.3)]"
                           : "border-[var(--sketch-border-color)]/30 hover:border-[var(--sketch-accent)]/50"
@@ -439,7 +439,7 @@ export default function Timeline({
             {/* Add Scene button at the end */}
             <button
               onClick={() => onAddClip?.()}
-              className="flex-shrink-0 w-36 aspect-video rounded-md bg-[var(--sketch-fg-subtle)]/5 hover:bg-[var(--sketch-fg-subtle)]/10 border-2 border-dashed border-[var(--sketch-border-color)]/30 hover:border-[var(--sketch-accent)]/50 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all"
+              className="flex-shrink-0 w-28 sm:w-36 aspect-video rounded-md bg-[var(--sketch-fg-subtle)]/5 hover:bg-[var(--sketch-fg-subtle)]/10 border-2 border-dashed border-[var(--sketch-border-color)]/30 hover:border-[var(--sketch-accent)]/50 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all"
               title="Add Scene"
               aria-label="Add a scene"
             >
@@ -474,7 +474,7 @@ export default function Timeline({
             {/* Outro button. See the intro above. */}
             <button
               onClick={() => onOutroClick?.()}
-              className={`flex-shrink-0 w-24 aspect-video rounded-md border-2 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all ${
+              className={`flex-shrink-0 w-20 sm:w-24 aspect-video rounded-md border-2 flex flex-col items-center justify-center gap-1 cursor-pointer transition-all ${
                 hasOutro
                   ? "border-[var(--sketch-accent)] bg-[var(--sketch-accent)]/10"
                   : "border-dashed border-[var(--sketch-border-color)]/40 bg-[var(--sketch-fg-subtle)]/5 hover:border-[var(--sketch-accent)]/60 hover:bg-[var(--sketch-accent)]/5"

@@ -395,6 +395,29 @@ app.get("/api/signed-url", async (c) => {
   const key = c.req.query("key");
   if (!key) return c.json({ error: "Missing 'key' parameter" }, 400);
 
+  // Whose key is it?
+  //
+  // This endpoint authenticated the caller and then signed whatever key it was
+  // handed, for anybody. Against the local store the damage was bounded, since
+  // the URL it returns points back at /api/file, which does check ownership -
+  // but `getSignedDownloadUrl` also mints real presigned object-storage URLs
+  // for `b2:` and plain object keys, and those are honoured by the storage
+  // provider with no reference to this application at all. One request naming
+  // someone else's key would have read their file.
+  //
+  // Only owner-scoped local keys are signed. Object keys carry no owner, so
+  // there is nothing to check them against and they are refused outright rather
+  // than trusted. Nothing in the app calls this endpoint, so the narrower rule
+  // costs nothing; if object storage is turned on later, ownership has to be
+  // established some other way before this is widened again.
+  const owner = localKeyOwner(key);
+  if (owner === null || (owner !== user.id && user.role !== "admin")) {
+    // 404 rather than 403, matching /api/file: a refusal must not reveal
+    // whether the key exists.
+    log.warn("Signed URL refused: not the owner", { userId: user.id, key });
+    return c.json({ error: "Not Found" }, 404);
+  }
+
   try {
     const url = await getSignedDownloadUrl(key);
     return c.json({ url });

@@ -13,6 +13,7 @@ import {
   Palette,
   Trash2,
   Settings2,
+  Moon,
   Move,
   Aperture,
   Shield,
@@ -58,6 +59,7 @@ import {
   Sliders,
 } from "lucide-react";
 import { stepThumbUrl } from "@/lib/thumbUrl";
+import { useTheme } from "@/hooks/useTheme";
 import { ScenePreview } from "./ScenePreview";
 import OwnVoiceRecorder from "./OwnVoiceRecorder";
 import { CaptureDialog } from "./CaptureDialog";
@@ -763,6 +765,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const [activeTransitionClipId, setActiveTransitionClipId] = useState<number | null>(null);
   const [isToolbarCollapsed, setIsToolbarCollapsed] = useState(false);
   const [projectTitle, setProjectTitle] = useState("Untitled video");
+  const { theme, toggleTheme } = useTheme();
+
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
 
@@ -1224,12 +1228,15 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
         return;
       }
     }
-    setHistory((prev) => {
-      const nextHistory = prev.slice(0, historyIndex + 1);
-      nextHistory.push(serialized);
-      setHistoryIndex(nextHistory.length - 1);
-      return nextHistory;
-    });
+    // Built first, then set. `setHistoryIndex` used to be called from inside
+    // the `setHistory` updater, which makes the updater impure - the same shape
+    // that has already caused three separate bugs here. It happens to be
+    // harmless in this one because the index it computes is identical on both of
+    // StrictMode's invocations, but this is the function behind every undo in
+    // the editor and it should not be the fragile one.
+    const nextHistory = [...history.slice(0, historyIndex + 1), serialized];
+    setHistory(nextHistory);
+    setHistoryIndex(nextHistory.length - 1);
     setAnnotations(nextState);
   }, [history, historyIndex]);
 
@@ -2841,11 +2848,29 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   };
   const canvasDim = getCanvasDimensions();
 
+  /**
+   * Breathing room around the canvas, in px per side.
+   *
+   * One number, because it is used twice and the two copies had drifted: the
+   * markup applied 40px per side while getFitScale subtracted 32 in total. The
+   * fit was therefore computed against 48px more room than existed, so the
+   * canvas overflowed its container at every size - measured across seven phone
+   * widths and four aspect ratios, all 28 combinations clipped, always by
+   * exactly that 48px.
+   *
+   * It also shrinks on a narrow screen. 40px per side is 80px of a 360px phone,
+   * a fifth of the width spent on margin around the thing you came to look at.
+   */
+  const canvasPadFor = (containerWidth: number) => (containerWidth < 640 ? 12 : 40);
+
+  const [canvasPad, setCanvasPad] = useState(40);
+
   const getFitScale = useCallback(() => {
-    if (!scrollContainerRef.current) return 1.0;
-    const padding = 32;
-    const containerWidth = scrollContainerRef.current.clientWidth - padding;
-    const containerHeight = scrollContainerRef.current.clientHeight - padding;
+    const sc = scrollContainerRef.current;
+    if (!sc) return 1.0;
+    const pad = canvasPadFor(sc.clientWidth);
+    const containerWidth = sc.clientWidth - pad * 2;
+    const containerHeight = sc.clientHeight - pad * 2;
     if (containerWidth <= 0 || containerHeight <= 0) return 1.0;
 
     const scaleX = containerWidth / canvasDim.width;
@@ -2853,15 +2878,43 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     return Math.min(scaleX, scaleY);
   }, [canvasDim.width, canvasDim.height]);
 
-  // Fit canvas on initial mount or when screen/aspect ratio changes
+  /**
+   * Whether the canvas is still sitting at its fitted scale.
+   *
+   * Refitting on resize is right for someone who has not touched the zoom, and
+   * wrong for someone who has: rotating a phone should not throw away the level
+   * they zoomed to. This records which of the two they are.
+   */
+  const atFitScaleRef = useRef(true);
+
+  // Fit the canvas on mount, when the aspect ratio changes, and when the window
+  // resizes or rotates. The last of those was missing entirely despite the
+  // comment claiming it: nothing listened, so a phone turned on its side kept a
+  // scale computed for the shape it used to be.
   useEffect(() => {
-    const rafId = requestAnimationFrame(() => {
-      if (scrollContainerRef.current) {
-        setCanvasScale(getFitScale());
-      }
-    });
-    return () => cancelAnimationFrame(rafId);
+    const fit = () => {
+      const sc = scrollContainerRef.current;
+      if (!sc) return;
+      setCanvasPad(canvasPadFor(sc.clientWidth));
+      if (!atFitScaleRef.current) return;
+      setCanvasScale(getFitScale());
+    };
+
+    const rafId = requestAnimationFrame(fit);
+    window.addEventListener("resize", fit);
+    window.addEventListener("orientationchange", fit);
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", fit);
+      window.removeEventListener("orientationchange", fit);
+    };
   }, [canvasDim.width, canvasDim.height, getFitScale]);
+
+  // A scale that matches the fit is "fitted", however it got there - including
+  // after pressing the Fit button.
+  useEffect(() => {
+    atFitScaleRef.current = Math.abs(canvasScale - getFitScale()) < 0.01;
+  }, [canvasScale, getFitScale]);
 
 
   /**
@@ -5835,7 +5888,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   className={`p-3 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer ${
                     isSelected
                       ? "bg-blue-500/10 border-blue-500 text-blue-600  shadow-md shadow-blue-500/5"
-                      : "bg-slate-50/50  border-[var(--sketch-border-color)]/20 text-slate-700  hover:text-slate-900  hover:bg-slate-100/40"
+                      : "bg-[var(--sketch-fg-subtle)]/5 border-[var(--sketch-border-color)]/20 text-[var(--sketch-fg-muted)] hover:text-[var(--sketch-fg)] hover:bg-[var(--sketch-fg-subtle)]/10"
                   }`}
                 >
                   <div className="flex items-center justify-center h-10 w-full shrink-0">
@@ -5859,7 +5912,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 step={0.01}
                 value={props.transitionDuration ?? 0.5}
                 onChange={(e) => props.onTransitionDurationChange?.(Number(e.target.value))}
-                className="w-14 text-right bg-slate-100/50  border border-[var(--sketch-border-color)]/20 rounded px-1.5 py-0.5 text-xs font-mono text-[var(--sketch-fg)] focus:outline-none"
+                className="w-14 text-right bg-[var(--sketch-input-bg)] border border-[var(--sketch-border-color)]/20 rounded px-1.5 py-0.5 text-xs font-mono text-[var(--sketch-fg)] focus:outline-none"
               />
               <span className="text-[10px] font-semibold text-[var(--sketch-fg-subtle)]">s</span>
             </div>
@@ -6573,6 +6626,26 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               <span>{isPreparingExport ? "Checking..." : "Export"}</span>
             </button>
 
+            {/* Light / dark.
+                A labelled button rather than a bare icon: an unlabelled sun in
+                a row of unlabelled icons is a guess, and this is the control
+                people go looking for deliberately. The label says what it will
+                switch TO, which is the question being asked when someone looks
+                for it. */}
+            <button
+              onClick={toggleTheme}
+              className="flex items-center gap-1.5 rounded-full border border-[var(--sketch-border-color)] bg-[var(--sketch-surface)] px-2.5 py-1.5 text-[11px] font-semibold text-[var(--sketch-fg-muted)] transition-colors hover:border-[var(--sketch-accent)]/60 hover:text-[var(--sketch-fg)] cursor-pointer"
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {theme === "dark" ? (
+                <Sun className="h-3.5 w-3.5 text-amber-400" />
+              ) : (
+                <Moon className="h-3.5 w-3.5 text-indigo-400" />
+              )}
+              <span className="hidden sm:inline">{theme === "dark" ? "Light" : "Dark"}</span>
+            </button>
+
             {/* Replay the onboarding tour */}
             <button
               onClick={() => startOnboardingTour()}
@@ -7092,13 +7165,13 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   }}
                   className="bg-transparent text-[11px] font-medium text-[var(--sketch-fg-muted)] border-none outline-none cursor-pointer py-0.5 pr-1 focus:ring-0"
                 >
-                  <option value="fit" className="bg-white text-slate-900 ">Fit</option>
-                  <option value="50" className="bg-white text-slate-900 ">50%</option>
-                  <option value="75" className="bg-white text-slate-900 ">75%</option>
-                  <option value="100" className="bg-white text-slate-900 ">100%</option>
-                  <option value="150" className="bg-white text-slate-900 ">150%</option>
-                  <option value="200" className="bg-white text-slate-900 ">200%</option>
-                  <option value="300" className="bg-white text-slate-900 ">300%</option>
+                  <option value="fit" className="bg-[var(--sketch-surface)] text-[var(--sketch-fg)]">Fit</option>
+                  <option value="50" className="bg-[var(--sketch-surface)] text-[var(--sketch-fg)]">50%</option>
+                  <option value="75" className="bg-[var(--sketch-surface)] text-[var(--sketch-fg)]">75%</option>
+                  <option value="100" className="bg-[var(--sketch-surface)] text-[var(--sketch-fg)]">100%</option>
+                  <option value="150" className="bg-[var(--sketch-surface)] text-[var(--sketch-fg)]">150%</option>
+                  <option value="200" className="bg-[var(--sketch-surface)] text-[var(--sketch-fg)]">200%</option>
+                  <option value="300" className="bg-[var(--sketch-surface)] text-[var(--sketch-fg)]">300%</option>
                 </select>
               </div>
 
@@ -7294,7 +7367,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                       display: "flex",
                       minWidth: "100%",
                       minHeight: "100%",
-                      padding: "40px",
+                      padding: `${canvasPad}px`,
                     }}
                   >
                     <div
@@ -8727,7 +8800,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           }
         }
       }}>
-        <DialogContent className="border border-[var(--sketch-border-color)]/25 bg-white  bg-opacity-100 max-w-2xl rounded-2xl shadow-2xl p-8 flex flex-col gap-6 text-center select-none outline-none">
+        <DialogContent className="border border-[var(--sketch-border-color)]/25 bg-[var(--sketch-surface)] text-[var(--sketch-fg)] max-w-2xl rounded-2xl shadow-2xl p-8 flex flex-col gap-6 text-center select-none outline-none">
           <DialogHeader className="text-center flex flex-col items-center">
             <div className="relative inline-block">
               <span className="font-mono text-xs text-[var(--sketch-fg-muted)] uppercase tracking-widest bg-brand/20 px-2 py-1 sketch-border-sm inline-block">

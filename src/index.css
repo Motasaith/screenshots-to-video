@@ -116,6 +116,62 @@
   --sketch-navbar-border: var(--line);
 }
 
+/*
+ * Dark theme.
+ *
+ * The editor is built entirely on the tokens above - every panel, border and
+ * label reads `--sketch-*`, which read these - so redefining the handful of
+ * base colours turns the whole thing dark without touching a single component.
+ * That is the reason to do it here rather than with `dark:` variants sprinkled
+ * through nine thousand lines of JSX.
+ *
+ * Applied by `data-theme="dark"` on <html>, set from the toggle and restored on
+ * load. Not `prefers-color-scheme` alone: the marketing pages are designed
+ * light, and flipping them because of an OS setting is a bigger change than was
+ * asked for. The attribute is opt-in and explicit.
+ *
+ * Surfaces step up as they come forward - page, then mat, then surface - so
+ * panels separate from the canvas without needing heavier borders. The accent
+ * is lifted a little because the light-mode teal is too dark to read on a dark
+ * ground.
+ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --page: #0f1419;
+  --mat: #161c24;
+  --mat-strong: #1d242e;
+  --surface: #1a212a;
+  --line: #2a333f;
+  --line-strong: #3a4552;
+
+  /* Ink */
+  --ink: #e8ecf1;
+  --ink-body: #b3bcc8;
+  --ink-muted: #8592a0;
+
+  /* Accent, lifted for contrast on a dark ground */
+  --brand-rgb: 45 190 170;
+  --brand-hover: #4fd4c0;
+  --brand-press: #6ee0ce;
+  --brand-tint: #12292a;
+  --brand-tint-strong: #17383a;
+
+  /* shadcn tokens, so dialogs and dropdowns follow too */
+  --sidebar-accent: 218 25% 16%;
+  --sidebar-accent-foreground: 210 20% 92%;
+  --sidebar-border: 218 19% 22%;
+
+  /* The navbar is a translucent white in light mode; it has to invert or it
+     becomes a bright band across the top of a dark page. */
+  --sketch-navbar-bg: rgba(15, 20, 25, 0.86);
+
+  /* The canvas mat sits behind the video frame. Lighter than the page in light
+     mode, darker here, so the frame still reads as the thing in front. */
+  --sketch-toolbar-bg: #12181f;
+}
+
 @layer base {
   * {
     @apply border-border;

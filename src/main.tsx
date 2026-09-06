@@ -9,9 +9,12 @@ import App from './App.tsx'
 import { ScrollToTop } from "@/components/ScrollToTop"
 import { Toaster } from "@/components/ui/sonner"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
+import { initTheme } from "@/hooks/useTheme"
 
-// No ThemeProvider. The site is light-only, so there is nothing to resolve at
-// runtime and no flash of the wrong theme to guard against.
+// The theme is resolved before the first paint rather than in an effect. An
+// effect runs after React has already painted, so somebody on dark mode would
+// see a white flash on every load - which reads as a bug, not as a delay.
+initTheme()
 
 // Opts the page into entrance animations. Everything with a `reveal` class is
 // hidden only while this class is present, so if this script never runs the

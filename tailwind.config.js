@@ -1,6 +1,14 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
-  // No `darkMode`. The site ships one theme, so `dark:` variants are not
+  // Still no `darkMode`, and still no `dark:` variants. The dark theme is done
+  // by redefining the CSS custom properties in index.css under
+  // `:root[data-theme="dark"]`, which every surface already reads through the
+  // `--sketch-*` tokens - so one block of colours turns the whole editor dark
+  // rather than a `dark:` class on each of several thousand elements.
+  //
+  // The original note follows, because the reasoning for not using Tailwind's
+  // own dark mode has not changed:
+  // The site shipped one theme, so `dark:` variants were not
   // generated at all and any that survive in markup are dead classes rather
   // than a second look nobody maintains.
   content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],

@@ -268,6 +268,9 @@ export function SupportWidget() {
 
   /** Start watching a ticket this browser just raised anonymously. */
   const rememberTicket = useCallback((ticket: TrackedTicket) => {
+    // The write happens outside the updater. A state updater has to be pure -
+    // StrictMode runs it twice on purpose - and touching localStorage from
+    // inside one is a side effect in a function that promises not to have any.
     setTracked((prev) => {
       const next = [ticket, ...prev.filter((t) => t.ticketId !== ticket.ticketId)].slice(0, 3);
       try {

@@ -486,10 +486,24 @@ export const teamRouter = createRouter({
       const [team] = await db.select({ ownerUserId: teams.ownerUserId }).from(teams).where(eq(teams.id, teamId)).limit(1);
       if (team?.ownerUserId === input.userId) throw userError("The owner's role cannot be changed");
 
+      // Confirm they are actually in this team, the way removeMember does.
+      // Without it the UPDATE simply matched no rows - the scoping by `teamId`
+      // meant nobody else's role could be changed, so nothing was exposed - but
+      // the call still returned `ok: true` for a change that never happened, and
+      // still wrote an audit entry saying the role of a stranger's account had
+      // been altered. An audit trail is only worth anything if every line in it
+      // is true.
+      const [membership] = await db
+        .select({ id: teamMembers.id })
+        .from(teamMembers)
+        .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, input.userId)))
+        .limit(1);
+      if (!membership) throw userError("They are not in this team", "NOT_FOUND");
+
       await db
         .update(teamMembers)
         .set({ role: input.role })
-        .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, input.userId)));
+        .where(eq(teamMembers.id, membership.id));
 
       await recordAudit({
         action: "member.role.changed",

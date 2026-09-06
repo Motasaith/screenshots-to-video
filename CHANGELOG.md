@@ -31,6 +31,28 @@ nullable column is a silent, non-destructive change for push.
 
 ### Added
 
+- **Dark mode, with a labelled toggle in the editor header.** The editor already
+  read every colour through the `--sketch-*` custom properties, so the theme is
+  one block of redefined tokens under `:root[data-theme="dark"]` rather than a
+  `dark:` variant on each of several thousand elements - which is also why it
+  covers panels, dialogs and the timeline without any of them being touched.
+
+  The toggle sits next to Export, carries a word rather than only an icon, and
+  names what it will switch *to*, which is the question being asked by whoever
+  went looking for it. The choice is remembered, and is applied in `main.tsx`
+  before the first paint rather than from an effect - an effect runs after React
+  has painted, so a dark-mode user would get a white flash on every load.
+
+  The system preference is the starting point for somebody who has never chosen,
+  and their choice outranks it from then on: the OS switching itself to night
+  mode at sunset should not override a deliberate decision.
+
+  Four places had colours that would not have followed: two panel controls on
+  fixed slate, the zoom dropdown's options forced to `bg-white`, and the export
+  dialog, which would have stayed a white sheet on a dark page. The white resize
+  handles were deliberately left alone - they sit on the user's screenshot, which
+  is not themed.
+
 - **A guided setup pass replaces meeting the editor cold.** After the import
   dialog, each screenshot is shown on its own with one instruction - drag a box
   around the button or field this step is about - and three ways out: skip this
@@ -162,7 +184,43 @@ nullable column is a silent, non-destructive change for push.
   and the next began. It is now a bordered surface with a titled header naming
   the active tool in words rather than its internal mode string.
 
+### Security
+
+- **`/api/signed-url` signed any key for any signed-in user.** It authenticated
+  the caller and then handed back a download URL for whatever key was named, with
+  no check that it belonged to them. Against the local store the damage was
+  bounded - the URL it returns points at `/api/file`, which does check ownership -
+  but `getSignedDownloadUrl` also mints real presigned object-storage URLs for
+  `b2:` and plain object keys, and the storage provider honours those without
+  consulting this application at all. It now refuses anything that is not an
+  owner-scoped local key belonging to the caller, with a 404 rather than a 403 so
+  a refusal does not reveal whether the key exists. Found by probing the HTTP
+  routes as the wrong user; nothing in the app calls this endpoint.
+- **`team.setRole` reported success for people not in the team.** The UPDATE was
+  correctly scoped by `teamId`, so no other team's data could be changed and
+  nothing was exposed - but it matched zero rows, returned `{ ok: true }`, and
+  wrote an audit entry saying a stranger's role had been changed. It confirms
+  membership first now, the way `removeMember` already did. An audit trail is
+  worth nothing if entries in it are false.
+- **The HTTP routes now have an ownership probe of their own.**
+  `npm run security:http` calls `/api/file`, `/api/thumb` and `/api/signed-url`
+  as the wrong user, plus two path-traversal attempts, and refuses to pass
+  unless a control request by the rightful owner succeeds - so a missing file or
+  a server refusing everything cannot read as a clean run. `scripts/ownership-probe.ts`
+  only speaks tRPC, which is precisely why the `/api/signed-url` hole survived:
+  nothing was looking at that surface.
+- **The ownership probe had two blind spots.** `step.reorder` and
+  `step.applyFocus` were refused on input validation before their ownership
+  checks ran, reported as inconclusive rather than as passes. Both carry valid
+  input now: 28 probed, 0 leaking, 0 inconclusive.
+
 ### Fixed
+
+- **`pushHistory` called `setHistoryIndex` from inside the `setHistory`
+  updater.** Harmless in practice - the index it computes is identical on both of
+  StrictMode's invocations - but this is the function behind every undo in the
+  editor, and the fourth instance of a pattern that has caused three real bugs
+  here. It builds the next history array first now.
 
 - **The C shortcut corrupted the undo history.** It called `setHistory` and
   `setHistoryIndex` from inside the `setAnnotations` updater. An updater has to
@@ -170,6 +228,23 @@ nullable column is a silent, non-destructive change for push.
   so every press of C pushed two history entries and advanced the index twice,
   and undo then needed two presses to move one step. The same mistake the guided
   framing screen had. It now reads, decides, and calls setState from the handler.
+- **The canvas overflowed its container at every screen size.** `getFitScale`
+  subtracted 32px of padding while the wrapper applied 40px per side - 80 in
+  total - so the fit was computed against 48px more room than existed and the
+  canvas was clipped by exactly that. Checked against seven phone widths and four
+  aspect ratios: **all 28 combinations clipped**, and all 28 now fit. The padding
+  is one value used by both the measurement and the markup, and it drops to 12px
+  on a narrow screen, where 80px of a 360px phone was a fifth of the width spent
+  on margin.
+- **The canvas never refitted on resize or rotation.** The effect's comment said
+  "on initial mount or when screen/aspect ratio changes", but nothing listened
+  for a resize - so turning a phone sideways kept a scale computed for the shape
+  it used to be. It now refits on `resize` and `orientationchange`, and only when
+  the canvas is still at its fitted scale, so rotating does not throw away a zoom
+  level someone chose.
+- **The timeline scales down on small screens.** Scene tiles were a fixed 144px
+  with a 112px strip floor - a fifth of a 568px phone screen spent on thumbnails.
+  They are 112px with a 92px floor below the `sm` breakpoint, full size above it.
 - **The Pan tool did nothing, and never said why.** Pan scrolls the canvas
   container, and that container only scrolls when its content overflows - but the
   canvas defaults to *fit* scale, where it is sized to exactly fill its window.
