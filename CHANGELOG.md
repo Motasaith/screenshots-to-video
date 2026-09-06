@@ -83,6 +83,31 @@ nullable column is a silent, non-destructive change for push.
 
 ### Changed
 
+- **Keyboard shortcuts are removed for now.** They were unreliable, and one of
+  them was actively corrupting the undo history. Rather than keep hints on every
+  tool for keys that may or may not fire, the whole handler is gone until it can
+  be built and tested properly - along with the key hints in the tool tooltips
+  and the "(V)", "(H)" suffixes the onboarding tour was putting in its titles.
+  Every tool is still reachable from the toolbar. The comment left in its place
+  says what bringing them back requires.
+- **The empty editor explains the job instead of listing hotkeys.** A blank
+  canvas showed a card of fifteen keyboard shortcuts - the first thing it told
+  someone was which letter selects the Spotlight tool, answering a question
+  nobody had yet while "I have screenshots, now what?" went unanswered. It is now
+  three numbered steps - add your screenshots, say what matters on each one,
+  check the narration - with an "Add screenshots" button that opens the picker,
+  and a line saying nothing is final until export.
+
+- **Three controls that mattered were the faintest things on screen.** "Use your
+  own voice" sat in the same washed-out card as everything below it, despite
+  being the one control that overrides the entire voice panel - it now has a
+  coloured border and turns teal when a recording is attached. "Preview camera
+  move" is the only way to see a camera move without spending a render, and was a
+  ghost outline - it is now a filled button that says it is free. And scene
+  length, the number that decides whether a scene works, was 11px muted mono at
+  80% opacity - the total is now the headline, with the camera and narration
+  figures beneath it as the explanation.
+
 - **The create-project dialog opens prefilled.** It opened empty on "120 more
   characters needed" in red, which reads as a wall rather than a prompt - the
   first thing a new project asked for was an essay. Title and description now
@@ -139,6 +164,46 @@ nullable column is a silent, non-destructive change for push.
 
 ### Fixed
 
+- **The C shortcut corrupted the undo history.** It called `setHistory` and
+  `setHistoryIndex` from inside the `setAnnotations` updater. An updater has to
+  be pure, and StrictMode invokes them twice on purpose to catch exactly this -
+  so every press of C pushed two history entries and advanced the index twice,
+  and undo then needed two presses to move one step. The same mistake the guided
+  framing screen had. It now reads, decides, and calls setState from the handler.
+- **The Pan tool did nothing, and never said why.** Pan scrolls the canvas
+  container, and that container only scrolls when its content overflows - but the
+  canvas defaults to *fit* scale, where it is sized to exactly fill its window.
+  So `scrollLeft = x` was a no-op: the tool activated, the cursor changed,
+  dragging moved nothing, and there was no explanation. Panning only ever did
+  anything after zooming in past the fit with Ctrl +, which nothing mentioned.
+  The editor now measures whether the canvas actually overflows and says so:
+  "Nothing to pan yet - the whole scene fits. Zoom in with Ctrl + first." The
+  Pan tool's own tooltip carries the same caveat.
+- **The mode indicator was blank in the two modes people reach first.** It had a
+  line for highlight, zoom, crop, blur and the rest, but none for select or pan -
+  and pan is the default. So the first thing a new editor showed was an empty
+  strip, in the mode that also happened to do nothing. Both have text now, along
+  with magnify and caption, which were also missing.
+- **Moving a zoom point left a second marker behind.** Placing a point writes
+  the waypoint *and* the legacy `zoomTargetX/Y` that the single-zoom render path
+  reads, so two markers appeared stacked and looked like one. Dragging updated
+  only the waypoint, so the pink dot stayed where the point had been - two
+  markers on the canvas with nothing to say which one the camera would use. The
+  legacy target now follows the first waypoint when it is dragged, which also
+  fixes the fallback render path still aiming at the old spot, and the duplicate
+  marker is not drawn at all while waypoints exist.
+- **The per-point zoom scale slider did nothing for all but one point.** Each
+  zoom point carried its own Zoom Scale, but `computeWaypointCamera` reduces them
+  with `Math.max(...waypoints.map(w => w.zoomScale))` and holds that single depth
+  across the whole camera move. Setting point 1 to 2x and point 2 to 4x gave 4x
+  on both. The per-point sliders are replaced by one "How far to zoom" control
+  for the scene, which is what the renderer actually does - and it writes both
+  the waypoint values and `editorZoomScale`, so the number shown is the number
+  rendered whichever render path the scene takes.
+- **Attaching your own voice did not update the panel.** The recorder refreshed
+  `step.listByProject`, but the panel reads `currentStep` out of
+  `project.getById` - so after recording, the card carried on offering to record.
+  Both are invalidated now.
 - **The guided setup only existed for the homepage uploader.** It was launched
   from the import dialog's save handler, and that dialog only opens on
   `?imported=true` - so a project created from the dashboard went straight to the

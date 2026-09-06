@@ -66,14 +66,14 @@ const TOUR_STEPS: TourStep[] = [
   {
     title: "Toolbar: your annotation tools",
     description:
-      "This ribbon contains all the tools you need. Let's go through each one. You can also press the keyboard shortcut shown next to each tool name.",
+      "This ribbon contains all the tools you need. Let's go through each one.",
     icon: <Sliders className="w-5 h-5 text-teal-400" />,
     targetSelector: "[data-tour='toolbar']",
     placement: "bottom",
   },
   // 3. Select tool
   {
-    title: "Select Tool (V)",
+    title: "Select Tool",
     description:
       "Click to select and move any annotation on the canvas: highlights, text, badges, zoom points and so on. Drag to reposition them.",
     icon: <MousePointer className="w-5 h-5 text-slate-300" />,
@@ -82,7 +82,7 @@ const TOUR_STEPS: TourStep[] = [
   },
   // 4. Pan tool
   {
-    title: "Pan Tool (Space)",
+    title: "Pan Tool",
     description:
       "Drag to scroll around the canvas when zoomed in. Hold Space to temporarily activate pan mode from any tool.",
     icon: <Move className="w-5 h-5 text-slate-300" />,
@@ -91,7 +91,7 @@ const TOUR_STEPS: TourStep[] = [
   },
   // 5. Crop tool
   {
-    title: "Crop Tool (C)",
+    title: "Crop Tool",
     description:
       "Drag the handles to crop your screenshot. Only the cropped area will appear in the final video.",
     icon: <Crop className="w-5 h-5 text-slate-300" />,
@@ -100,7 +100,7 @@ const TOUR_STEPS: TourStep[] = [
   },
   // 6. Highlight tool
   {
-    title: "Highlight Tool (H)",
+    title: "Highlight Tool",
     description:
       "Draw colored rectangles around important parts of your screenshot to draw the viewer's attention. Choose colors from the Properties panel.",
     icon: <Square className="w-5 h-5 text-amber-400" />,
@@ -109,7 +109,7 @@ const TOUR_STEPS: TourStep[] = [
   },
   // 7. Zoom tool
   {
-    title: "Zoom Tool (Z)",
+    title: "Zoom Tool",
     description:
       "Click on an area to set a zoom target. During the video, the camera smoothly zooms into that point. Add multiple zoom points for a cinematic pan-and-zoom effect.",
     icon: <Target className="w-5 h-5 text-blue-400" />,
@@ -118,7 +118,7 @@ const TOUR_STEPS: TourStep[] = [
   },
   // 8. Text Overlay
   {
-    title: "Text Overlay (T)",
+    title: "Text Overlay",
     description:
       "Click on the canvas to place a text label. Great for titles, callouts, and annotations. Edit the text and style in the Properties panel.",
     icon: <Type className="w-5 h-5 text-pink-400" />,
@@ -127,7 +127,7 @@ const TOUR_STEPS: TourStep[] = [
   },
   // 9. Badge
   {
-    title: "Badge Tool (B)",
+    title: "Badge Tool",
     description:
       "Click to add a numbered step badge. Badges auto-number so viewers can follow along. Perfect for tutorials and step-by-step guides.",
     icon: <BadgeCheck className="w-5 h-5 text-pink-400" />,
@@ -136,7 +136,7 @@ const TOUR_STEPS: TourStep[] = [
   },
   // 10. Watermark
   {
-    title: "Watermark (W)",
+    title: "Watermark",
     description:
       "Add a text watermark to protect your content. Choose the position, opacity, and text from the Properties panel.",
     icon: <Stamp className="w-5 h-5 text-pink-400" />,
@@ -145,7 +145,7 @@ const TOUR_STEPS: TourStep[] = [
   },
   // 11. Blur
   {
-    title: "Blur Tool (U)",
+    title: "Blur Tool",
     description:
       "Draw a rectangle to blur sensitive information: passwords, emails, API keys. The blur is baked into the final video.",
     icon: <Aperture className="w-5 h-5 text-purple-400" />,
@@ -154,7 +154,7 @@ const TOUR_STEPS: TourStep[] = [
   },
   // 12. Redact
   {
-    title: "Redact Tool (R)",
+    title: "Redact Tool",
     description:
       "Draw a rectangle to completely black out an area. Use for PII, confidential data, or anything you want hidden.",
     icon: <Shield className="w-5 h-5 text-red-400" />,
@@ -163,7 +163,7 @@ const TOUR_STEPS: TourStep[] = [
   },
   // 13. Pixelate
   {
-    title: "Pixelate Tool (P)",
+    title: "Pixelate Tool",
     description:
       "Draw a rectangle to pixelate an area. Less harsh than blur, and good for obscuring faces or secondary details.",
     icon: <Grid3x3 className="w-5 h-5 text-cyan-400" />,
@@ -172,7 +172,7 @@ const TOUR_STEPS: TourStep[] = [
   },
   // 14. Spotlight
   {
-    title: "Spotlight Tool (L)",
+    title: "Spotlight Tool",
     description:
       "Draw a rectangle to create a bright spotlight effect. Everything outside the spotlight is dimmed, focusing the viewer's attention.",
     icon: <Sun className="w-5 h-5 text-yellow-400" />,
@@ -181,7 +181,7 @@ const TOUR_STEPS: TourStep[] = [
   },
   // 15. Filter
   {
-    title: "Filter Tool (F)",
+    title: "Filter Tool",
     description:
       "Apply visual filters like grayscale, sepia, brightness, or invert to the entire screenshot. Great for stylistic effects.",
     icon: <Palette className="w-5 h-5 text-green-400" />,

@@ -26,6 +26,7 @@ import {
   Redo2,
   Film,
   ChevronDown,
+  ImagePlus,
   Upload,
   ArrowLeft,
   Volume2,
@@ -38,7 +39,6 @@ import {
   CheckCircle,
   Wand2,
   Compass,
-  Hand,
   Save,
   ZoomIn,
   ZoomOut,
@@ -54,8 +54,6 @@ import {
   Pencil,
   FileText,
   RotateCw,
-  Keyboard,
-  EyeOff,
   Menu,
   Sliders,
 } from "lucide-react";
@@ -460,6 +458,27 @@ function withZoomPoints(
  * moves. Without one - nothing drawn yet - the value becomes the step default,
  * which is what the next region drawn will be created with.
  */
+/**
+ * One zoom depth for a whole scene.
+ *
+ * Written to every waypoint AND to `editorZoomScale`, because the two do
+ * different jobs: the step-level value is what arms zoom at all in the worker,
+ * and the per-waypoint values are what `computeWaypointCamera` reduces with
+ * `Math.max` to decide the actual depth. Keeping them equal means the number
+ * shown is the number rendered, whichever path the scene takes.
+ */
+function withSceneZoomScale(
+  ann: StepAnnotation | undefined,
+  scale: number
+): StepAnnotation {
+  const base = ann || {};
+  return {
+    ...base,
+    editorZoomScale: scale,
+    editorMultiZooms: (base.editorMultiZooms || []).map((z) => ({ ...z, zoomScale: scale })),
+  };
+}
+
 function withBlurIntensity(
   ann: StepAnnotation | undefined,
   intensity: number,
@@ -910,6 +929,17 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const imageRef = useRef<HTMLImageElement | HTMLVideoElement>(null);
   const handleResizeRef = useRef<string | null>(null);
 
+  /**
+   * Whether the canvas is actually bigger than its window.
+   *
+   * Pan scrolls the container, and the container only scrolls when the content
+   * overflows it. At the default fit scale the canvas is sized to exactly fill
+   * the window, so `scrollLeft = x` does nothing at all: the Pan tool activates,
+   * the cursor changes, dragging does nothing, and nothing says why. That is the
+   * "I press space and cannot move even a little" report.
+   */
+  const [canPan, setCanPan] = useState(false);
+
   const [bounds, setBounds] = useState<{
     visibleW: number;
     visibleH: number;
@@ -923,6 +953,14 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     if (canvasRef.current && imageRef.current) {
       const b = getImageBounds(canvasRef.current, imageRef.current as HTMLImageElement | HTMLVideoElement);
       setBounds(b);
+    }
+    const sc = scrollContainerRef.current;
+    if (sc) {
+      // A pixel of slack: sub-pixel layout rounding otherwise reports a scroll
+      // range of 0.5px on a canvas that visibly fits.
+      setCanPan(
+        sc.scrollWidth - sc.clientWidth > 1 || sc.scrollHeight - sc.clientHeight > 1
+      );
     }
   }, []);
 
@@ -1217,10 +1255,15 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   const handleUndoRef = useRef(handleUndo);
   const handleRedoRef = useRef(handleRedo);
   const historyIndexRef = useRef(historyIndex);
+  const pushHistoryRef = useRef(pushHistory);
 
   useEffect(() => {
     modeRef.current = mode;
   }, [mode]);
+
+  useEffect(() => {
+    pushHistoryRef.current = pushHistory;
+  }, [pushHistory]);
 
   useEffect(() => {
     currentStepRef.current = currentStep;
@@ -1232,159 +1275,21 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     historyIndexRef.current = historyIndex;
   }, [handleUndo, handleRedo, historyIndex]);
 
-  const previousModeBeforeSpaceRef = useRef<ToolMode | null>(null);
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // 1. Ignore if typing in text inputs or textareas
-      const target = e.target as HTMLElement;
-      if (
-        target.tagName === "INPUT" ||
-        target.tagName === "TEXTAREA" ||
-        target.isContentEditable
-      ) {
-        return;
-      }
-
-      // Check if it's one of our handled shortcuts
-      const key = e.key.toLowerCase();
-      const isToolKey = ["v", "h", "z", "t", "b", "w", "u", "r", "p", "l", "f", "m", "c"].includes(key);
-      const isSpace = e.code === "Space" || e.key === " ";
-      const isUndoRedo = (e.ctrlKey || e.metaKey) && !e.altKey && ["z", "y"].includes(key);
-      const isZoomKey = (e.ctrlKey || e.metaKey) && !e.altKey && ["=", "+", "-"].includes(key);
-
-      // Prevent browser default actions (such as scrolling for spacebar) ALWAYS, even on repeat keydowns
-      if (isToolKey || isSpace || isUndoRedo || isZoomKey) {
-        e.preventDefault();
-      }
-
-      // 2. Ignore keydown events triggered by auto-repeat to prevent React rendering loops and lag
-      if (e.repeat) return;
-
-      // Spacebar hold to pan
-      if (isSpace) {
-        if (!previousModeBeforeSpaceRef.current && modeRef.current !== "pan") {
-          previousModeBeforeSpaceRef.current = modeRef.current;
-          setMode("pan");
-        }
-        return;
-      }
-
-      // Check Undo/Redo shortcuts (Ctrl + Z, Ctrl + Shift + Z, Ctrl + Y)
-      if (isUndoRedo) {
-        if (key === "z") {
-          if (e.shiftKey) {
-            handleRedoRef.current();
-          } else {
-            handleUndoRef.current();
-          }
-          return;
-        }
-        if (key === "y") {
-          handleRedoRef.current();
-          return;
-        }
-      }
-
-      // Ctrl + / Ctrl - for canvas zoom scale
-      if (isZoomKey) {
-        if (e.key === "=" || e.key === "+") {
-          setCanvasScale((prev) => Math.min(3.0, prev * 1.1));
-          return;
-        }
-        if (e.key === "-") {
-          setCanvasScale((prev) => Math.max(1.0, prev / 1.1));
-          return;
-        }
-      }
-
-      // Check tool shortcuts (case-insensitive)
-      switch (key) {
-        case "v":
-          setMode("select");
-          break;
-        case "h":
-          setMode("highlight");
-          break;
-        case "z":
-          setMode("zoom");
-          break;
-        case "t":
-          setMode("overlay");
-          break;
-        case "b":
-          setMode("badge");
-          break;
-        case "w":
-          setMode("watermark");
-          break;
-        case "u":
-          setMode("blur");
-          break;
-        case "r":
-          setMode("redact");
-          break;
-        case "p":
-          setMode("pixelate");
-          break;
-        case "l":
-          setMode("spotlight");
-          break;
-        case "f":
-          setMode("filter");
-          break;
-        case "m":
-          setMode("magnify");
-          break;
-        case "c":
-          // Trigger Crop mode just like the toolbar crop button does
-          if (currentStepRef.current) {
-            setAnnotations((prev) => {
-              const ann = prev[currentStepRef.current!.id] || {};
-              if (ann.editorCropX == null || ann.editorCropW == null) {
-                const next = {
-                  ...prev,
-                  [currentStepRef.current!.id]: {
-                    ...ann,
-                    editorCropX: 0,
-                    editorCropY: 0,
-                    editorCropW: 100,
-                    editorCropH: 100,
-                  },
-                };
-                // Push to history
-                setHistory((h) => {
-                  const newH = h.slice(0, historyIndexRef.current + 1);
-                  return [...newH, next];
-                });
-                setHistoryIndex((idx) => idx + 1);
-                return next;
-              }
-              return prev;
-            });
-          }
-          setMode("crop");
-          break;
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.code === "Space" || e.key === " ") {
-        if (previousModeBeforeSpaceRef.current !== null) {
-          setMode(previousModeBeforeSpaceRef.current);
-          previousModeBeforeSpaceRef.current = null;
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-    };
-  }, []);
+  /*
+   * Tool keyboard shortcuts are removed for now.
+   *
+   * They were reported as unreliable and one of them - C for crop - was
+   * corrupting the undo history by calling setState from inside a state
+   * updater. Rather than leave hints on every tool for keys that may or may not
+   * fire, the whole handler is gone until it can be built and tested properly.
+   * The tools themselves are unchanged and every one of them is reachable from
+   * the toolbar.
+   *
+   * Bringing them back means restoring a window keydown/keyup listener that
+   * maps keys onto setMode, reading current values through refs rather than
+   * closing over them, guarding `e.repeat`, and calling preventDefault only for
+   * keys actually handled. See git history for the previous shape.
+   */
 
   /**
    * Add scenes from a file selection.
@@ -2232,7 +2137,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
           updated.zoomTargetX = clamp(dragItem.initialX + deltaX, 0, 100);
           updated.zoomTargetY = clamp(dragItem.initialY + deltaY, 0, 100);
         } else if (dragItem.type === "multizoom") {
-          updated.editorMultiZooms = (stepAnn.editorMultiZooms || []).map((p) =>
+          const moved = (stepAnn.editorMultiZooms || []).map((p) =>
             p.id === dragItem.id
               ? {
                 ...p,
@@ -2241,6 +2146,16 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               }
               : p
           );
+          updated.editorMultiZooms = moved;
+          // `zoomTargetX/Y` follows the first waypoint. Placing a point writes
+          // both, but dragging used to move only the waypoint - so the legacy
+          // target was left behind, and the single-zoom render path, which is
+          // what runs whenever the multi-zoom one is not taken, still aimed at
+          // the spot the point had been dragged away from.
+          if (moved[0]) {
+            updated.zoomTargetX = moved[0].targetX;
+            updated.zoomTargetY = moved[0].targetY;
+          }
         } else if (dragItem.type === "highlightArr") {
           const handle = handleResizeRef.current;
           const initX = dragItem.initialX || 0;
@@ -2758,6 +2673,15 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
   // Redaction bars and badges follow the same rule as the strength sliders: the
   // panel edits whichever one is selected, falling back to the most recent so
   // the fields are never pointed at nothing while the scene has some.
+  // The depth the scene actually renders at: max across the waypoints, which is
+  // exactly what computeWaypointCamera does, falling back to the step gate.
+  const sceneZoomScale = (() => {
+    const zs = (currentAnn?.editorMultiZooms || []).map((z) => z.zoomScale ?? 0).filter((n) => n > 1);
+    if (zs.length > 0) return Math.max(...zs);
+    const gate = currentAnn?.editorZoomScale ?? 0;
+    return gate > 1 ? gate : 2;
+  })();
+
   const redactList = currentAnn?.editorRedacts || [];
   const redactIndex = redactList.length === 0
     ? -1
@@ -4407,6 +4331,49 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                 </button>
               </div>
 
+              {/* One zoom depth for the whole scene, not one per point.
+                  Each point used to carry its own Zoom Scale slider, and the
+                  renderer cannot do that: computeWaypointCamera takes
+                  `Math.max(...waypoints.map(w => w.zoomScale))` and holds that
+                  single depth across the entire move. So setting point 1 to 2x
+                  and point 2 to 4x gave 4x on both, and every slider except the
+                  highest was decoration. Showing one control that works beats
+                  three that mostly do not. */}
+              {!timelineClips[currentStepIndex]?.isVideo &&
+                (currentAnn?.editorMultiZooms?.length ?? 0) > 0 && (
+                  <div className="rounded-lg border border-[var(--sketch-border-color)]/40 bg-[var(--sketch-fg-subtle)]/[0.04] p-2.5">
+                    <div className="flex items-center justify-between">
+                      <Label className="text-[11px] font-semibold">How far to zoom</Label>
+                      <span className="text-[11px] font-mono font-bold text-[var(--sketch-fg)]">
+                        {(sceneZoomScale).toFixed(1)}x
+                      </span>
+                    </div>
+                    <Slider
+                      value={[sceneZoomScale]}
+                      min={1.2}
+                      max={4}
+                      step={0.1}
+                      onValueChange={([v]) =>
+                        setAnnotations((prev) => ({
+                          ...prev,
+                          [currentStep!.id]: withSceneZoomScale(prev[currentStep!.id], v),
+                        }))
+                      }
+                      onValueCommit={([v]) =>
+                        pushHistory({
+                          ...annotations,
+                          [currentStep!.id]: withSceneZoomScale(annotations[currentStep!.id], v),
+                        })
+                      }
+                      className="mt-2"
+                    />
+                    <p className="mt-1 text-[9px] text-[var(--sketch-fg-muted)]">
+                      1.5x mild - 2.0x standard - 3.0x close-up - 4.0x extreme.
+                      Applies to every zoom point on this scene.
+                    </p>
+                  </div>
+                )}
+
               {/* Zoom on video is not implemented yet: renderVideoSegment plays
                   the footage without a camera move, so points placed here would
                   silently do nothing at export. Say so rather than let someone
@@ -4464,10 +4431,11 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   onClick={() => setShowScenePreview(true)}
                   title="Play this scene's camera move without rendering"
                   aria-label="Preview this scene"
-                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[var(--sketch-border-color)]/30 bg-[var(--sketch-fg-subtle)]/5 py-1.5 text-[11px] font-semibold text-[var(--sketch-fg)] hover:bg-[var(--sketch-fg-subtle)]/10"
+                  className="flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--sketch-accent)] py-2.5 text-xs font-bold text-white shadow-sm transition-opacity hover:opacity-90"
                 >
-                  <Play className="h-3 w-3" />
+                  <Play className="h-4 w-4" />
                   Preview camera move
+                  <span className="font-normal opacity-80">- free, no render</span>
                 </button>
               )}
 
@@ -4482,17 +4450,26 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                       : "border-[var(--sketch-border-color)]/30 bg-[var(--sketch-fg-subtle)]/5 text-[var(--sketch-fg-muted)]"
                   }`}
                 >
-                  <div className="flex items-center justify-between font-mono">
-                    <span>Scene length</span>
-                    <span className="font-bold">{sceneTiming.sceneSec.toFixed(1)}s</span>
+                  {/* The headline number, at a size that matches how much it
+                      matters: it is how long this scene will run for. The two
+                      figures it is made of sit underneath as the explanation. */}
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide">
+                      Scene length
+                    </span>
+                    <span className="font-mono text-2xl font-bold leading-none text-[var(--sketch-fg)]">
+                      {sceneTiming.sceneSec.toFixed(1)}s
+                    </span>
                   </div>
-                  <div className="mt-1 flex items-center justify-between font-mono opacity-80">
-                    <span>Camera needs</span>
-                    <span>{sceneTiming.cameraSec.toFixed(1)}s</span>
-                  </div>
-                  <div className="flex items-center justify-between font-mono opacity-80">
-                    <span>Narration</span>
-                    <span>{sceneTiming.narrationSec.toFixed(1)}s</span>
+                  <div className="mt-2 space-y-0.5 border-t border-current/15 pt-1.5">
+                    <div className="flex items-center justify-between font-mono text-[11px]">
+                      <span>Camera needs</span>
+                      <span className="font-semibold">{sceneTiming.cameraSec.toFixed(1)}s</span>
+                    </div>
+                    <div className="flex items-center justify-between font-mono text-[11px]">
+                      <span>Narration</span>
+                      <span className="font-semibold">{sceneTiming.narrationSec.toFixed(1)}s</span>
+                    </div>
                   </div>
                   {sceneTiming.silenceSec > 1.5 && (
                     <p className="mt-1.5 font-sans">
@@ -4551,40 +4528,6 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                           },
                         }));
                       }} onBlur={() => pushHistory(annotations)} className="text-[10px] h-6" /></div>
-                    </div>
-                    <div className="mt-1">
-                      <Label className="text-[10px] font-mono">Zoom Scale</Label>
-                      <div className="flex items-center gap-2">
-                        <Slider
-                          value={[mz.zoomScale || 2]}
-                          min={1}
-                          max={4}
-                          step={0.1}
-                          onValueChange={([v]) => {
-                            setAnnotations((prev) => ({
-                              ...prev,
-                              [currentStep!.id]: {
-                                ...prev[currentStep!.id],
-                                editorMultiZooms: prev[currentStep!.id]?.editorMultiZooms?.map((z) => z.id === mz.id ? { ...z, zoomScale: v } : z) || [],
-                              },
-                            }));
-                          }}
-                          onValueCommit={([v]) => {
-                            pushHistory({
-                              ...annotations,
-                              [currentStep!.id]: {
-                                ...(annotations[currentStep!.id] || {}),
-                                editorMultiZooms: annotations[currentStep!.id]?.editorMultiZooms?.map((z) => z.id === mz.id ? { ...z, zoomScale: v } : z) || [],
-                              },
-                            });
-                          }}
-                          className="flex-1"
-                        />
-                        <span className="text-[10px] font-mono w-8">{(mz.zoomScale || 2).toFixed(1)}x</span>
-                      </div>
-                      <p className="text-[9px] text-[var(--sketch-fg-muted)] mt-0.5">
-                        1.5x = mild, 2.0x = standard, 3.0x = close-up, 4.0x = extreme
-                      </p>
                     </div>
                     <div className="mt-1">
                       <Label className="text-[10px] font-mono">Duration (sec)</Label>
@@ -5430,8 +5373,11 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
     return (
       <div className="flex flex-col h-full relative overflow-hidden">
         <div className="flex-1 overflow-y-auto py-1 pr-1 space-y-4 min-h-0">
-          {/* First, because it decides whether the voice settings below apply to
-              this scene at all. */}
+          {/* First, and styled to be seen, because it decides whether the voice
+              settings below apply to this scene at all. It previously sat in the
+              same faint card as "Test voice" and everything under it, so the one
+              control that overrides the whole panel looked like the least
+              important thing on it. */}
           <OwnVoiceRecorder
             stepId={currentStep.id}
             sceneNumber={currentStep.order}
@@ -5440,7 +5386,15 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
               audioDuration: currentStep.audioDuration ?? null,
             }}
             onChanged={async () => {
-              await utils.step.listByProject.invalidate();
+              // Both, because the panel reads `currentStep` out of
+              // `project.getById`. Invalidating only listByProject left the
+              // recorder showing "Record here or upload a file" straight after a
+              // recording had been attached, because the source of the
+              // `audioSource` it renders from was never refetched.
+              await Promise.all([
+                utils.project.getById.invalidate({ id: projectIdNum }),
+                utils.step.listByProject.invalidate({ projectId: projectIdNum }),
+              ]);
             }}
           />
 
@@ -7172,8 +7126,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
               {/* Tools row */}
               <div className="flex items-center gap-1 px-1 overflow-x-auto scrollbar-none py-0.5 flex-1 min-w-0">
-                <ToolbarToolButton active={mode === "select"} onClick={() => setMode("select")} icon={<MousePointer className="w-3.5 h-3.5" />} label="Select" shortcut="V" description="Click to select and move annotations on the canvas." dataTour="tool-select" />
-                <ToolbarToolButton active={mode === "pan"} onClick={() => setMode("pan")} icon={<Move className="w-3.5 h-3.5" />} label="Pan" shortcut="Space" description="Drag to scroll around the canvas when zoomed in." dataTour="tool-pan" />
+                <ToolbarToolButton active={mode === "select"} onClick={() => setMode("select")} icon={<MousePointer className="w-3.5 h-3.5" />} label="Select" description="Click to select and move annotations on the canvas." dataTour="tool-select" />
+                <ToolbarToolButton active={mode === "pan"} onClick={() => setMode("pan")} icon={<Move className="w-3.5 h-3.5" />} label="Pan" description={canPan ? "Drag to move around the canvas. Hold Space from any tool for a moment of panning." : "Only useful once you have zoomed in past the fit: at this scale the whole scene is already visible, so there is nowhere to pan."} dataTour="tool-pan" />
                 <ToolbarToolButton
                   active={mode === "crop"}
                   onClick={() => {
@@ -7197,23 +7151,23 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                   }}
                   icon={<Crop className="w-3.5 h-3.5" />}
                   label="Crop"
-                  shortcut="C"
+                 
                   description="Drag to crop the screenshot. Removes areas outside the selection."
                   dataTour="tool-crop"
                 />
                 <div className="h-4 w-[1px] bg-[#D3D3D3]/50 mx-1 flex-shrink-0" />
-                <ToolbarToolButton active={mode === "highlight"} onClick={() => setMode("highlight")} icon={<Square className="w-3.5 h-3.5" />} label="Highlight" shortcut="H" description="Drag to draw a colored highlight box around important UI elements." dataTour="tool-highlight" />
-                <ToolbarToolButton active={mode === "zoom"} onClick={() => setMode("zoom")} icon={<Target className="w-3.5 h-3.5" />} label="Zoom" shortcut="Z" description="Click to set a zoom target point. The camera will zoom into this area during the video. Add multiple points for a pan effect." dataTour="tool-zoom" />
+                <ToolbarToolButton active={mode === "highlight"} onClick={() => setMode("highlight")} icon={<Square className="w-3.5 h-3.5" />} label="Highlight" description="Drag to draw a colored highlight box around important UI elements." dataTour="tool-highlight" />
+                <ToolbarToolButton active={mode === "zoom"} onClick={() => setMode("zoom")} icon={<Target className="w-3.5 h-3.5" />} label="Zoom" description="Click to set a zoom target point. The camera will zoom into this area during the video. Add multiple points for a pan effect." dataTour="tool-zoom" />
                 <div className="h-4 w-[1px] bg-[#D3D3D3]/50 mx-1 flex-shrink-0" />
-                <ToolbarToolButton active={mode === "overlay"} onClick={() => setMode("overlay")} icon={<Type className="w-3.5 h-3.5" />} label="Text Overlay" shortcut="T" description="Click to place custom text on the screenshot. Useful for labels and callouts." dataTour="tool-overlay" />
-                <ToolbarToolButton active={mode === "badge"} onClick={() => setMode("badge")} icon={<BadgeCheck className="w-3.5 h-3.5" />} label="Badge" shortcut="B" description="Click to add a numbered step badge. Automatically numbers your steps." dataTour="tool-badge" />
-                <ToolbarToolButton active={mode === "watermark"} onClick={() => setMode("watermark")} icon={<Stamp className="w-3.5 h-3.5" />} label="Watermark" shortcut="W" description="Add a text watermark to protect your video. Choose position and opacity." dataTour="tool-watermark" />
+                <ToolbarToolButton active={mode === "overlay"} onClick={() => setMode("overlay")} icon={<Type className="w-3.5 h-3.5" />} label="Text Overlay" description="Click to place custom text on the screenshot. Useful for labels and callouts." dataTour="tool-overlay" />
+                <ToolbarToolButton active={mode === "badge"} onClick={() => setMode("badge")} icon={<BadgeCheck className="w-3.5 h-3.5" />} label="Badge" description="Click to add a numbered step badge. Automatically numbers your steps." dataTour="tool-badge" />
+                <ToolbarToolButton active={mode === "watermark"} onClick={() => setMode("watermark")} icon={<Stamp className="w-3.5 h-3.5" />} label="Watermark" description="Add a text watermark to protect your video. Choose position and opacity." dataTour="tool-watermark" />
                 <div className="h-4 w-[1px] bg-[#D3D3D3]/50 mx-1 flex-shrink-0" />
-                <ToolbarToolButton active={mode === "blur"} onClick={() => setMode("blur")} icon={<Aperture className="w-3.5 h-3.5" />} label="Blur" shortcut="U" description="Drag to blur sensitive information like passwords, emails, or API keys." dataTour="tool-blur" />
-                <ToolbarToolButton active={mode === "redact"} onClick={() => setMode("redact")} icon={<Shield className="w-3.5 h-3.5" />} label="Redact" shortcut="R" description="Drag to black out sensitive areas completely. Use for PII or confidential data." dataTour="tool-redact" />
-                <ToolbarToolButton active={mode === "pixelate"} onClick={() => setMode("pixelate")} icon={<Grid3x3 className="w-3.5 h-3.5" />} label="Pixelate" shortcut="P" description="Drag to pixelate an area. Less aggressive than blur, good for faces." dataTour="tool-pixelate" />
-                <ToolbarToolButton active={mode === "spotlight"} onClick={() => setMode("spotlight")} icon={<Sun className="w-3.5 h-3.5" />} label="Spotlight" shortcut="L" description="Drag to highlight an area with a bright spotlight effect. Dims the rest." dataTour="tool-spotlight" />
-                <ToolbarToolButton active={mode === "filter"} onClick={() => setMode("filter")} icon={<Palette className="w-3.5 h-3.5" />} label="Filter" shortcut="F" description="Apply color filters like grayscale, sepia, or invert to the screenshot." dataTour="tool-filter" />
+                <ToolbarToolButton active={mode === "blur"} onClick={() => setMode("blur")} icon={<Aperture className="w-3.5 h-3.5" />} label="Blur" description="Drag to blur sensitive information like passwords, emails, or API keys." dataTour="tool-blur" />
+                <ToolbarToolButton active={mode === "redact"} onClick={() => setMode("redact")} icon={<Shield className="w-3.5 h-3.5" />} label="Redact" description="Drag to black out sensitive areas completely. Use for PII or confidential data." dataTour="tool-redact" />
+                <ToolbarToolButton active={mode === "pixelate"} onClick={() => setMode("pixelate")} icon={<Grid3x3 className="w-3.5 h-3.5" />} label="Pixelate" description="Drag to pixelate an area. Less aggressive than blur, good for faces." dataTour="tool-pixelate" />
+                <ToolbarToolButton active={mode === "spotlight"} onClick={() => setMode("spotlight")} icon={<Sun className="w-3.5 h-3.5" />} label="Spotlight" description="Drag to highlight an area with a bright spotlight effect. Dims the rest." dataTour="tool-spotlight" />
+                <ToolbarToolButton active={mode === "filter"} onClick={() => setMode("filter")} icon={<Palette className="w-3.5 h-3.5" />} label="Filter" description="Apply color filters like grayscale, sepia, or invert to the screenshot." dataTour="tool-filter" />
               </div>
             </div>
 
@@ -7431,7 +7385,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                             </p>
                           </div>
                           <div className="w-full max-w-2xl border-t border-[var(--sketch-border-color)]/15 pt-4">
-                            <ShortcutGuideNote />
+                            <GettingStartedNote onAddScreenshots={() => handleTimelineAdd()} />
                           </div>
                         </div>
                       )}
@@ -8321,8 +8275,15 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                               );
                             })()}
 
-                            {/* Zoom target point */}
-                            {currentAnn?.zoomTargetX != null && currentAnn?.zoomTargetY != null && (
+                            {/* Zoom target point.
+                                Hidden once there are waypoints, because it is
+                                the same target drawn twice: placing a point sets
+                                this too, so both markers appeared stacked and
+                                looked like one - until a point was dragged, and
+                                a second, stale marker was left behind with
+                                nothing to say which one the camera would use. */}
+                            {(currentAnn?.editorMultiZooms?.length ?? 0) === 0 &&
+                              currentAnn?.zoomTargetX != null && currentAnn?.zoomTargetY != null && (
                               <div
                                 className="absolute w-4 h-4 -translate-x-1/2 -translate-y-1/2 cursor-move select-none"
                                 style={{
@@ -8395,7 +8356,18 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                         )}
 
                         {/* Mode indicator */}
-                        <div className="absolute bottom-2 left-2 bg-black/60 text-white text-[10px] font-mono px-2 py-1 rounded z-10">
+                        <div className={`absolute bottom-2 left-2 text-white text-[10px] font-mono px-2 py-1 rounded z-10 ${
+                          mode === "pan" && !canPan ? "bg-amber-600/85" : "bg-black/60"
+                        }`}>
+                          {/* Pan and select had no entry at all, so the strip
+                              went blank in the two modes people reach first -
+                              including the one that does nothing until you have
+                              zoomed in, which is what made it look broken. */}
+                          {mode === "select" && "Click an annotation to select it"}
+                          {mode === "pan" &&
+                            (canPan
+                              ? "Drag to move around the canvas"
+                              : "Nothing to pan yet - the whole scene fits. Zoom in with Ctrl + first.")}
                           {mode === "highlight" && "Drag to highlight area"}
                           {mode === "zoom" && "Click to add zoom point"}
                           {mode === "overlay" && "Click to place text"}
@@ -8407,6 +8379,8 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                           {mode === "spotlight" && "Drag spotlight area"}
                           {mode === "badge" && "Click to place badge"}
                           {mode === "filter" && "Select filter from panel"}
+                          {mode === "magnify" && "Click to place the magnifier"}
+                          {mode === "caption" && "Set this scene's caption in the panel"}
                         </div>
 
                         {/* Audio generated indicator */}
@@ -8496,7 +8470,7 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
                       No scene selected. Click a scene clip in the timeline below to begin editing.
                     </p>
                     <div className="border-t border-[var(--sketch-border-color)]/15 pt-4">
-                      <ShortcutGuideNote />
+                      <GettingStartedNote onAddScreenshots={() => handleTimelineAdd()} />
                     </div>
                   </div>
                 </div>
@@ -8929,174 +8903,83 @@ export function StepEditorPanel(props: StepEditorPanelProps = {}) {
 
 
 
-function ShortcutGuideNote() {
+/**
+ * What to do, shown wherever the canvas has nothing to draw.
+ *
+ * This used to be a card listing fifteen keyboard shortcuts - the first thing
+ * an empty editor told a new person was which letter selects the Spotlight
+ * tool. It answered a question nobody had yet, while the actual question ("I
+ * have screenshots, now what?") went unanswered. The shortcuts are gone for
+ * now; this is the three steps that get somebody to a finished video.
+ */
+function GettingStartedNote({ onAddScreenshots }: { onAddScreenshots?: () => void }) {
+  const steps = [
+    {
+      icon: <ImagePlus className="h-4 w-4" />,
+      title: "Add your screenshots",
+      body: "Drop them on the timeline below, or use Add Scene. They keep the order you name them in.",
+    },
+    {
+      icon: <Square className="h-4 w-4" />,
+      title: "Say what matters on each one",
+      body: "Draw a box around the button or field the step is about. That becomes the highlight, and the camera can zoom to it.",
+    },
+    {
+      icon: <Mic className="h-4 w-4" />,
+      title: "Check the narration",
+      body: "A script is written from your screenshots. Read it in the Script panel and change anything that is not right.",
+    },
+  ];
+
   return (
-    <div className="flex-grow flex items-center justify-center p-4 md:p-8 bg-[var(--sketch-panel-bg)]/40 rounded-lg border border-dashed border-[var(--sketch-border-color)]/30 backdrop-blur-sm overflow-y-auto w-full h-full max-h-[85%] select-none">
-      
-      {/* Desktop Keyboard Shortcuts */}
-      <div className="hidden md:block max-w-2xl w-full space-y-6 text-center">
-        <div className="space-y-2">
-          <h3 className="text-base font-bold text-[var(--sketch-fg)] flex items-center justify-center gap-2">
-            <Keyboard className="w-5 h-5 text-brand" /> Canvas Editor Keyboard Shortcuts
-          </h3>
-          <p className="text-xs text-[var(--sketch-fg-muted)]">
-            Press any of these hotkeys while editing to select tools instantly.
-          </p>
-        </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
-          <div className="p-4 rounded-xl border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] space-y-3 shadow-sm">
-            <h4 className="text-xs font-bold text-[var(--sketch-fg)] border-b border-[var(--sketch-border-color)]/25 pb-1 flex items-center gap-1.5">
-              <MousePointer className="w-3.5 h-3.5 text-blue-500" /> Navigation & Editing
-            </h4>
-            <div className="space-y-2 text-[11px]">
-              <div className="flex justify-between items-center">
-                <span className="text-[var(--sketch-fg-muted)]">Select Tool</span>
-                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">V</kbd>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[var(--sketch-fg-muted)]">Pan Tool (Hold Spacebar)</span>
-                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">Space</kbd>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[var(--sketch-fg-muted)]">Crop Screen</span>
-                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">C</kbd>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[var(--sketch-fg-muted)]">Undo Action</span>
-                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">Ctrl + Z</kbd>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[var(--sketch-fg-muted)]">Redo Action</span>
-                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">Ctrl + Shift + Z</kbd>
-              </div>
-            </div>
-          </div>
+    <div className="mx-auto w-full max-w-lg text-left">
+      <h3 className="mb-3 text-center text-sm font-semibold text-[var(--sketch-fg)]">
+        Three steps to a finished video
+      </h3>
 
-          <div className="p-4 rounded-xl border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] space-y-3 shadow-sm">
-            <h4 className="text-xs font-bold text-[var(--sketch-fg)] border-b border-[var(--sketch-border-color)]/25 pb-1 flex items-center gap-1.5">
-              <Square className="w-3.5 h-3.5 text-amber-500" /> Annotation Tools
-            </h4>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-[11px]">
-              <div className="flex justify-between items-center">
-                <span className="text-[var(--sketch-fg-muted)]">Highlight</span>
-                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">H</kbd>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[var(--sketch-fg-muted)]">Zoom Focus</span>
-                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">Z</kbd>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[var(--sketch-fg-muted)]">Text Overlay</span>
-                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">T</kbd>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[var(--sketch-fg-muted)]">Badge</span>
-                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">B</kbd>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[var(--sketch-fg-muted)]">Watermark</span>
-                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">W</kbd>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-[var(--sketch-fg-muted)]">Magnify</span>
-                <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">M</kbd>
-              </div>
+      <ol className="space-y-2.5">
+        {steps.map((s, i) => (
+          <li
+            key={s.title}
+            className="flex gap-3 rounded-lg border border-[var(--sketch-border-color)]/40 bg-[var(--sketch-panel-bg)] p-3"
+          >
+            <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-[var(--sketch-accent)]/12 text-[var(--sketch-accent)]">
+              {s.icon}
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-[var(--sketch-fg)]">
+                {i + 1}. {s.title}
+              </p>
+              <p className="mt-0.5 text-[11px] leading-relaxed text-[var(--sketch-fg-muted)]">
+                {s.body}
+              </p>
             </div>
-          </div>
-        </div>
+          </li>
+        ))}
+      </ol>
 
-        <div className="p-4 rounded-xl border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] space-y-3 shadow-sm text-left">
-          <h4 className="text-xs font-bold text-[var(--sketch-fg)] border-b border-[var(--sketch-border-color)]/25 pb-1 flex items-center gap-1.5">
-            <EyeOff className="w-3.5 h-3.5 text-emerald-500" /> Censorship & Special Effects
-          </h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-[11px]">
-            <div className="flex justify-between items-center">
-              <span className="text-[var(--sketch-fg-muted)]">Blur</span>
-              <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">U</kbd>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-[var(--sketch-fg-muted)]">Redact</span>
-              <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">R</kbd>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-[var(--sketch-fg-muted)]">Pixelate</span>
-              <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">P</kbd>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-[var(--sketch-fg-muted)]">Spotlight</span>
-              <kbd className="px-1.5 py-0.5 bg-[var(--sketch-bg)] border border-[var(--sketch-border-color)]/20 rounded shadow-sm font-mono text-[9px] font-bold">L</kbd>
-            </div>
-          </div>
-        </div>
-      </div>
+      {onAddScreenshots && (
+        <button
+          onClick={onAddScreenshots}
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--sketch-accent)] py-2.5 text-sm font-semibold text-white shadow-sm transition-opacity hover:opacity-90"
+        >
+          <Upload className="h-4 w-4" />
+          Add screenshots
+        </button>
+      )}
 
-      {/* Mobile Touch & Gesture Guide */}
-      <div className="block md:hidden max-w-md w-full space-y-4 text-center">
-        <div className="space-y-1">
-          <h3 className="text-sm font-bold text-[var(--sketch-fg)] flex items-center justify-center gap-1.5">
-            <Hand className="w-4 h-4 text-brand" /> Mobile Gesture Guide
-          </h3>
-          <p className="text-[10px] text-[var(--sketch-fg-muted)]">
-            Quick tips to edit your video screenshots on touchscreens.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 text-left">
-          <div className="p-3.5 rounded-xl border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] space-y-2.5 shadow-sm">
-            <h4 className="text-[11px] font-bold text-[var(--sketch-fg)] border-b border-[var(--sketch-border-color)]/25 pb-1 flex items-center gap-1.5">
-              <Target className="w-3.5 h-3.5 text-blue-500" /> Touch Editing & Zooming
-            </h4>
-            <div className="space-y-2 text-[10px] text-[var(--sketch-fg-muted)]">
-              <div className="flex gap-2 items-start">
-                <span className="bg-blue-500/10 text-blue-500 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0">Pinch</span>
-                <span>Use **two fingers** on the grey screen to zoom the canvas in or out.</span>
-              </div>
-              <div className="flex gap-2 items-start">
-                <span className="bg-amber-500/10 text-amber-500 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0">Draw</span>
-                <span>Select any tool on the toolbar (e.g. highlight) and **drag one finger** to draw.</span>
-              </div>
-              <div className="flex gap-2 items-start">
-                <span className="bg-emerald-500/10 text-emerald-500 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0">Pan</span>
-                <span>Select the **Pan (Hand)** tool on the toolbar to scroll around zoomed screens.</span>
-              </div>
-              <div className="flex gap-2 items-start">
-                <span className="bg-purple-500/10 text-purple-500 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0">Edit</span>
-                <span>Tap an annotation box to resize, reposition, or customize it.</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-3.5 rounded-xl border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)] space-y-2.5 shadow-sm">
-            <h4 className="text-[11px] font-bold text-[var(--sketch-fg)] border-b border-[var(--sketch-border-color)]/25 pb-1 flex items-center gap-1.5">
-              <Sliders className="w-3.5 h-3.5 text-purple-500" /> Controls & Sidebar Panels
-            </h4>
-            <div className="space-y-2 text-[10px] text-[var(--sketch-fg-muted)]">
-              <div className="flex gap-2 items-start">
-                <span className="bg-pink-500/10 text-pink-500 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0">Properties</span>
-                <span>Tap **Properties** in the header to configure size, colors, and opacity.</span>
-              </div>
-              <div className="flex gap-2 items-start">
-                <span className="bg-teal-500/10 text-teal-500 font-mono text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0">Panels</span>
-                <span>Open **Panels** to edit scripts, voiceover voices, captions, and transitions.</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
+      <p className="mt-3 text-center text-[10px] text-[var(--sketch-fg-subtle)]">
+        Everything here can be changed later. Nothing is final until you export.
+      </p>
     </div>
   );
 }
-
-
 
 function ToolbarToolButton({
   active,
   onClick,
   icon,
   label,
-  shortcut,
   description,
   dataTour,
 }: {
@@ -9104,14 +8987,13 @@ function ToolbarToolButton({
   onClick: () => void;
   icon: React.ReactNode;
   label: string;
-  shortcut?: string;
   description?: string;
   dataTour?: string;
 }) {
   const btn = (
     <button
       onClick={onClick}
-      title={shortcut ? `${label} (${shortcut})` : label}
+      title={label}
       data-tour={dataTour}
       aria-pressed={active}
       // The selected state used to be a 15% tint of the accent and nothing
@@ -9136,7 +9018,7 @@ function ToolbarToolButton({
       <TooltipTrigger asChild>{btn}</TooltipTrigger>
       <TooltipContent side="bottom" className="max-w-[220px] text-left">
         <div className="space-y-1">
-          <p className="font-semibold">{label}{shortcut ? ` (${shortcut})` : ""}</p>
+          <p className="font-semibold">{label}</p>
           <p className="text-[11px] opacity-90">{description}</p>
         </div>
       </TooltipContent>

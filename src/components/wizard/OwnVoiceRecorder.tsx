@@ -143,10 +143,16 @@ export default function OwnVoiceRecorder({
   const attached = state.audioSource === "upload";
 
   return (
-    <div className="p-3 rounded-xl border border-[var(--sketch-border-color)]/20 bg-[var(--sketch-card-bg)]/50">
+    <div
+      className={`p-3 rounded-xl border-2 ${attached
+        ? "border-teal-500/60 bg-teal-500/[0.07]"
+        : "border-[var(--sketch-accent)]/35 bg-[var(--sketch-accent)]/[0.05]"
+        }`}
+    >
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] font-bold text-[var(--sketch-fg-muted)]">
-          Your own voice
+        <span className="flex items-center gap-1.5 text-xs font-bold text-[var(--sketch-fg)]">
+          <Mic className="h-3.5 w-3.5 text-[var(--sketch-accent)]" />
+          Use your own voice
         </span>
         {attached ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-teal-500/15 px-2 py-0.5 text-[10px] font-bold text-teal-700">
