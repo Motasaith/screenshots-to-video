@@ -10,11 +10,14 @@
  *  - Screenshots: capture at 2560px wide, export WebP or AVIF, drop in
  *    /public/images/steps/. Point `image` at the path.
  *
- *    They are WebP, capped at 1600px wide, and are real captures of the
- *    product rather than mockups. The originals were 2.3 MB of PNG and JPEG
- *    between them, which is not a reasonable thing to put above the fold;
- *    converted they are 180 KB for all four. Anything added here should get
- *    the same treatment.
+ *    They are WebP, real captures of the product rather than mockups, and all
+ *    of them are exactly 1600x795 - padded onto that canvas with the mat colour
+ *    if the capture was a different shape. They are shown side by side and in a
+ *    tabbed panel, so a shot that is not that shape makes cards of unequal
+ *    height and a panel that jumps as you change tab. The originals were 2.3 MB
+ *    of PNG and JPEG between them, which is not a reasonable thing to put above
+ *    the fold; converted they are under 200 KB for all five. Anything added here
+ *    should get the same treatment.
  *  - Clips: keep them under ~15 seconds and under ~3 MB, H.264 MP4, and always
  *    export a `poster` still alongside. The poster is what people actually see
  *    first; the video only downloads once it is on screen or clicked.
@@ -29,8 +32,6 @@ export interface ShowcasePanel {
   body: string;
   bullets: string[];
   image?: string;
-  /** `width / height` of that image, so the frame reserves the right box. */
-  ratio?: number;
   video?: string;
   poster?: string;
   /** Fake URL drawn in the browser chrome above the media. */
@@ -45,7 +46,6 @@ export const showcasePanels: ShowcasePanel[] = [
     body: "Pick a folder, a ZIP, or a pile of loose images. They get sorted by filename, so the order you saved them in is the order they appear in the video.",
     bullets: ["Folders and ZIPs unpack automatically", "Up to 50 screenshots per project", "Presets for YouTube, TikTok and Teams"],
     image: "/images/steps/new-project.webp",
-    ratio: 957 / 708,
     url: "app.aivideo.ai/create",
   },
   {
@@ -55,7 +55,6 @@ export const showcasePanels: ShowcasePanel[] = [
     body: "Draw a box around the button you want people to click. Blur the account number. Add an arrow, a caption, a step number. Everything you place is remembered when you re-render.",
     bullets: ["Highlight, blur, arrow, text and shape tools", "Blur travels with the region, not the pixel", "Undo history per scene"],
     image: "/images/steps/editor.webp",
-    ratio: 1600 / 795,
     url: "app.aivideo.ai/create/editor",
   },
   {
@@ -65,7 +64,6 @@ export const showcasePanels: ShowcasePanel[] = [
     body: "Drag a box around whatever matters on a screenshot. Every box becomes a highlight, and any of them can be where the camera moves to. The render pushes in, holds, then pulls back out for the next step: it reads like someone recorded their screen, except nothing was recorded.",
     bullets: ["Draw the boxes once, before the editor opens", "Any box can be a zoom target, or none of them", "Transition and hold timing per step"],
     image: "/images/steps/zoom-and-camera.webp",
-    ratio: 1600 / 795,
     url: "app.aivideo.ai/create/preview",
   },
   {
@@ -75,7 +73,6 @@ export const showcasePanels: ShowcasePanel[] = [
     body: "The script is generated per step from the screenshot and your notes, then read out loud. Rewrite any line you disagree with and only that line is re-recorded.",
     bullets: ["Script drafted per step", "Edit a line, re-record just that line", "Captions burned in or kept as a sidecar file"],
     image: "/images/steps/script-and-voice.webp",
-    ratio: 1600 / 663,
     url: "app.aivideo.ai/create/voice",
   },
   {
@@ -85,7 +82,6 @@ export const showcasePanels: ShowcasePanel[] = [
     body: "Rendering happens on our machines, not yours. Close the tab if you want. When it is done you get an MP4 at the aspect ratio you picked, with the music bed and captions baked in.",
     bullets: ["16:9, 9:16, 1:1 and 4:5", "Runs server-side, survives a closed tab", "Download or share a link"],
     image: "/images/steps/export.webp",
-    ratio: 1600 / 795,
     url: "app.aivideo.ai/create/export",
   },
 ];

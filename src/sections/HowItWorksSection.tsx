@@ -1,27 +1,35 @@
 import { Reveal } from "@/components/site/Reveal";
 import { Shot } from "@/components/site/Media";
 
+/**
+ * Every homepage shot is 1600x795, so this one number fits all of them.
+ *
+ * It has to be one number. The shots appear side by side in a three-card grid
+ * and in a tabbed panel that swaps between them, and the frame reserves its box
+ * before the image loads - so a per-image ratio gave cards of different heights
+ * and a panel that jumped as you changed tab. The images were padded onto a
+ * common canvas rather than declaring a ratio the picture does not have.
+ */
+const SHOT_RATIO = 1600 / 795;
+
 const steps = [
   {
     n: "1",
     title: "Upload your screenshots",
     body: "Drop a folder or a ZIP. They are sorted by filename, and that order becomes the order of the video. Pick an aspect ratio and you have a project.",
     image: "/images/steps/new-project.webp",
-    ratio: 957 / 708,
   },
   {
     n: "2",
     title: "Mark up what matters",
     body: "Box the button someone should click and the camera zooms to it. Blur what should not be public. The narration is drafted from your screenshots, and you change any line you disagree with.",
     image: "/images/steps/editor.webp",
-    ratio: 1600 / 795,
   },
   {
     n: "3",
     title: "Render and download",
     body: "We stitch the screenshots, narration, zooms and music into one MP4 on our machines. Close the tab; it will be waiting in your library.",
     image: "/images/steps/export.webp",
-    ratio: 1600 / 795,
   },
 ];
 
@@ -44,7 +52,7 @@ export default function HowItWorksSection() {
                 <Shot
                   src={step.image}
                   alt={step.title}
-                  ratio={step.ratio}
+                  ratio={SHOT_RATIO}
                   bare
                   placeholder={`Step ${step.n}`}
                   sizes="(max-width: 768px) 100vw, 360px"

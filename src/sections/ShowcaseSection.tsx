@@ -14,6 +14,17 @@ import { showcasePanels } from "@/data/showcase";
  * Only the first panel's screenshot is in the DOM at a time, so switching tabs
  * downloads one image instead of the browser fetching five up front.
  */
+/**
+ * Every homepage shot is 1600x795, so this one number fits all of them.
+ *
+ * It has to be one number. The shots appear side by side in a three-card grid
+ * and in a tabbed panel that swaps between them, and the frame reserves its box
+ * before the image loads - so a per-image ratio gave cards of different heights
+ * and a panel that jumped as you changed tab. The images were padded onto a
+ * common canvas rather than declaring a ratio the picture does not have.
+ */
+const SHOT_RATIO = 1600 / 795;
+
 export default function ShowcaseSection() {
   const [active, setActive] = useState(0);
   const panel = showcasePanels[active];
@@ -79,7 +90,7 @@ export default function ShowcaseSection() {
               key={panel.id}
               src={panel.image}
               alt={panel.title}
-              ratio={panel.ratio ?? 16 / 10}
+              ratio={SHOT_RATIO}
               bare
               placeholder={panel.tab}
               sizes="(max-width: 1024px) 100vw, 700px"
